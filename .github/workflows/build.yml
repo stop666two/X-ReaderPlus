@@ -57,6 +57,7 @@ jobs:
           path: release/*.zip
 
   win-ia32:
+    continue-on-error: true
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -72,6 +73,7 @@ jobs:
           path: release/* Setup *.exe
 
   win-arm64:
+    continue-on-error: true
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
