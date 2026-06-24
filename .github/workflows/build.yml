@@ -1,0 +1,102 @@
+name: Build and Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npm run build:vite
+      - run: npx electron-builder --linux --publish=never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: release/*.AppImage
+
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npm run build:vite
+      - run: npx electron-builder --mac --publish=never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-dmg
+          path: release/*.dmg
+
+  win-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npm run build:vite
+      - run: npx electron-builder --win --x64 --publish=never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: |
+            release/* Setup *.exe
+            release/*.zip
+
+  win-ia32:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npm run build:vite
+      - run: npx electron-builder --win --ia32 --publish=never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-ia32
+          path: release/* Setup *.exe
+
+  win-arm64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npm run build:vite
+      - run: npx electron-builder --win --arm64 --publish=never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-arm64
+          path: release/* Setup *.exe
+
+  release:
+    needs: [linux, mac, win-x64, win-ia32, win-arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - run: |
+          mkdir -p dist-release
+          find artifacts -type f \( -name "*.AppImage" -o -name "*.dmg" -o -name "*.exe" -o -name "*.zip" \) -exec cp {} dist-release/ \;
+          ls -lh dist-release/
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist-release/*
+          body_path: RELEASE_NOTES.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

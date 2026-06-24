@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4F46E5"/>
+      <stop offset="50%" style="stop-color:#7C3AED"/>
+      <stop offset="100%" style="stop-color:#A855F7"/>
+    </linearGradient>
+    <linearGradient id="pageL" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF"/>
+      <stop offset="100%" style="stop-color:#E2E8F0"/>
+    </linearGradient>
+    <linearGradient id="pageR" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#F1F5F9"/>
+      <stop offset="100%" style="stop-color:#CBD5E1"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#1E1B4B" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+
+  <!-- Subtle inner glow -->
+  <rect x="4" y="4" width="248" height="248" rx="53" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2"/>
+
+  <!-- Open book group -->
+  <g transform="translate(128,130)" filter="url(#shadow)">
+    <!-- Left page -->
+    <path d="M-85,-42 C-85,-42 0,-52 0,-42 L0,82 C0,72 -85,82 -85,82 Z" fill="url(#pageL)"/>
+    <!-- Right page -->
+    <path d="M85,-42 C85,-42 0,-52 0,-42 L0,82 C0,72 85,82 85,82 Z" fill="url(#pageR)"/>
+
+    <!-- Spine line -->
+    <line x1="0" y1="-42" x2="0" y2="82" stroke="#94A3B8" stroke-width="1.5" opacity="0.6"/>
+
+    <!-- Left page text lines -->
+    <line x1="-70" y1="-22" x2="-12" y2="-22" stroke="#64748B" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+    <line x1="-70" y1="-6" x2="-12" y2="-6" stroke="#64748B" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+    <line x1="-70" y1="10" x2="-30" y2="10" stroke="#64748B" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+    <line x1="-70" y1="26" x2="-20" y2="26" stroke="#64748B" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+    <line x1="-70" y1="42" x2="-12" y2="42" stroke="#64748B" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+    <line x1="-70" y1="58" x2="-35" y2="58" stroke="#64748B" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+
+    <!-- Right page text lines -->
+    <line x1="12" y1="-22" x2="70" y2="-22" stroke="#64748B" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+    <line x1="12" y1="-6" x2="70" y2="-6" stroke="#64748B" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+    <line x1="12" y1="10" x2="55" y2="10" stroke="#64748B" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+    <line x1="12" y1="26" x2="65" y2="26" stroke="#64748B" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+    <line x1="12" y1="42" x2="70" y2="42" stroke="#64748B" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+    <line x1="12" y1="58" x2="48" y2="58" stroke="#64748B" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+  </g>
+
+  <!-- Page curl effect - bottom corners -->
+  <path d="M128,212 C128,212 88,198 80,212" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="2" stroke-linecap="round"/>
+  <path d="M128,212 C128,212 168,198 176,212" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="2" stroke-linecap="round"/>
+</svg>
