@@ -1,0 +1,20 @@
+Annotations
+9 errors, 6 warnings, and 1 notice
+win-ia32
+The run was canceled by @stop666two.
+win-ia32
+The operation was canceled.
+win-x64
+The run was canceled by @stop666two.
+win-x64
+The operation was canceled.
+win-x64-portable
+The run was canceled by @stop666two.
+win-x64-portable
+The operation was canceled.
+win-arm64
+The run was canceled by @stop666two.
+win-arm64
+The operation was canceled.
+Build
+The run was canceled by @stop666two.
