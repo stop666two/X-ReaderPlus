@@ -90,6 +90,7 @@ jobs:
 
   release:
     needs: [linux, mac, win-x64, win-ia32, win-arm64]
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
