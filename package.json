@@ -34,7 +34,7 @@
     "build:all": "vite build && electron-builder --win --linux --mac",
     "build:vite": "vite build",
     "preview": "vite preview",
-    "lint": "vue-tsc --noEmit",
+    "lint": "npx vue-tsc --noEmit",
     "postinstall": "@electron/rebuild -f -w better-sqlite3",
     "rebuild": "@electron/rebuild -f -w better-sqlite3"
   },
