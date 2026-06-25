@@ -2,20 +2,36 @@ import { arrayBufferToBase64, base64ToArrayBuffer } from './base64'
 
 const ENC_KEY_CFG = 'webdavEncKey'
 
-async function getOrCreateEncKey(db: { cfg: { get: (k: string) => Promise<any>; put: (r: any) => Promise<any> } }): Promise<CryptoKey> {
-  const record = await db.cfg.get(ENC_KEY_CFG)
-  if (record?.v) {
-    const rawKey = base64ToArrayBuffer(record.v)
+// Config helpers
+function configGet(key: string): Promise<string | null> {
+  if (typeof window !== 'undefined' && window.electronAPI?.config) {
+    return window.electronAPI.config.get(key).then((v: string | undefined | null) => v ?? null)
+  }
+  return Promise.resolve(localStorage.getItem(key))
+}
+
+function configSet(key: string, value: string): Promise<void> {
+  if (typeof window !== 'undefined' && window.electronAPI?.config) {
+    return window.electronAPI.config.set(key, value)
+  }
+  localStorage.setItem(key, value)
+  return Promise.resolve()
+}
+
+async function getOrCreateEncKey(): Promise<CryptoKey> {
+  const v = await configGet(ENC_KEY_CFG)
+  if (v) {
+    const rawKey = base64ToArrayBuffer(v)
     return crypto.subtle.importKey('raw', rawKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
   }
   const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt'])
   const exported = await crypto.subtle.exportKey('raw', key)
-  await db.cfg.put({ k: ENC_KEY_CFG, v: arrayBufferToBase64(exported) })
+  await configSet(ENC_KEY_CFG, arrayBufferToBase64(exported))
   return key
 }
 
-export async function encryptPassword(db: { cfg: { get: (k: string) => Promise<any>; put: (r: any) => Promise<any> } }, plaintext: string): Promise<{ iv: string; ciphertext: string }> {
-  const key = await getOrCreateEncKey(db)
+export async function encryptPassword(plaintext: string): Promise<{ iv: string; ciphertext: string }> {
+  const key = await getOrCreateEncKey()
   const iv = crypto.getRandomValues(new Uint8Array(12))
   const encoded = new TextEncoder().encode(plaintext)
   const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoded)
@@ -25,8 +41,8 @@ export async function encryptPassword(db: { cfg: { get: (k: string) => Promise<a
   }
 }
 
-export async function decryptPassword(db: { cfg: { get: (k: string) => Promise<any>; put: (r: any) => Promise<any> } }, iv: string, ciphertext: string): Promise<string> {
-  const key = await getOrCreateEncKey(db)
+export async function decryptPassword(iv: string, ciphertext: string): Promise<string> {
+  const key = await getOrCreateEncKey()
   const ivBuffer = base64ToArrayBuffer(iv)
   const ctBuffer = base64ToArrayBuffer(ciphertext)
   const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: ivBuffer }, key, ctBuffer)

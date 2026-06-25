@@ -4,6 +4,17 @@
       <v-toolbar-title>回收站</v-toolbar-title>
       <v-spacer />
       <v-btn
+        v-if="pagedTrashItems.length > 0 && !clearingInProgress"
+        color="warning"
+        size="small"
+        variant="text"
+        prepend-icon="mdi-delete-sweep"
+        class="mr-1"
+        @click="showClearPageConfirm = true"
+      >
+        删除当页
+      </v-btn>
+      <v-btn
         v-if="trashItems.length > 0 && !clearingInProgress"
         color="error"
         size="small"
@@ -37,7 +48,7 @@
 
       <v-list v-else density="compact" select-strategy="classic">
         <v-list-item
-          v-for="item in trashItems"
+          v-for="item in pagedTrashItems"
           :key="item.id"
           :title="item.book.title"
           :subtitle="`删除于 ${formatDate(item.deletedAt)} · ${item.book.format.toUpperCase()} · ${formatSize(item.book.size)}`"
@@ -74,6 +85,13 @@
           </template>
         </v-list-item>
       </v-list>
+
+      <!-- Pagination -->
+      <div v-if="totalPages > 1" class="pagination-bar">
+        <v-btn size="x-small" icon="mdi-chevron-left" :disabled="!hasPrev" @click="prevPage" />
+        <span class="text-caption mx-2">第 {{ currentPage }} / {{ totalPages }} 页</span>
+        <v-btn size="x-small" icon="mdi-chevron-right" :disabled="!hasNext" @click="nextPage" />
+      </div>
     </div>
 
     <!-- Floating batch bar -->
@@ -101,6 +119,25 @@
         永久删除
       </v-btn>
     </div>
+
+    <!-- Clear page confirm dialog -->
+    <v-dialog v-model="showClearPageConfirm" max-width="400">
+      <v-card>
+        <v-card-title class="text-warning">
+          <v-icon color="warning" class="mr-2">mdi-alert</v-icon>
+          确认删除当页
+        </v-card-title>
+        <v-card-text>
+          <p>确定要永久删除当前页的 {{ pagedTrashItems.length }} 本回收站书籍吗？</p>
+          <p class="text-caption text-error">此操作不可撤销！</p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="showClearPageConfirm = false">取消</v-btn>
+          <v-btn color="error" @click="clearCurrentPage">确认删除</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- Clear confirm dialog -->
     <v-dialog v-model="showClearConfirm" max-width="400">
@@ -162,26 +199,44 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { db } from '@/services/db'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import type { TrashItem } from '@/types'
 import { useBookshelfStore } from '@/stores/bookshelf'
 import { batchProcess } from '@/stores/bookshelf'
+import { usePagination, getPageSize } from '@/composables/usePagination'
 import dayjs from 'dayjs'
 
 const bookshelf = useBookshelfStore()
 const trashItems = ref<TrashItem[]>([])
 const showClearConfirm = ref(false)
+const showClearPageConfirm = ref(false)
 const showBatchDeleteConfirm = ref(false)
 const showSingleDeleteConfirm = ref(false)
 const singleDeleteTarget = ref<TrashItem | null>(null)
 const clearingInProgress = ref(false)
 const clearProgress = ref({ current: 0, total: 0 })
 const selectedTrashIds = ref<Set<string>>(new Set())
+const trashPageSize = ref(20)
 
 const clearProgressPercent = computed(() => {
   if (clearProgress.value.total === 0) return 0
   return (clearProgress.value.current / clearProgress.value.total) * 100
+})
+
+// ---- Pagination ----
+const {
+  currentPage,
+  totalPages,
+  hasPrev,
+  hasNext,
+  pagedItems: pagedTrashItems,
+  prevPage,
+  nextPage
+} = usePagination(trashItems, trashPageSize, {
+  onPageChange: () => { nextTick(() => {
+    const el = document.querySelector('.trash-content')
+    if (el) el.scrollTop = 0
+  })}
 })
 
 // ---- Selection ----
@@ -193,7 +248,7 @@ function toggleTrashSelect(id: string) {
 }
 
 function selectAllTrash() {
-  selectedTrashIds.value = new Set(trashItems.value.map(t => t.id))
+  selectedTrashIds.value = new Set(pagedTrashItems.value.map(t => t.id))
 }
 
 function invertTrashSelection() {
@@ -209,21 +264,29 @@ function clearTrashSelection() {
   selectedTrashIds.value = new Set()
 }
 
+// ---- API helper (guards against missing electronAPI in browser dev mode) ----
+function getApi() {
+  if (!window.electronAPI) throw new Error('electronAPI 不可用，回收站操作需要在 Electron 环境下进行')
+  return window.electronAPI
+}
+
 // ---- Load ----
 
 async function loadTrash() {
-  const records = await db.tr.toArray()
-  trashItems.value = records.map(r => JSON.parse(r.data))
+  try { trashItems.value = (await getApi().trash.getAll()).map((r: any) => (typeof r.data === 'string' ? JSON.parse(r.data) : r)) }
+  catch { trashItems.value = [] }
 }
 
 // ---- Restore ----
 
 async function restoreItem(id: string) {
-  const record = await db.tr.get(id)
+  const api = getApi()
+  const record = await api.trash.get(id)
   if (record) {
-    const item: TrashItem = JSON.parse(record.data)
-    await db.lib.put({ id, data: JSON.stringify(item.book) })
-    await db.tr.delete(id)
+    const item: TrashItem = typeof record.data === 'string' ? JSON.parse(record.data) : record
+    const book = item.book
+    await api.books.insert({...book})
+    await api.trash.delete(id)
     selectedTrashIds.value.delete(id)
     selectedTrashIds.value = new Set(selectedTrashIds.value)
     await loadTrash()
@@ -232,16 +295,18 @@ async function restoreItem(id: string) {
 }
 
 async function batchRestore() {
+  const api = getApi()
   const ids = [...selectedTrashIds.value]
   await batchProcess(
     ids,
     50,
     async (id) => {
-      const record = await db.tr.get(id)
+      const record = await api.trash.get(id)
       if (record) {
-        const item: TrashItem = JSON.parse(record.data)
-        await db.lib.put({ id, data: JSON.stringify(item.book) })
-        await db.tr.delete(id)
+        const item: TrashItem = typeof record.data === 'string' ? JSON.parse(record.data) : record
+        const book = item.book
+        await api.books.insert({...book})
+        await api.trash.delete(id)
       }
     }
   )
@@ -253,18 +318,7 @@ async function batchRestore() {
 // ---- Delete ----
 
 async function permanentlyDelete(id: string) {
-  const record = await db.tr.get(id)
-  if (record) {
-    const item: TrashItem = JSON.parse(record.data)
-    await db.tr.delete(id)
-    await db.ch.delete(item.book.id)
-    await db.bm.filter(x => {
-      try { const bm = JSON.parse(x.data); return bm.bookId === item.book.id } catch { return false }
-    }).delete()
-    await db.ann.filter(x => {
-      try { const ann = JSON.parse(x.data); return ann.bookId === item.book.id } catch { return false }
-    }).delete()
-  }
+  await getApi().trash.permanentDelete(id)
 }
 
 function confirmSingleDelete(id: string) {
@@ -289,25 +343,52 @@ async function executeSingleDelete() {
 async function batchPermanentDelete() {
   showBatchDeleteConfirm.value = false
   const ids = [...selectedTrashIds.value]
-  await batchProcess(ids, 50, (id) => permanentlyDelete(id))
-  clearTrashSelection()
-  await loadTrash()
-}
-
-async function clearTrash() {
-  showClearConfirm.value = false
   clearingInProgress.value = true
-  const ids = trashItems.value.map(t => t.id)
   clearProgress.value = { current: 0, total: ids.length }
 
   await batchProcess(
     ids,
     50,
     async (id) => {
-      await permanentlyDelete(id)
+      await getApi().trash.permanentDelete(id)
       clearProgress.value = { current: clearProgress.value.current + 1, total: ids.length }
     }
   )
+
+  clearingInProgress.value = false
+  clearProgress.value = { current: 0, total: 0 }
+  clearTrashSelection()
+  await loadTrash()
+}
+
+async function clearCurrentPage() {
+  showClearPageConfirm.value = false
+  clearingInProgress.value = true
+  const ids = pagedTrashItems.value.map(t => t.id)
+  clearProgress.value = { current: 0, total: ids.length }
+
+  await batchProcess(
+    ids,
+    50,
+    async (id) => {
+      await getApi().trash.permanentDelete(id)
+      clearProgress.value = { current: clearProgress.value.current + 1, total: ids.length }
+    }
+  )
+
+  clearingInProgress.value = false
+  clearProgress.value = { current: 0, total: 0 }
+  await loadTrash()
+}
+
+async function clearTrash() {
+  showClearConfirm.value = false
+  clearingInProgress.value = true
+  const total = trashItems.value.length
+  clearProgress.value = { current: 0, total }
+
+  await getApi().trash.clear()
+  clearProgress.value = { current: total, total }
 
   clearingInProgress.value = false
   clearProgress.value = { current: 0, total: 0 }
@@ -326,7 +407,10 @@ function formatSize(bytes: number): string {
   return (bytes / 1024 / 1024).toFixed(1) + ' MB'
 }
 
-onMounted(loadTrash)
+onMounted(async () => {
+  await loadTrash()
+  trashPageSize.value = await getPageSize('trash')
+})
 </script>
 
 <style scoped>
@@ -339,6 +423,17 @@ onMounted(loadTrash)
 .trash-content {
   flex: 1;
   overflow-y: auto;
+}
+
+/* ---- Pagination ---- */
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 0;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  margin-top: 8px;
 }
 
 .batch-bar {

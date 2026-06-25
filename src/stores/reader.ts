@@ -1,11 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { Bookmark, Annotation, HighlightColor, ChapterContent } from '@/types'
-import { db } from '@/services/db'
 import { useSettingsStore } from './settings'
+import { generateId } from '@/services/base64'
+import { search as indexSearch, indexExists } from '@/services/search-index'
 
 export const useReaderStore = defineStore('reader', () => {
   const bookId = ref('')
+  /** Chapter metadata (title only — content is lazy-loaded) */
   const chapters = ref<ChapterContent[]>([])
   const currentChapterIndex = ref(0)
   const scrollPosition = ref<Record<number, number>>({})
@@ -21,7 +23,18 @@ export const useReaderStore = defineStore('reader', () => {
   const isAutoScrolling = ref(false)
   const showToolbar = ref(true)
 
-  const currentChapter = computed(() => chapters.value[currentChapterIndex.value] || null)
+  // Lazy chapter content cache
+  let _allChapterData: ChapterContent[] | null = null
+  const chapterContents = ref<Map<number, string>>(new Map())
+
+  const currentChapter = computed(() => {
+    const meta = chapters.value[currentChapterIndex.value]
+    if (!meta) return null
+    return {
+      title: meta.title,
+      content: chapterContents.value.get(currentChapterIndex.value) || ''
+    }
+  })
   const chapterCount = computed(() => chapters.value.length)
   const hasPreviousChapter = computed(() => currentChapterIndex.value > 0)
   const hasNextChapter = computed(() => currentChapterIndex.value < chapters.value.length - 1)
@@ -34,13 +47,46 @@ export const useReaderStore = defineStore('reader', () => {
     bookmarks.value.filter(b => b.chapterIndex === currentChapterIndex.value)
   )
 
+  /** Load chapter content on demand, with neighbor preloading and cache eviction */
+  async function loadChapterContent(index: number): Promise<void> {
+    if (!_allChapterData || index < 0 || index >= _allChapterData.length) return
+    const data = _allChapterData[index]
+    chapterContents.value.set(index, data.content)
+
+    // Preload adjacent chapters in background, then evict distant ones
+    setTimeout(() => {
+      // Guard: _allChapterData may have been set to null by loadBook() in the meantime
+      if (!_allChapterData) return
+      if (index + 1 < _allChapterData.length) {
+        chapterContents.value.set(index + 1, _allChapterData[index + 1].content)
+      }
+      if (index - 1 >= 0) {
+        chapterContents.value.set(index - 1, _allChapterData[index - 1].content)
+      }
+      // Evict chapters more than 3 away from current
+      for (const [i] of chapterContents.value) {
+        if (Math.abs(i - index) > 3) {
+          chapterContents.value.delete(i)
+        }
+      }
+    }, 50)
+  }
+
   async function loadBook(bid: string) {
     bookId.value = bid
     scrollPosition.value = {}
+    chapterContents.value = new Map()
+    _allChapterData = null
 
-    const chRecord = await db.ch.get(bid)
-    if (chRecord) {
-      chapters.value = JSON.parse(chRecord.data)
+    if (!window.electronAPI) return
+    const data = await window.electronAPI.chapters.get(bid)
+    if (data) {
+      const allChapters: ChapterContent[] = JSON.parse(data)
+      _allChapterData = allChapters
+      // Store only metadata (title), content is lazy-loaded by the view
+      chapters.value = allChapters.map(ch => ({ title: ch.title, content: '' }))
+    } else {
+      chapters.value = []
     }
 
     await loadBookmarks()
@@ -48,42 +94,39 @@ export const useReaderStore = defineStore('reader', () => {
   }
 
   async function loadBookmarks() {
-    const records = await db.bm.filter(x => {
-      try {
-        const bm: Bookmark = JSON.parse(x.data)
-        return bm.bookId === bookId.value
-      } catch { return false }
-    }).toArray()
-
-    bookmarks.value = records.map(r => JSON.parse(r.data))
+    if (!window.electronAPI) return
+    const records = await window.electronAPI.bookmarks.getByBook(bookId.value)
+    bookmarks.value = records.map((r: any) => {
+      try { return JSON.parse(r.data) } catch { return null }
+    }).filter(Boolean)
   }
 
   async function loadAnnotations() {
-    const records = await db.ann.filter(x => {
-      try {
-        const ann: Annotation = JSON.parse(x.data)
-        return ann.bookId === bookId.value
-      } catch { return false }
-    }).toArray()
-
-    annotations.value = records.map(r => JSON.parse(r.data))
+    if (!window.electronAPI) return
+    const records = await window.electronAPI.annotations.getByBook(bookId.value)
+    annotations.value = records.map((r: any) => {
+      try { return JSON.parse(r.data) } catch { return null }
+    }).filter(Boolean)
   }
 
   function navigateToChapter(index: number) {
     if (index >= 0 && index < chapters.value.length) {
       currentChapterIndex.value = index
+      loadChapterContent(index)
     }
   }
 
   function previousChapter() {
     if (hasPreviousChapter.value) {
       currentChapterIndex.value--
+      loadChapterContent(currentChapterIndex.value)
     }
   }
 
   function nextChapter() {
     if (hasNextChapter.value) {
       currentChapterIndex.value++
+      loadChapterContent(currentChapterIndex.value)
     }
   }
 
@@ -105,12 +148,14 @@ export const useReaderStore = defineStore('reader', () => {
       paragraphOffset,
       createdAt: Date.now()
     }
-    await db.bm.put({ id: bookmark.id, data: JSON.stringify(bookmark) })
+    if (!window.electronAPI) return
+    await window.electronAPI.bookmarks.insert(bookmark.id, JSON.stringify(bookmark))
     bookmarks.value.push(bookmark)
   }
 
   async function removeBookmark(id: string) {
-    await db.bm.delete(id)
+    if (!window.electronAPI) return
+    await window.electronAPI.bookmarks.delete(id)
     bookmarks.value = bookmarks.value.filter(b => b.id !== id)
   }
 
@@ -129,7 +174,8 @@ export const useReaderStore = defineStore('reader', () => {
       tags: [],
       createdAt: Date.now()
     }
-    await db.ann.put({ id: annotation.id, data: JSON.stringify(annotation) })
+    if (!window.electronAPI) return
+    await window.electronAPI.annotations.insert(annotation.id, JSON.stringify(annotation))
     annotations.value.push(annotation)
   }
 
@@ -147,7 +193,8 @@ export const useReaderStore = defineStore('reader', () => {
       tags: [],
       createdAt: Date.now()
     }
-    await db.ann.put({ id: annotation.id, data: JSON.stringify(annotation) })
+    if (!window.electronAPI) return
+    await window.electronAPI.annotations.insert(annotation.id, JSON.stringify(annotation))
     annotations.value.push(annotation)
   }
 
@@ -155,20 +202,22 @@ export const useReaderStore = defineStore('reader', () => {
     const idx = annotations.value.findIndex(a => a.id === id)
     if (idx >= 0) {
       annotations.value[idx].note = note
-      await db.ann.put({ id, data: JSON.stringify(annotations.value[idx]) })
+      if (!window.electronAPI) return
+      await window.electronAPI.annotations.update(id, JSON.stringify(annotations.value[idx]))
     }
   }
 
   async function deleteAnnotation(id: string) {
     const idx = annotations.value.findIndex(a => a.id === id)
     if (idx >= 0) {
-      await db.ann.delete(id)
+      if (!window.electronAPI) return
+      await window.electronAPI.annotations.delete(id)
       annotations.value = annotations.value.filter(a => a.id !== id)
     }
   }
 
-  // In-chapter search
-  function performSearch(query: string) {
+  // In-chapter search — uses inverted index when available, falls back to linear scan
+  async function performSearch(query: string) {
     searchQuery.value = query
     searchResults.value = []
     currentSearchIndex.value = 0
@@ -177,8 +226,27 @@ export const useReaderStore = defineStore('reader', () => {
 
     const q = query.toLowerCase()
 
-    for (let ci = 0; ci < chapters.value.length; ci++) {
-      const content = chapters.value[ci].content
+    // Try inverted index first
+    try {
+      const hasIndex = await indexExists()
+      if (hasIndex) {
+        const results = await indexSearch(q, bookId.value)
+        searchResults.value = results.map((r, i) => ({
+          chapterIndex: r.chapterIndex,
+          matchIndex: i,
+          text: r.matchText
+        }))
+        return
+      }
+    } catch {
+      // Index lookup failed, fall through to linear scan
+    }
+
+    // Fallback: linear scan using _allChapterData (has full content)
+    const allChapters = _allChapterData || chapters.value
+    for (let ci = 0; ci < allChapters.length; ci++) {
+      const content = allChapters[ci].content
+      if (!content) continue
       const stripped = content.replace(/<[^>]+>/g, '').toLowerCase()
       let idx = stripped.indexOf(q)
       while (idx >= 0) {
@@ -201,13 +269,6 @@ export const useReaderStore = defineStore('reader', () => {
     showSearch.value = false
   }
 
-  function generateId(): string {
-    const timestamp = Date.now().toString(36)
-    const random = crypto.getRandomValues(new Uint8Array(8))
-    const randomStr = Array.from(random).map(b => b.toString(16).padStart(2, '0')).join('')
-    return `${timestamp}-${randomStr}`
-  }
-
   return {
     bookId, chapters, currentChapterIndex, scrollPosition,
     bookmarks, annotations,
@@ -219,6 +280,7 @@ export const useReaderStore = defineStore('reader', () => {
     currentChapterAnnotations, currentChapterBookmarks,
     loadBook, navigateToChapter, previousChapter, nextChapter,
     saveScrollPosition, getScrollPosition,
+    loadChapterContent,
     addBookmark, removeBookmark,
     addHighlight, addNote, updateAnnotationNote, deleteAnnotation,
     performSearch, clearSearch

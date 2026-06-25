@@ -1,8 +1,8 @@
 import type { ReadingSettings, HighlightColor, BookFormat, ThemeColors, AppSettings, CustomThemes } from '@/types'
 
 export const APP_NAME = 'X-ReaderPlus'
-export const APP_VERSION = '0.1.0'
-export const DB_VERSION = 5
+export const APP_VERSION = '0.2.0'
+export const DB_VERSION = 6
 export const MAX_FILE_SIZE = 500 * 1024 * 1024
 export const MAX_EPUB_FILES = 10000
 export const MAX_READER_WIDTH = 900
@@ -65,10 +65,12 @@ export const DEFAULT_READING_SHORTCUTS = {
   scrollUp: 'ArrowUp',
   scrollDown: 'ArrowDown',
   pageUp: 'PageUp',
-  pageDown: 'PageDown',
+  pageDown: 'Space',
   prevChapter: 'ArrowLeft',
   nextChapter: 'ArrowRight',
-  search: 'Ctrl+F'
+  search: 'Ctrl+F',
+  chapterStart: 'Home',
+  chapterEnd: 'End'
 }
 export const PIN_MAX_ATTEMPTS = 5
 export const PIN_LOCK_DURATION = 30000

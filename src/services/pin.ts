@@ -1,7 +1,30 @@
 import { generateSalt, hashPin, deriveKey, exportKey, importKey } from './crypto'
-import { db } from './db'
 import type { PinState, PinEscalation } from '@/types'
 import { PIN_MAX_ATTEMPTS, PIN_LOCK_DURATION, DEFAULT_PIN_ESCALATION } from '@/constants'
+
+// Config helpers — uses electronAPI in Electron, localStorage fallback in browser dev mode
+function configGet(key: string): Promise<string | null> {
+  if (typeof window !== 'undefined' && window.electronAPI?.config) {
+    return window.electronAPI.config.get(key).then((v: string | undefined | null) => v ?? null)
+  }
+  return Promise.resolve(localStorage.getItem(key))
+}
+
+function configSet(key: string, value: string): Promise<void> {
+  if (typeof window !== 'undefined' && window.electronAPI?.config) {
+    return window.electronAPI.config.set(key, value)
+  }
+  localStorage.setItem(key, value)
+  return Promise.resolve()
+}
+
+function configDelete(key: string): Promise<void> {
+  if (typeof window !== 'undefined' && window.electronAPI?.config) {
+    return window.electronAPI.config.delete(key)
+  }
+  localStorage.removeItem(key)
+  return Promise.resolve()
+}
 
 /**
  * Constant-time string comparison to prevent timing side-channel attacks.
@@ -18,10 +41,10 @@ export function timingSafeEqual(a: string, b: string): boolean {
 const PIN_STATE_KEY = 'pinState'
 
 export async function getPinState(): Promise<PinState | null> {
-  const raw = await db.cfg.get(PIN_STATE_KEY)
-  if (raw && raw.v) {
+  const raw = await configGet(PIN_STATE_KEY)
+  if (raw) {
     try {
-      return JSON.parse(raw.v) as PinState
+      return JSON.parse(raw) as PinState
     } catch {
       return null
     }
@@ -44,8 +67,8 @@ export async function setPin(pin: string): Promise<void> {
     escalation: { ...DEFAULT_PIN_ESCALATION }
   }
 
-  await db.cfg.put({ k: PIN_STATE_KEY, v: JSON.stringify(state) })
-  await db.cfg.put({ k: 'encryptionKey', v: exportedKey })
+  await configSet(PIN_STATE_KEY, JSON.stringify(state))
+  await configSet('encryptionKey', exportedKey)
 }
 
 export async function verifyPin(pin: string): Promise<boolean> {
@@ -64,21 +87,30 @@ export async function verifyPin(pin: string): Promise<boolean> {
   if (timingSafeEqual(hash, state.hash)) {
     state.failedAttempts = 0
     state.lockedUntil = 0
-    await db.cfg.put({ k: PIN_STATE_KEY, v: JSON.stringify(state) })
+    await configSet(PIN_STATE_KEY, JSON.stringify(state))
     return true
   }
 
   state.failedAttempts++
   const esc = state.escalation || DEFAULT_PIN_ESCALATION
   if (state.failedAttempts >= esc.firstAttempts) {
-    const alreadyLockedOnce = state.lockedUntil > 0
-    if (alreadyLockedOnce && state.failedAttempts >= esc.firstAttempts + esc.secondAttempts) {
+    const isCurrentlyLocked = state.lockedUntil > Date.now()
+    const wasEverLocked = state.lockedUntil > 0
+    if (isCurrentlyLocked && state.failedAttempts >= esc.firstAttempts + esc.secondAttempts) {
+      // Extend lock under second tier
       state.lockedUntil = Date.now() + esc.secondLockDuration * 1000
-    } else if (!alreadyLockedOnce) {
+    } else if (wasEverLocked && state.failedAttempts >= esc.firstAttempts + esc.secondAttempts) {
+      // Lock expired but we're past combined threshold — second-tier lock
+      state.lockedUntil = Date.now() + esc.secondLockDuration * 1000
+    } else if (!wasEverLocked) {
+      // First lock
+      state.lockedUntil = Date.now() + esc.firstLockDuration * 1000
+    } else {
+      // Lock previously expired — re-lock with first tier duration
       state.lockedUntil = Date.now() + esc.firstLockDuration * 1000
     }
   }
-  await db.cfg.put({ k: PIN_STATE_KEY, v: JSON.stringify(state) })
+  await configSet(PIN_STATE_KEY, JSON.stringify(state))
   return false
 }
 
@@ -100,42 +132,46 @@ export async function getRemainingAttempts(): Promise<number> {
   const state = await getPinState()
   if (!state || !state.isSet) return (state?.escalation || DEFAULT_PIN_ESCALATION).firstAttempts
   const esc = state.escalation || DEFAULT_PIN_ESCALATION
-  const wasLocked = state.lockedUntil > 0
-  // After first lockout, user gets firstAttempts + secondAttempts total before second lock
-  const totalAllowed = wasLocked ? esc.firstAttempts + esc.secondAttempts : esc.firstAttempts
+
+  // If currently locked, no attempts remain
+  if (state.lockedUntil > Date.now()) return 0
+
+  // Lock expired or never locked — calculate remaining before next lock
+  const wasEverLocked = state.lockedUntil > 0
+  const totalAllowed = wasEverLocked ? esc.firstAttempts + esc.secondAttempts : esc.firstAttempts
   return Math.max(0, totalAllowed - state.failedAttempts)
 }
 
 export async function clearPin(): Promise<void> {
-  await db.cfg.delete(PIN_STATE_KEY)
-  await db.cfg.delete('encryptionKey')
+  await configDelete(PIN_STATE_KEY)
+  await configDelete('encryptionKey')
 }
 
 export async function saveEscalationSettings(escalation: PinEscalation): Promise<void> {
   const state = await getPinState()
   if (state && state.isSet) {
     state.escalation = escalation
-    await db.cfg.put({ k: PIN_STATE_KEY, v: JSON.stringify(state) })
+    await configSet(PIN_STATE_KEY, JSON.stringify(state))
   }
   // Also save to a separate config so it persists even without PIN set
-  await db.cfg.put({ k: 'pinEscalation', v: JSON.stringify(escalation) })
+  await configSet('pinEscalation', JSON.stringify(escalation))
 }
 
 export async function getEscalationSettings(): Promise<PinEscalation> {
   const state = await getPinState()
   if (state?.escalation) return state.escalation
-  const rec = await db.cfg.get('pinEscalation')
-  if (rec?.v) {
-    try { return JSON.parse(rec.v) as PinEscalation } catch { /* fall through */ }
+  const rec = await configGet('pinEscalation')
+  if (rec) {
+    try { return JSON.parse(rec) as PinEscalation } catch { /* fall through */ }
   }
   return { ...DEFAULT_PIN_ESCALATION }
 }
 
 export async function getEncryptionKey(): Promise<CryptoKey | null> {
-  const raw = await db.cfg.get('encryptionKey')
-  if (!raw || !raw.v) return null
+  const raw = await configGet('encryptionKey')
+  if (!raw) return null
   try {
-    return importKey(raw.v)
+    return importKey(raw)
   } catch {
     return null
   }

@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, reactive } from 'vue'
 import type { AppSettings, ReadingSettings, ThemeColors, ReadingShortcuts } from '@/types'
-import { db } from '@/services/db'
 import { logger } from '@/services/log'
 import {
   DEFAULT_READING_SETTINGS,
@@ -22,10 +21,11 @@ export const useSettingsStore = defineStore('settings', () => {
   const loaded = ref(false)
 
   async function load() {
+    if (!window.electronAPI) return
     try {
-      const record = await db.cfg.get(SETTINGS_KEY)
-      if (record && record.v) {
-        const settings: AppSettings = JSON.parse(record.v)
+      const value = await window.electronAPI.config.get(SETTINGS_KEY)
+      if (value) {
+        const settings: AppSettings = JSON.parse(value)
         Object.assign(readingSettings, settings.readingSettings || {})
         toolbarAutoHideDelay.value = settings.toolbarAutoHideDelay ?? DEFAULT_TOOLBAR_AUTO_HIDE_DELAY
         autoScrollSpeed.value = settings.autoScrollSpeed ?? DEFAULT_AUTO_SCROLL_SPEED
@@ -43,6 +43,7 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   async function save() {
+    if (!window.electronAPI) return
     try {
       const settings: AppSettings = {
         readingSettings: { ...readingSettings },
@@ -51,7 +52,7 @@ export const useSettingsStore = defineStore('settings', () => {
         themeColors: { ...themeColors },
         readingShortcuts: { ...readingShortcuts }
       }
-      await db.cfg.put({ k: SETTINGS_KEY, v: JSON.stringify(settings) })
+      await window.electronAPI.config.set(SETTINGS_KEY, JSON.stringify(settings))
     } catch (e) {
       logger.error('保存设置失败', e)
     }

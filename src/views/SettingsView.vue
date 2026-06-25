@@ -221,7 +221,7 @@
               label="显示章节标题"
               density="compact"
               hide-details
-              @update:model-value="(v: boolean) => settings.updateReadingSetting('showChapterTitle', v)"
+              @update:model-value="(v: boolean | null) => v != null && settings.updateReadingSetting('showChapterTitle', v)"
             />
             <v-switch
               :model-value="readingSettings.hyphenation"
@@ -229,7 +229,7 @@
               label="英文断字 (Hyphenation)"
               density="compact"
               hide-details
-              @update:model-value="(v: boolean) => settings.updateReadingSetting('hyphenation', v)"
+              @update:model-value="(v: boolean | null) => v != null && settings.updateReadingSetting('hyphenation', v)"
             />
           </div>
 
@@ -545,7 +545,7 @@
             hide-details
             class="mb-4"
             clearable
-            @update:model-value="(v: string) => settings.updateReadingSetting('bgImageUrl', v)"
+            @update:model-value="(v: string) => settings.updateReadingSetting('bgImageUrl', (v && /^(https?:\/\/|data:)/i.test(v.trim())) ? v.trim() : '')"
           />
 
           <!-- 背景透明度 -->
@@ -585,7 +585,7 @@
               label="显示阅读统计"
               density="compact"
               hide-details
-              @update:model-value="(v: boolean) => settings.updateReadingSetting('showReadingStats', v)"
+              @update:model-value="(v: boolean | null) => v != null && settings.updateReadingSetting('showReadingStats', v)"
             />
           </div>
 
@@ -603,6 +603,73 @@
               @update:model-value="(v: number) => settings.updateReadingSetting('autoSaveInterval', v)"
             />
           </div>
+
+          <v-divider class="my-4" />
+
+          <!-- 分页设置 -->
+          <p class="text-caption font-weight-bold mb-2">分页设置</p>
+          <div class="settings-grid">
+            <div>
+              <label class="text-caption d-flex justify-space-between">
+                <span>书架每页显示</span>
+                <span class="text-primary font-weight-bold">{{ pageSizes.bookshelf }}条</span>
+              </label>
+              <v-slider
+                v-model="pageSizes.bookshelf"
+                :min="10" :max="100" :step="10"
+                hide-details density="compact" thumb-label
+                color="primary"
+                show-ticks="always"
+                :ticks="{ 10: '10', 20: '20', 30: '30', 50: '50', 100: '100' }"
+                @end="savePageSizes"
+              />
+            </div>
+            <div>
+              <label class="text-caption d-flex justify-space-between">
+                <span>笔记每页显示</span>
+                <span class="text-primary font-weight-bold">{{ pageSizes.notes }}条</span>
+              </label>
+              <v-slider
+                v-model="pageSizes.notes"
+                :min="10" :max="100" :step="10"
+                hide-details density="compact" thumb-label
+                color="primary"
+                show-ticks="always"
+                :ticks="{ 10: '10', 20: '20', 30: '30', 50: '50', 100: '100' }"
+                @end="savePageSizes"
+              />
+            </div>
+            <div>
+              <label class="text-caption d-flex justify-space-between">
+                <span>历史每页显示</span>
+                <span class="text-primary font-weight-bold">{{ pageSizes.history }}条</span>
+              </label>
+              <v-slider
+                v-model="pageSizes.history"
+                :min="10" :max="100" :step="10"
+                hide-details density="compact" thumb-label
+                color="primary"
+                show-ticks="always"
+                :ticks="{ 10: '10', 20: '20', 30: '30', 50: '50', 100: '100' }"
+                @end="savePageSizes"
+              />
+            </div>
+            <div>
+              <label class="text-caption d-flex justify-space-between">
+                <span>回收站每页显示</span>
+                <span class="text-primary font-weight-bold">{{ pageSizes.trash }}条</span>
+              </label>
+              <v-slider
+                v-model="pageSizes.trash"
+                :min="10" :max="100" :step="10"
+                hide-details density="compact" thumb-label
+                color="primary"
+                show-ticks="always"
+                :ticks="{ 10: '10', 20: '20', 30: '30', 50: '50', 100: '100' }"
+                @end="savePageSizes"
+              />
+            </div>
+          </div>
         </v-card-text>
       </v-card>
 
@@ -613,6 +680,100 @@
           快捷键
         </v-card-title>
         <v-card-text>
+          <!-- 冲突警告 -->
+          <v-alert
+            v-if="shortcutConflicts.length > 0"
+            type="error"
+            density="compact"
+            variant="tonal"
+            class="mb-3"
+            closable
+          >
+            <template #title>
+              <v-icon size="16" class="mr-1">mdi-alert-circle</v-icon>
+              快捷键冲突检测：以下快捷键绑定相同，可能导致功能异常
+            </template>
+            <div v-for="conflict in shortcutConflicts" :key="conflict.binding" class="mt-1">
+              <span class="shortcut-kbd">
+                <v-chip
+                  v-for="(part, pi) in conflict.binding.split('+')"
+                  :key="pi"
+                  size="x-small"
+                  density="compact"
+                  color="error"
+                  variant="flat"
+                  class="kbd-chip"
+                >{{ part }}</v-chip>
+              </span>
+              <span class="text-caption ml-1">
+                同时绑定到：
+                <strong v-for="(name, i) in conflict.names" :key="name">
+                  {{ name }}<template v-if="i < conflict.names.length - 1">、</template>
+                </strong>
+              </span>
+            </div>
+          </v-alert>
+
+          <!-- 当前快捷键总览 -->
+          <p class="text-caption font-weight-bold mb-2">
+            <v-icon size="14" class="mr-1">mdi-view-dashboard</v-icon>
+            当前快捷键总览
+          </p>
+          <div class="d-flex flex-wrap gap-3 mb-4">
+            <!-- 全局快捷键卡片 -->
+            <v-card variant="outlined" class="flex-1-0 pa-3" min-width="220">
+              <div class="text-caption font-weight-bold mb-2">
+                <v-icon size="14" color="primary" class="mr-1">mdi-monitor</v-icon>全局快捷键
+              </div>
+              <div
+                v-for="s in globalShortcutDefs"
+                :key="s.key"
+                class="d-flex align-center justify-space-between mb-1"
+              >
+                <span class="text-caption">{{ s.label }}</span>
+                <span class="shortcut-kbd">
+                  <v-chip
+                    v-for="(part, pi) in (shortcuts[s.key] || '').split('+')"
+                    :key="pi"
+                    size="x-small"
+                    density="compact"
+                    :color="isBindingConflicting(shortcuts[s.key]) ? 'error' : 'primary'"
+                    variant="flat"
+                    class="kbd-chip mr-0"
+                  >{{ part }}</v-chip>
+                </span>
+              </div>
+            </v-card>
+
+            <!-- 阅读器快捷键卡片 -->
+            <v-card variant="outlined" class="flex-1-0 pa-3" min-width="280">
+              <div class="text-caption font-weight-bold mb-2">
+                <v-icon size="14" color="secondary" class="mr-1">mdi-book-open-outline</v-icon>阅读器快捷键
+              </div>
+              <div
+                v-for="s in readingShortcutDefs"
+                :key="s.key"
+                class="d-flex align-center justify-space-between mb-1"
+              >
+                <span class="text-caption">{{ s.label }}</span>
+                <span class="shortcut-kbd">
+                  <v-chip
+                    v-for="(part, pi) in (settings.readingShortcuts[s.key] || '').split('+')"
+                    :key="pi"
+                    size="x-small"
+                    density="compact"
+                    :color="isBindingConflicting(settings.readingShortcuts[s.key]) ? 'error' : 'secondary'"
+                    variant="flat"
+                    class="kbd-chip mr-0"
+                  >{{ part }}</v-chip>
+                </span>
+              </div>
+            </v-card>
+          </div>
+
+          <v-divider class="my-3" />
+
+          <!-- 编辑区 -->
           <p class="text-caption text-medium-emphasis mb-3">点击输入框后按下组合键即可捕获，立即生效。</p>
           <v-table density="compact">
             <thead>
@@ -671,14 +832,6 @@
                     @keydown.prevent="(e: KeyboardEvent) => captureShortcut(s.key, e)"
                   />
                 </td>
-              </tr>
-              <tr>
-                <td>章节开头</td>
-                <td><v-chip size="x-small" variant="outlined">Home</v-chip></td>
-              </tr>
-              <tr>
-                <td>章节末尾</td>
-                <td><v-chip size="x-small" variant="outlined">End</v-chip></td>
               </tr>
             </tbody>
           </v-table>
@@ -996,6 +1149,16 @@
               <template v-if="exporting" #loader>
                 <v-progress-circular indeterminate size="14" width="2" />
               </template>
+            </v-btn>
+
+            <v-btn
+              color="secondary"
+              variant="outlined"
+              size="small"
+              prepend-icon="mdi-format-annotation-plus"
+              @click="showExportAnnotations = true"
+            >
+              导出标注
             </v-btn>
 
             <v-btn
@@ -1349,6 +1512,38 @@
       </v-card>
     </v-dialog>
 
+    <!-- 导出标注对话框 -->
+    <v-dialog v-model="showExportAnnotations" max-width="400">
+      <v-card>
+        <v-card-title class="d-flex align-center">
+          <v-icon color="secondary" class="mr-2">mdi-format-annotation-plus</v-icon>
+          导出标注
+        </v-card-title>
+        <v-card-text>
+          <p class="text-caption mb-3">选择导出格式</p>
+          <v-radio-group v-model="exportAnnotationFormat" hide-details class="mb-3">
+            <v-radio label="Markdown" value="markdown" />
+            <v-radio label="CSV" value="csv" />
+          </v-radio-group>
+          <p class="text-caption text-medium-emphasis">
+            <v-icon size="14">mdi-information</v-icon>
+            Markdown 按书分组，含颜色标记、原文和笔记；CSV 为表格式数据。
+          </p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="showExportAnnotations = false">取消</v-btn>
+          <v-btn
+            color="secondary"
+            :loading="exportingAnnotations"
+            @click="exportAnnotations"
+          >
+            导出
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Snackbar -->
     <v-snackbar v-model="snackbar.show" :color="snackbar.color" timeout="3000" location="bottom">
       {{ snackbar.text }}
@@ -1360,17 +1555,97 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useThemeStore } from '@/stores/theme'
 import { useSettingsStore } from '@/stores/settings'
 import { useBookshelfStore } from '@/stores/bookshelf'
 import { setPin, verifyPin, clearPin, getPinState, timingSafeEqual } from '@/services/pin'
-import { clearAllData, db } from '@/services/db'
+import { db } from '@/services/db'
+import { upsertMeta, getAllMetas } from '@/services/metadata'
 import { logger } from '@/services/log'
 import { FONT_FAMILIES, SECURITY_QUESTIONS, APP_VERSION } from '@/constants'
 import { hashPin, generateSalt } from '@/services/crypto'
 import { testConnection, uploadFile, downloadFile, encryptPassword, decryptPassword, listBackups, ensureDirectory } from '@/services/webdav'
-import type { ThemeMode, BackupData, CustomTheme } from '@/types'
+import type { ThemeMode, BackupData, CustomTheme, Annotation } from '@/types'
+
+// ---- API helpers: prefer electronAPI, fall back to Dexie ----
+const api = {
+  cfg: {
+    get: async (k: string): Promise<string | null> => {
+      if (window.electronAPI?.config?.get) {
+        const v = await window.electronAPI.config.get(k)
+        return v ?? null
+      }
+      const rec = await db.cfg.get(k)
+      return rec?.v ?? null
+    },
+    put: async (k: string, v: string): Promise<void> => {
+      if (window.electronAPI?.config?.set) {
+        await window.electronAPI.config.set(k, v)
+        return
+      }
+      await db.cfg.put({ k, v })
+    },
+    getAll: async (): Promise<Record<string, string>> => {
+      if (window.electronAPI?.config?.getAll) {
+        const rows = await window.electronAPI.config.getAll() as any[]
+        const result: Record<string, string> = {}
+        rows.forEach((r: any) => { result[r.key ?? r.k] = r.value ?? r.v })
+        return result
+      }
+      const records = await db.cfg.toArray()
+      const result: Record<string, string> = {}
+      records.forEach((r: any) => { result[r.k] = r.v })
+      return result
+    },
+  },
+  meta: {
+    toArray: () => window.electronAPI?.meta?.getAll?.() ?? db.meta.toArray(),
+  },
+  ch: {
+    toArray: () => window.electronAPI?.chapters?.getAll?.() ?? db.ch.toArray(),
+    get: (bid: string) => window.electronAPI?.chapters?.get?.(bid) ?? db.ch.get(bid),
+    put: (bid: string, data: string) => window.electronAPI?.chapters?.set?.(bid, data) ?? db.ch.put({ bid, data }),
+  },
+  bm: {
+    toArray: () => window.electronAPI?.bookmarks?.getAll?.() ?? db.bm.toArray(),
+    put: (id: string, data: string) => window.electronAPI?.bookmarks?.insert?.(id, data) ?? db.bm.put({ id, data }),
+  },
+  ann: {
+    toArray: () => window.electronAPI?.annotations?.getAll?.() ?? db.ann.toArray(),
+    put: (id: string, data: string) => window.electronAPI?.annotations?.insert?.(id, data) ?? db.ann.put({ id, data }),
+  },
+  lib: {
+    put: async (id: string, data: string) => {
+      if (window.electronAPI?.books?.insert) {
+        const book = JSON.parse(data)
+        await window.electronAPI.books.insert(book)
+        return
+      }
+      return db.lib.put({ id, data })
+    },
+    bulkGet: async (ids: string[]) => {
+      if (window.electronAPI?.books?.getById) {
+        const results: any[] = []
+        for (const id of ids) {
+          const row = await window.electronAPI.books.getById(id)
+          if (row) results.push({ id: row.id, data: JSON.stringify(row) })
+        }
+        return results
+      }
+      return db.lib.bulkGet(ids)
+    },
+  },
+}
+
+// Helper to parse record data (handles both electronAPI raw values and Dexie records)
+function parseRecordData(record: any): any {
+  if (!record) return null
+  if (typeof record.data === 'string') return JSON.parse(record.data)
+  // electronAPI may return raw data (or same shape)
+  if (record.data) return record.data
+  return record
+}
 
 const theme = useThemeStore()
 const settings = useSettingsStore()
@@ -1606,9 +1881,9 @@ const canSaveSecurity = computed(() => {
 
 async function loadSecurityQuestion() {
   try {
-    const rec = await db.cfg.get('securityQuestion')
-    if (rec?.v) {
-      savedSecurityQuestion.value = rec.v
+    const v = await api.cfg.get('securityQuestion')
+    if (v) {
+      savedSecurityQuestion.value = v
     }
   } catch (e) { logger.error('加载安全问题失败', e) }
 }
@@ -1625,9 +1900,9 @@ async function saveSecurityQuestion() {
     const answerHash = await hashPin(securityAnswer.value, salt)
     const saltB64 = btoa(String.fromCharCode(...salt))
 
-    await db.cfg.put({ k: 'securityQuestion', v: question })
-    await db.cfg.put({ k: 'securityAnswerHash', v: answerHash })
-    await db.cfg.put({ k: 'securityAnswerSalt', v: saltB64 })
+    await api.cfg.put('securityQuestion', question)
+    await api.cfg.put('securityAnswerHash', answerHash)
+    await api.cfg.put('securityAnswerSalt', saltB64)
     savedSecurityQuestion.value = question
     securityAnswer.value = ''
     showSnackbar('安全问题已保存', 'success')
@@ -1641,15 +1916,15 @@ async function saveSecurityQuestion() {
 async function resetPinBySecurity() {
   pinResetLoading.value = true
   try {
-    const hashRec = await db.cfg.get('securityAnswerHash')
-    const saltRec = await db.cfg.get('securityAnswerSalt')
-    if (!hashRec?.v || !saltRec?.v) {
+    const hashV = await api.cfg.get('securityAnswerHash')
+    const saltV = await api.cfg.get('securityAnswerSalt')
+    if (!hashV || !saltV) {
       showSnackbar('未设置安全问题', 'error')
       return
     }
-    const salt = new Uint8Array(atob(saltRec.v).split('').map(c => c.charCodeAt(0)))
+    const salt = new Uint8Array(atob(saltV).split('').map(c => c.charCodeAt(0)))
     const hash = await hashPin(pinResetAnswer.value, salt)
-    if (!timingSafeEqual(hash, hashRec.v)) {
+    if (!timingSafeEqual(hash, hashV)) {
       showSnackbar('答案不正确', 'error')
       return
     }
@@ -1700,8 +1975,44 @@ const readingShortcutDefs = [
   { key: 'scrollDown', label: '滚动下' },
   { key: 'pageUp', label: '上一页' },
   { key: 'pageDown', label: '下一页' },
-  { key: 'search', label: '搜索' }
+  { key: 'search', label: '搜索' },
+  { key: 'chapterStart', label: '章节开头' },
+  { key: 'chapterEnd', label: '章节末尾' }
 ]
+
+// ---- Shortcut Conflict Detection ----
+const shortcutConflicts = computed(() => {
+  const allBindings = new Map<string, string[]>()
+
+  for (const def of globalShortcutDefs) {
+    const binding = shortcuts.value[def.key]
+    if (binding) {
+      if (!allBindings.has(binding)) allBindings.set(binding, [])
+      allBindings.get(binding)!.push(def.label)
+    }
+  }
+
+  for (const def of readingShortcutDefs) {
+    const binding = settings.readingShortcuts[def.key]
+    if (binding) {
+      if (!allBindings.has(binding)) allBindings.set(binding, [])
+      allBindings.get(binding)!.push(def.label)
+    }
+  }
+
+  const conflicts: { binding: string; names: string[] }[] = []
+  for (const [binding, names] of allBindings) {
+    if (names.length > 1) {
+      conflicts.push({ binding, names })
+    }
+  }
+  return conflicts
+})
+
+function isBindingConflicting(binding: string | undefined): boolean {
+  if (!binding) return false
+  return shortcutConflicts.value.some(c => c.binding === binding)
+}
 
 // Key capture
 const capturingShortcut = ref('')
@@ -1739,7 +2050,7 @@ function captureShortcut(field: string, e: KeyboardEvent) {
   const shortcut = parts.join('+')
   
   // Check if it's a reading shortcut or global shortcut
-  const readingKeys = ['prevChapter', 'nextChapter', 'scrollUp', 'scrollDown', 'pageUp', 'pageDown', 'search']
+  const readingKeys = ['prevChapter', 'nextChapter', 'scrollUp', 'scrollDown', 'pageUp', 'pageDown', 'search', 'chapterStart', 'chapterEnd']
   if (readingKeys.includes(field)) {
     (settings.readingShortcuts as any)[field] = shortcut
     saveReadingShortcuts()
@@ -1791,7 +2102,38 @@ const clearAllConfirm = ref('')
 const dataOpInProgress = ref(false)
 const dataOpProgress = ref(0)
 const dataOpIndeterminate = ref(false)
+
+// ---- Annotation Export ----
+const showExportAnnotations = ref(false)
+const exportAnnotationFormat = ref<'markdown' | 'csv'>('markdown')
+const exportingAnnotations = ref(false)
 const dataOpLabel = ref('')
+
+// ---- Page Sizes ----
+const PAGE_SIZES_KEY = 'pageSizes'
+const pageSizes = reactive({
+  bookshelf: 30,
+  notes: 20,
+  history: 20,
+  trash: 20
+})
+
+async function loadPageSizes() {
+  try {
+    const v = await api.cfg.get(PAGE_SIZES_KEY)
+    if (v) {
+      const saved = JSON.parse(v)
+      if (saved.bookshelf) pageSizes.bookshelf = saved.bookshelf
+      if (saved.notes) pageSizes.notes = saved.notes
+      if (saved.history) pageSizes.history = saved.history
+      if (saved.trash) pageSizes.trash = saved.trash
+    }
+  } catch { /* localStorage parse failed, use defaults */ }
+}
+
+async function savePageSizes() {
+  await api.cfg.put(PAGE_SIZES_KEY, JSON.stringify({ ...pageSizes }))
+}
 
 async function exportData() {
   exporting.value = true
@@ -1799,37 +2141,66 @@ async function exportData() {
   dataOpIndeterminate.value = true
   dataOpLabel.value = '正在导出...'
   try {
-    const [libRecords, chRecords, bmRecords, annRecords, cfgRecords] = await Promise.all([
-      db.lib.toArray(),
-      db.ch.toArray(),
-      db.bm.toArray(),
-      db.ann.toArray(),
+    const [metaRecords, chRecords, bmRecords, annRecords, cfgRecords] = await Promise.all([
+      api.meta.toArray(),
+      api.ch.toArray(),
+      api.bm.toArray(),
+      api.ann.toArray(),
       db.cfg.toArray()
     ])
+
+    // Merge meta + lib extras into full Book objects for export
+    const allIds = metaRecords.map((r: any) => (typeof r.data === 'string' ? JSON.parse(r.data) : r).bid)
+    const libExtrasRecs = await api.lib.bulkGet(allIds)
+    const libExtrasMap = new Map<string, any>()
+    for (const rec of libExtrasRecs) {
+      if (rec) {
+        try { libExtrasMap.set(rec.id, typeof rec.data === 'string' ? JSON.parse(rec.data) : rec.data || rec) } catch { /* corrupt backup entry, skip */ }
+      }
+    }
+    const exportBooks = metaRecords.map((r: any) => {
+      const m = typeof r.data === 'string' ? JSON.parse(r.data) : r.data || r
+      const extras = libExtrasMap.get(m.bid) || {}
+      return {
+        id: m.bid, title: m.title, author: m.author, cover: m.cover,
+        format: m.format, size: m.size, chapterCount: m.chapterCount,
+        tags: m.tags, rating: m.rating, contentHash: m.contentHash,
+        path: m.path, libraryId: m.libraryId, addedAt: m.addedAt,
+        lastReadAt: m.lastReadAt, progress: m.progress, wordCount: m.wordCount,
+        review: extras.review || '',
+        chapterIndex: extras.chapterIndex || 0,
+        chapterProgress: extras.chapterProgress || 0,
+        totalReadingTime: extras.totalReadingTime || 0
+      }
+    })
 
     const backup: BackupData = {
       version: APP_VERSION,
       exportedAt: Date.now(),
-      books: libRecords.map(r => JSON.parse(r.data)),
+      books: exportBooks,
       chapters: {},
-      bookmarks: bmRecords.map(r => JSON.parse(r.data)),
-      annotations: annRecords.map(r => JSON.parse(r.data)),
+      bookmarks: bmRecords.map((r: any) => typeof r.data === 'string' ? JSON.parse(r.data) : r),
+      annotations: annRecords.map((r: any) => typeof r.data === 'string' ? JSON.parse(r.data) : r),
       settings: {},
       pinState: null,
       libraries: []
     }
 
-    chRecords.forEach(r => {
-      backup.chapters[r.bid] = JSON.parse(r.data)
+    chRecords.forEach((r: any) => {
+      backup.chapters[r.bid] = typeof r.data === 'string' ? JSON.parse(r.data) : r
     })
 
-    cfgRecords.forEach(r => {
+    cfgRecords.forEach((r: any) => {
       if (r.k !== 'encryptionKey' && r.k !== 'pinState' && r.k !== 'securityAnswerHash' && r.k !== 'securityAnswerSalt') {
         backup.settings[r.k] = r.v
       }
     })
 
     const state = await getPinState()
+    if (state) {
+      const ek = await api.cfg.get('encryptionKey')
+      if (ek) state.encryptionKey = ek
+    }
     backup.pinState = state
 
     const json = JSON.stringify(backup, null, 2)
@@ -1883,32 +2254,39 @@ function importData() {
       let done = 0
 
       for (const book of data.books) {
-        await db.lib.put({ id: book.id, data: JSON.stringify(book) })
+        // Write lib extras only
+        await api.lib.put(book.id, JSON.stringify({ review: book.review || '', chapterIndex: book.chapterIndex || 0, chapterProgress: book.chapterProgress || 0, totalReadingTime: book.totalReadingTime || 0 }))
+        // Write meta for display fields
+        await upsertMeta(book)
         done++
         dataOpProgress.value = Math.round((done / total) * 100)
       }
       for (const [bid, chapters] of Object.entries(data.chapters)) {
-        await db.ch.put({ bid, data: JSON.stringify(chapters) })
+        await api.ch.put(bid, JSON.stringify(chapters))
         done++
         dataOpProgress.value = Math.round((done / total) * 100)
       }
       for (const bm of data.bookmarks) {
-        await db.bm.put({ id: bm.id, data: JSON.stringify(bm) })
+        await api.bm.put(bm.id, JSON.stringify(bm))
         done++
         dataOpProgress.value = Math.round((done / total) * 100)
       }
       for (const ann of data.annotations) {
-        await db.ann.put({ id: ann.id, data: JSON.stringify(ann) })
+        await api.ann.put(ann.id, JSON.stringify(ann))
         done++
         dataOpProgress.value = Math.round((done / total) * 100)
       }
       for (const [key, value] of Object.entries(data.settings)) {
-        await db.cfg.put({ k: key, v: String(value) })
+        await api.cfg.put(key, String(value))
         done++
         dataOpProgress.value = Math.round((done / total) * 100)
       }
       if (data.pinState) {
-        await db.cfg.put({ k: 'pinState', v: JSON.stringify(data.pinState) })
+        const { encryptionKey, ...pinStateOnly } = data.pinState as any
+        await api.cfg.put('pinState', JSON.stringify(pinStateOnly))
+        if (encryptionKey) {
+          await api.cfg.put('encryptionKey', encryptionKey)
+        }
       }
 
       await bookshelf.loadBooks()
@@ -1938,9 +2316,10 @@ async function refreshMetadata() {
   const total = bookshelf.books.length
   for (const book of bookshelf.books) {
     try {
-      const chRecord = await db.ch.get(book.id)
+      const chRecord = await api.ch.get(book.id)
       if (chRecord) {
-        const chapters = JSON.parse(chRecord.data)
+        const chData = typeof chRecord === 'string' ? chRecord : (chRecord as any).data
+        const chapters = JSON.parse(chData)
         const wordCount = chapters.reduce((sum: number, ch: any) => {
           const stripped = ch.content.replace(/<[^>]+>/g, '')
           const chinese = (stripped.match(/[\u4e00-\u9fff]/g) || []).length
@@ -1963,10 +2342,153 @@ async function refreshMetadata() {
 async function confirmClearAll() {
   showClearAll.value = false
   clearAllConfirm.value = ''
-  await clearAllData()
-  await bookshelf.loadBooks()
-  showSnackbar('所有数据已清除', 'warning')
-  setTimeout(() => window.location.reload(), 800)
+  if (!window.electronAPI) return
+  await window.electronAPI.clearAll()
+  // recreate default library
+  await window.electronAPI.libraries.insert('default', JSON.stringify({id:'default', name:'默认书库', path:'', mode:'copy', createdAt:Date.now(), bookCount:0}))
+  window.location.reload()
+}
+
+// ---- Annotation Export ----
+async function exportAnnotations() {
+  exportingAnnotations.value = true
+  try {
+    const annRecords = await api.ann.toArray()
+    const annotations: Annotation[] = annRecords.map((r: any) => (typeof r.data === 'string' ? JSON.parse(r.data) : r)).filter((a: Annotation) => !a.deleted)
+
+    if (annotations.length === 0) {
+      showSnackbar('没有可导出的标注', 'warning')
+      return
+    }
+
+    // Load all books for lookup — use meta table (display fields)
+    const metaRecords = await api.meta.toArray()
+    const bookMap = new Map<string, string>()
+    metaRecords.forEach((r: any) => {
+      try {
+        const m = typeof r.data === 'string' ? JSON.parse(r.data) : r
+        bookMap.set(m.bid, m.title || '未知书名')
+      } catch { /* corrupt metadata entry, skip */ }
+    })
+
+    // Group annotations by bookId
+    const grouped = new Map<string, Annotation[]>()
+    annotations.forEach(a => {
+      const list = grouped.get(a.bookId) || []
+      list.push(a)
+      grouped.set(a.bookId, list)
+    })
+
+    // Load chapters for all relevant books
+    const chMap = new Map<string, Map<number, string>>()
+    for (const bid of grouped.keys()) {
+      const chRecord = await api.ch.get(bid)
+      if (chRecord) {
+        try {
+          const chData = typeof chRecord === 'string' ? chRecord : (chRecord as any).data
+          const chapters = JSON.parse(chData) as { title: string }[]
+          const titleMap = new Map<number, string>()
+          chapters.forEach((ch, i) => titleMap.set(i, ch.title || `第 ${i + 1} 章`))
+          chMap.set(bid, titleMap)
+        } catch { /* corrupt chapter data, skip */ }
+      }
+    }
+
+    let content = ''
+    let defaultName = ''
+
+    if (exportAnnotationFormat.value === 'markdown') {
+      // Markdown format: grouped by book
+      const lines: string[] = ['# 标注导出', '', `导出日期：${new Date().toLocaleString('zh-CN')}`, `标注总数：${annotations.length} 条`, '']
+      for (const [bid, anns] of grouped) {
+        const bookTitle = bookMap.get(bid) || '未知书名'
+        lines.push(`## ${bookTitle}`, '')
+        for (const a of anns) {
+          const chapterTitles = chMap.get(bid)
+          const chapterTitle = chapterTitles?.get(a.chapterIndex) || `第 ${a.chapterIndex + 1} 章`
+          const colorLabel = a.color || 'yellow'
+          const typeLabel = a.type === 'note' ? '📝 笔记' : '🖍 标注'
+          lines.push(`### ${typeLabel} · ${colorLabel} · ${chapterTitle}`, '')
+          if (a.text) {
+            lines.push(`**原文：** ${escapeMarkdown(a.text)}`, '')
+          }
+          if (a.note) {
+            lines.push(`**笔记：** ${escapeMarkdown(a.note)}`, '')
+          }
+          if (a.tags && a.tags.length > 0) {
+            lines.push(`**标签：** ${a.tags.map(t => `\`${t}\``).join(' ')}`, '')
+          }
+          lines.push('---', '')
+        }
+      }
+      content = lines.join('\n')
+      defaultName = `x-reader-plus-annotations-${new Date().toISOString().slice(0, 10)}.md`
+    } else {
+      // CSV format
+      const rows: string[] = ['书名|章节|颜色|标注文本|笔记|日期']
+      for (const [bid, anns] of grouped) {
+        const bookTitle = bookMap.get(bid) || '未知书名'
+        const chapterTitles = chMap.get(bid)
+        for (const a of anns) {
+          const chapterTitle = chapterTitles?.get(a.chapterIndex) || `第 ${a.chapterIndex + 1} 章`
+          const date = new Date(a.createdAt).toLocaleString('zh-CN')
+          const csvBookTitle = csvEscape(bookTitle)
+          const csvChapter = csvEscape(chapterTitle)
+          const csvColor = csvEscape(a.color)
+          const csvText = csvEscape(a.text || '')
+          const csvNote = csvEscape(a.note || '')
+          const csvDate = csvEscape(date)
+          rows.push(`${csvBookTitle}|${csvChapter}|${csvColor}|${csvText}|${csvNote}|${csvDate}`)
+        }
+      }
+      content = '\uFEFF' + rows.join('\n')
+      defaultName = `x-reader-plus-annotations-${new Date().toISOString().slice(0, 10)}.csv`
+    }
+
+    // Save file
+    if (window.electronAPI) {
+      const ext = exportAnnotationFormat.value === 'markdown' ? 'md' : 'csv'
+      const result = await window.electronAPI.saveFile({
+        defaultPath: `x-reader-plus-annotations-${new Date().toISOString().slice(0, 10)}.${ext}`,
+        filters: exportAnnotationFormat.value === 'markdown'
+          ? [{ name: 'Markdown', extensions: ['md'] }]
+          : [{ name: 'CSV', extensions: ['csv'] }]
+      })
+      if (!result.canceled && result.filePath) {
+        const encoder = new TextEncoder()
+        const data = encoder.encode(content).buffer
+        await window.electronAPI.writeFile(result.filePath, data)
+        showExportAnnotations.value = false
+        showSnackbar('标注导出成功', 'success')
+      }
+    } else {
+      const mime = exportAnnotationFormat.value === 'markdown' ? 'text/markdown' : 'text/csv'
+      const blob = new Blob([content], { type: `${mime};charset=utf-8` })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = defaultName
+      a.click()
+      URL.revokeObjectURL(url)
+      showExportAnnotations.value = false
+      showSnackbar('标注导出成功', 'success')
+    }
+  } catch (e: any) {
+    showSnackbar('导出标注失败: ' + (e.message || ''), 'error')
+  } finally {
+    exportingAnnotations.value = false
+  }
+}
+
+function escapeMarkdown(text: string): string {
+  return text.replace(/\\/g, '\\\\').replace(/[*_`#{}[\]()<>!|~-]/g, '\\$&')
+}
+
+function csvEscape(value: string): string {
+  if (value.includes('"') || value.includes('|') || value.includes('\n') || value.includes('\r')) {
+    return `"${value.replace(/"/g, '""')}"`
+  }
+  return value
 }
 
 // ---- WebDAV Backup ----
@@ -1993,16 +2515,16 @@ const webdavConfigured = computed(() => !!webdavUrl.value && !!webdavUsername.va
 
 async function loadWebdavConfig() {
   try {
-    const rec = await db.cfg.get('webdavConfig')
-    if (rec?.v) {
-      const cfg = JSON.parse(rec.v)
+    const v = await api.cfg.get('webdavConfig')
+    if (v) {
+      const cfg = JSON.parse(v)
       webdavUrl.value = cfg.url || ''
       webdavUsername.value = cfg.username || ''
       webdavAutoBackupInterval.value = cfg.autoBackupInterval || 'off'
       webdavLastBackupAt.value = cfg.lastBackupAt || 0
       if (cfg.passwordIv && cfg.passwordCipher) {
         try {
-          webdavPassword.value = await decryptPassword(db, cfg.passwordIv, cfg.passwordCipher)
+          webdavPassword.value = await decryptPassword(cfg.passwordIv, cfg.passwordCipher)
         } catch (e) {
           logger.warn('WebDAV 密码解密失败，请重新输入', e)
           webdavPassword.value = ''
@@ -2015,7 +2537,7 @@ async function loadWebdavConfig() {
 async function onWebdavConfigChange() {
   try {
     const passwordEncrypted = webdavPassword.value
-      ? await encryptPassword(db, webdavPassword.value)
+      ? await encryptPassword(webdavPassword.value)
       : null
     const cfg = {
       url: webdavUrl.value,
@@ -2025,7 +2547,7 @@ async function onWebdavConfigChange() {
       autoBackupInterval: webdavAutoBackupInterval.value,
       lastBackupAt: webdavLastBackupAt.value
     }
-    await db.cfg.put({ k: 'webdavConfig', v: JSON.stringify(cfg) })
+    await api.cfg.put('webdavConfig', JSON.stringify(cfg))
   } catch (e) {
     logger.error('保存 WebDAV 配置失败', e)
   }
@@ -2056,37 +2578,69 @@ async function webdavBackupNow() {
   webdavMessage.value = ''
   try {
     // Build backup data
-    const [libRecords, chRecords, bmRecords, annRecords, cfgRecords] = await Promise.all([
-      db.lib.toArray(),
-      db.ch.toArray(),
-      db.bm.toArray(),
-      db.ann.toArray(),
+    const [metaRecords, chRecords, bmRecords, annRecords, cfgRecords] = await Promise.all([
+      api.meta.toArray(),
+      api.ch.toArray(),
+      api.bm.toArray(),
+      api.ann.toArray(),
       db.cfg.toArray()
     ])
+
+    // Merge meta + lib extras into full Book objects
+    const allIds = metaRecords.map((r: any) => {
+      const m = typeof r.data === 'string' ? JSON.parse(r.data) : r
+      return m.bid
+    })
+    const libExtrasRecs = await api.lib.bulkGet(allIds)
+    const libExtrasMap = new Map<string, any>()
+    for (const rec of libExtrasRecs) {
+      if (rec) {
+        try { libExtrasMap.set(rec.id, typeof rec.data === 'string' ? JSON.parse(rec.data) : rec.data || rec) } catch { /* corrupt backup entry, skip */ }
+      }
+    }
+    const webdavBooks = metaRecords.map((r: any) => {
+      const m = typeof r.data === 'string' ? JSON.parse(r.data) : r
+      const extras = libExtrasMap.get(m.bid) || {}
+      return {
+        id: m.bid, title: m.title, author: m.author, cover: m.cover,
+        format: m.format, size: m.size, chapterCount: m.chapterCount,
+        tags: m.tags, rating: m.rating, contentHash: m.contentHash,
+        path: m.path, libraryId: m.libraryId, addedAt: m.addedAt,
+        lastReadAt: m.lastReadAt, progress: m.progress, wordCount: m.wordCount,
+        review: extras.review || '',
+        chapterIndex: extras.chapterIndex || 0,
+        chapterProgress: extras.chapterProgress || 0,
+        totalReadingTime: extras.totalReadingTime || 0
+      }
+    })
 
     const backup: BackupData = {
       version: APP_VERSION,
       exportedAt: Date.now(),
-      books: libRecords.map(r => JSON.parse(r.data)),
+      books: webdavBooks,
       chapters: {},
-      bookmarks: bmRecords.map(r => JSON.parse(r.data)),
-      annotations: annRecords.map(r => JSON.parse(r.data)),
+      bookmarks: bmRecords.map((r: any) => typeof r.data === 'string' ? JSON.parse(r.data) : r),
+      annotations: annRecords.map((r: any) => typeof r.data === 'string' ? JSON.parse(r.data) : r),
       settings: {},
       pinState: null,
       libraries: []
     }
 
-    chRecords.forEach(r => {
-      backup.chapters[r.bid] = JSON.parse(r.data)
+    chRecords.forEach((r: any) => {
+      backup.chapters[r.bid] = typeof r.data === 'string' ? JSON.parse(r.data) : r
     })
 
-    cfgRecords.forEach(r => {
+    cfgRecords.forEach((r: any) => {
       if (r.k !== 'encryptionKey' && r.k !== 'pinState' && r.k !== 'securityAnswerHash' && r.k !== 'securityAnswerSalt' && r.k !== 'webdavEncKey') {
         backup.settings[r.k] = r.v
       }
     })
 
     const state = await getPinState()
+    if (state) {
+      const ek = await api.cfg.get('encryptionKey')
+      if (ek) state.encryptionKey = ek
+    }
     backup.pinState = state
 
     const json = JSON.stringify(backup, null, 2)
@@ -2139,32 +2693,38 @@ async function webdavRestoreBackup() {
     let done = 0
 
     for (const book of backup.books) {
-      await db.lib.put({ id: book.id, data: JSON.stringify(book) })
+      // Write lib extras only
+      await api.lib.put(book.id, JSON.stringify({ review: book.review || '', chapterIndex: book.chapterIndex || 0, chapterProgress: book.chapterProgress || 0, totalReadingTime: book.totalReadingTime || 0 }))
+      await upsertMeta(book)
       done++
       dataOpProgress.value = Math.round((done / Math.max(total, 1)) * 100)
     }
     for (const [bid, chapters] of Object.entries(backup.chapters)) {
-      await db.ch.put({ bid, data: JSON.stringify(chapters) })
+      await api.ch.put(bid, JSON.stringify(chapters))
       done++
       dataOpProgress.value = Math.round((done / Math.max(total, 1)) * 100)
     }
     for (const bm of backup.bookmarks) {
-      await db.bm.put({ id: bm.id, data: JSON.stringify(bm) })
+      await api.bm.put(bm.id, JSON.stringify(bm))
       done++
       dataOpProgress.value = Math.round((done / Math.max(total, 1)) * 100)
     }
     for (const ann of backup.annotations) {
-      await db.ann.put({ id: ann.id, data: JSON.stringify(ann) })
+      await api.ann.put(ann.id, JSON.stringify(ann))
       done++
       dataOpProgress.value = Math.round((done / Math.max(total, 1)) * 100)
     }
     for (const [key, value] of Object.entries(backup.settings)) {
-      await db.cfg.put({ k: key, v: String(value) })
+      await api.cfg.put(key, String(value))
       done++
       dataOpProgress.value = Math.round((done / Math.max(total, 1)) * 100)
     }
     if (backup.pinState) {
-      await db.cfg.put({ k: 'pinState', v: JSON.stringify(backup.pinState) })
+      const { encryptionKey, ...pinStateOnly } = backup.pinState as any
+      await api.cfg.put('pinState', JSON.stringify(pinStateOnly))
+      if (encryptionKey) {
+        await api.cfg.put('encryptionKey', encryptionKey)
+      }
     }
 
     await bookshelf.loadBooks()
@@ -2194,9 +2754,9 @@ const systemMinimizeToTray = ref(false)
 
 async function loadSystemConfig() {
   try {
-    const rec = await db.cfg.get('systemConfig')
-    if (rec?.v) {
-      const cfg = JSON.parse(rec.v)
+    const v = await api.cfg.get('systemConfig')
+    if (v) {
+      const cfg = JSON.parse(v)
       systemAutoStart.value = cfg.autoStart ?? false
       systemMinimizeToTray.value = cfg.minimizeToTray ?? false
     }
@@ -2209,13 +2769,14 @@ async function saveSystemConfig() {
       autoStart: systemAutoStart.value,
       minimizeToTray: systemMinimizeToTray.value
     }
-    await db.cfg.put({ k: 'systemConfig', v: JSON.stringify(cfg) })
+    await api.cfg.put('systemConfig', JSON.stringify(cfg))
   } catch (e) {
     logger.error('保存系统配置失败', e)
   }
 }
 
-async function onAutoStartChange(v: boolean) {
+async function onAutoStartChange(v: boolean | null) {
+  if (v == null) return
   systemAutoStart.value = v
   await saveSystemConfig()
   if (window.electronAPI?.setAutoStart) {
@@ -2223,7 +2784,8 @@ async function onAutoStartChange(v: boolean) {
   }
 }
 
-async function onMinimizeToTrayChange(v: boolean) {
+async function onMinimizeToTrayChange(v: boolean | null) {
+  if (v == null) return
   systemMinimizeToTray.value = v
   await saveSystemConfig()
   if (window.electronAPI?.setStartMinimized) {
@@ -2252,10 +2814,11 @@ async function estimateCacheSize() {
     for (const table of tables) {
       const all = await table.toArray()
       for (const r of all) {
-        totalSize += (r.data || r.v || '').length
-        if (r.k) totalSize += r.k.length
-        if (r.id) totalSize += String(r.id).length
-        if (r.bid) totalSize += String(r.bid).length
+        const row = r as any
+        totalSize += (row.data || row.v || '').length
+        if (row.k) totalSize += row.k.length
+        if (row.id) totalSize += String(row.id).length
+        if (row.bid) totalSize += String(row.bid).length
       }
     }
 
@@ -2274,20 +2837,41 @@ async function estimateCacheSize() {
 async function clearCache() {
   showCacheClearDialog.value = false
   try {
-    // Clear covers (stored as data URLs in books)
-    const allBooks = await db.lib.toArray()
-    for (const r of allBooks) {
-      const book = JSON.parse(r.data)
-      if (book.cover && book.cover.startsWith('data:')) {
-        book.cover = ''
-        await db.lib.put({ id: r.id, data: JSON.stringify(book) })
+    // Clear covers (stored as data URLs in meta table)
+    const allMetas = await getAllMetas()
+    for (const m of allMetas) {
+      if (m.cover && m.cover.startsWith('data:')) {
+        m.cover = ''
+        // Update meta with cleared cover — rebuild the full Book-like object for upsertMeta
+        await upsertMeta({
+          id: m.bid,
+          title: m.title,
+          author: m.author,
+          cover: '',
+          format: m.format,
+          size: m.size,
+          chapterCount: m.chapterCount,
+          tags: m.tags,
+          rating: m.rating,
+          contentHash: m.contentHash,
+          path: m.path,
+          libraryId: m.libraryId,
+          addedAt: m.addedAt,
+          lastReadAt: m.lastReadAt,
+          progress: m.progress,
+          wordCount: m.wordCount,
+          chapterIndex: 0,
+          chapterProgress: 0,
+          review: '',
+          totalReadingTime: 0
+        } as any)
       }
     }
 
     // Clear cached chapters (keep metadata but remove content caches)
-    const allChapters = await db.ch.toArray()
+    const allChapters = await api.ch.toArray()
     for (const r of allChapters) {
-      const chData = JSON.parse(r.data)
+      const chData = typeof r.data === 'string' ? JSON.parse(r.data) : r
       if (Array.isArray(chData)) {
         for (const ch of chData) {
           // Mark chapters for re-parse — strip HTML content cache
@@ -2295,7 +2879,7 @@ async function clearCache() {
             delete ch._parsedContent
           }
         }
-        await db.ch.put({ bid: r.bid, data: JSON.stringify(chData) })
+        await api.ch.put(r.bid, JSON.stringify(chData))
       }
     }
 
@@ -2323,6 +2907,7 @@ onMounted(() => {
   loadWebdavConfig()
   loadSystemConfig()
   estimateCacheSize()
+  loadPageSizes()
 })
 </script>
 
@@ -2410,5 +2995,27 @@ onMounted(() => {
 .shortcut-capturing :deep(input) {
   color: var(--v-primary-base) !important;
   font-weight: bold;
+}
+
+.shortcut-kbd {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.kbd-chip {
+  font-family: 'JetBrains Mono', 'Consolas', 'Courier New', monospace !important;
+  letter-spacing: 0.5px;
+  min-width: 22px;
+  justify-content: center;
+}
+
+.shortcut-conflict {
+  animation: conflict-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes conflict-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 </style>

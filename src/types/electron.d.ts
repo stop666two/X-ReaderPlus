@@ -21,24 +21,72 @@ declare global {
       writeFile: (filePath: string, data: ArrayBuffer) => Promise<{ success: boolean; error?: string }>
       // System
       getPath: (name: string) => Promise<string>
-      // Auto-start
       setAutoStart: (enable: boolean) => Promise<boolean>
       getAutoStart: () => Promise<boolean>
-      // Start minimized
       getStartMinimized: () => Promise<boolean>
       setStartMinimized: (value: boolean) => Promise<boolean>
-      // Cache
       clearCache: () => Promise<{ success: boolean; error?: string }>
-      // Shortcuts
       getShortcuts: () => Promise<Record<string, string>>
       setShortcut: (key: string, binding: string) => Promise<boolean>
-      // Folder
       openFolder?: () => Promise<{ canceled: boolean; folderPath?: string }>
       // Events
       onToggleTheme: (callback: () => void) => () => void
       onCommandPalette: (callback: () => void) => () => void
       onMinimizedToTray: (callback: () => void) => () => void
       onWindowShown: (callback: (visible: boolean) => void) => () => void
+      // Database (SQLite IPC)
+      books: {
+        getAll: (opts?: { limit?: number; offset?: number }) => Promise<any[]>
+        getById: (id: string) => Promise<any>
+        insert: (book: any) => Promise<void>
+        update: (id: string, updates: any) => Promise<void>
+        delete: (ids: string[]) => Promise<void>
+        count: () => Promise<number>
+      }
+      chapters: {
+        get: (bookId: string) => Promise<string | null>
+        set: (bookId: string, data: string) => Promise<void>
+        delete: (bookId: string) => Promise<void>
+        getAll: () => Promise<any[]>
+      }
+      config: {
+        get: (key: string) => Promise<string | null>
+        set: (key: string, value: string) => Promise<void>
+        delete: (key: string) => Promise<void>
+        getAll: () => Promise<Array<{ key: string; value: string }>>
+      }
+      bookmarks: {
+        getByBook: (bookId: string) => Promise<any[]>
+        getAll: () => Promise<any[]>
+        insert: (id: string, data: string) => Promise<void>
+        delete: (id: string) => Promise<void>
+      }
+      annotations: {
+        get: (id: string) => Promise<any>
+        getByBook: (bookId: string) => Promise<any[]>
+        getAll: () => Promise<any[]>
+        insert: (id: string, data: string) => Promise<void>
+        update: (id: string, data: string) => Promise<void>
+        delete: (id: string) => Promise<void>
+      }
+      trash: {
+        get: (id: string) => Promise<any>
+        getAll: () => Promise<any[]>
+        insert: (id: string, data: string) => Promise<void>
+        delete: (id: string) => Promise<void>
+        permanentDelete: (id: string) => Promise<void>
+        batchPermanentDelete: (ids: string[]) => Promise<void>
+        clear: () => Promise<void>
+      }
+      libraries: {
+        getAll: () => Promise<any[]>
+        insert: (id: string, data: string) => Promise<void>
+        delete: (id: string) => Promise<void>
+      }
+      clearAll: () => Promise<{ success: boolean; error?: string }>
+      // CBZ/Comic image cache
+      cbzSaveImage: (bookId: string, index: number, data: ArrayBuffer, ext: string) => Promise<{ success: boolean; path?: string; error?: string }>
+      cbzDeleteImages: (bookId: string) => Promise<{ success: boolean; error?: string }>
     }
   }
 }

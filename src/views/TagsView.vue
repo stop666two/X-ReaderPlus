@@ -76,7 +76,7 @@
       <!-- Tag chips -->
       <div v-else class="tags-grid">
         <div
-          v-for="tag in sortedTags"
+          v-for="tag in pagedTags"
           :key="tag.name"
           class="tag-card"
           :class="{ expanded: expandedTag === tag.name }"
@@ -141,7 +141,7 @@
               </div>
               <v-list v-else density="compact" class="book-list">
                 <v-list-item
-                  v-for="book in getTagBooks(tag.name)"
+                  v-for="book in pagedTagBooks(tag.name)"
                   :key="book.id"
                   class="book-item"
                   @click="openBook(book.id)"
@@ -179,6 +179,13 @@
             </div>
           </v-expand-transition>
         </div>
+      </div>
+
+      <!-- Pagination -->
+      <div v-if="totalPages > 1" class="pagination-bar">
+        <v-btn size="x-small" icon="mdi-chevron-left" :disabled="!hasPrev" @click="prevPage" />
+        <span class="text-caption mx-2">第 {{ currentPage }} / {{ totalPages }} 页</span>
+        <v-btn size="x-small" icon="mdi-chevron-right" :disabled="!hasNext" @click="nextPage" />
       </div>
     </div>
 
@@ -273,9 +280,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useBookshelfStore } from '@/stores/bookshelf'
+import { usePagination } from '@/composables/usePagination'
 import type { Book } from '@/types'
 
 const router = useRouter()
@@ -294,6 +302,7 @@ const newTagName = ref('')
 const renameOldName = ref('')
 const renameValue = ref('')
 const deleteTarget = ref('')
+const tagsPageSize = ref(20)
 
 const selectedTags = computed(() => new Set(selectedTagsSet.value))
 
@@ -345,14 +354,48 @@ const sortedTags = computed(() => {
   return tags
 })
 
-// ── Books per tag ──
+// ── Pagination for tags ──
+const {
+  currentPage,
+  totalPages,
+  hasPrev,
+  hasNext,
+  pagedItems: pagedTags,
+  prevPage,
+  nextPage
+} = usePagination(sortedTags, tagsPageSize, {
+  onPageChange: () => { nextTick(() => {
+    const el = document.querySelector('.tags-content')
+    if (el) el.scrollTop = 0
+  })}
+})
+
+// ── Books per tag (with pagination for expanded tag's book list) ──
+const tagBookPages = ref<Map<string, number>>(new Map())
+const tagBookPageSize = 10
+
 function getTagBooks(tag: string): Book[] {
   return bookshelf.books.filter(b => b.tags.includes(tag))
 }
 
+function pagedTagBooks(tag: string): Book[] {
+  const books = getTagBooks(tag)
+  const page = tagBookPages.value.get(tag) || 1
+  const start = (page - 1) * tagBookPageSize
+  return books.slice(start, start + tagBookPageSize)
+}
+
 // ── Expand / collapse ──
 function toggleExpand(tag: string) {
-  expandedTag.value = expandedTag.value === tag ? '' : tag
+  if (expandedTag.value === tag) {
+    expandedTag.value = ''
+  } else {
+    expandedTag.value = tag
+    // Reset book page for this tag
+    if (!tagBookPages.value.has(tag)) {
+      tagBookPages.value.set(tag, 1)
+    }
+  }
 }
 
 // ── Create ──
@@ -369,8 +412,6 @@ async function createTag() {
     showCreate.value = false
     return
   }
-  // Create by adding to the first book (or we can just refresh)
-  // Actually we need to associate with a book — let's just close; user can add to books
   showCreate.value = false
 }
 
@@ -477,6 +518,17 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* ── Pagination ── */
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 0;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  margin-top: 8px;
 }
 
 /* ── Tag chip card ── */

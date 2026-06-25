@@ -1,7 +1,7 @@
 import DOMPurify from 'dompurify'
 
 export function sanitizeHtml(dirty: string): string {
-  return DOMPurify.sanitize(dirty, {
+  const clean = DOMPurify.sanitize(dirty, {
     ALLOWED_TAGS: [
       'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
       'p', 'br', 'hr',
@@ -19,6 +19,11 @@ export function sanitizeHtml(dirty: string): string {
     ],
     ALLOW_DATA_ATTR: true,
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|app):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i
+  })
+
+  // H-5: Strip CSS url() from style attributes to prevent data exfiltration
+  return clean.replace(/style="[^"]*url\([^)]*\)[^"]*"/gi, (match: string) => {
+    return match.replace(/url\([^)]*\)/gi, 'none')
   })
 }
 

@@ -349,8 +349,37 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { db } from '@/services/db'
 import { useBookshelfStore } from '@/stores/bookshelf'
+import { logger } from '@/services/log'
 import type { Book, ChapterContent, Annotation } from '@/types'
 import dayjs from 'dayjs'
+
+// ---- API helpers: prefer electronAPI, fall back to Dexie ----
+const api = {
+  ch: {
+    toArray: () => window.electronAPI?.chapters?.getAll?.() ?? db.ch.toArray(),
+    get: (bid: string) => window.electronAPI?.chapters?.get?.(bid) ?? db.ch.get(bid),
+  },
+  ann: {
+    toArray: () => window.electronAPI?.annotations?.getAll?.() ?? db.ann.toArray(),
+  },
+  cfg: {
+    get: async (k: string): Promise<string | null> => {
+      if (window.electronAPI?.config?.get) {
+        const v = await window.electronAPI.config.get(k)
+        return v ?? null
+      }
+      const rec = await db.cfg.get(k)
+      return rec?.v ?? null
+    },
+    put: async (k: string, v: string): Promise<void> => {
+      if (window.electronAPI?.config?.set) {
+        await window.electronAPI.config.set(k, v)
+        return
+      }
+      await db.cfg.put({ k, v })
+    },
+  },
+}
 
 const router = useRouter()
 const bookshelfStore = useBookshelfStore()
@@ -452,14 +481,15 @@ async function searchLibrary() {
 
     // 3) Search content (chapters)
     if (searchContent.value) {
-      const chRecords = await db.ch.toArray()
+      const chRecords = await api.ch.toArray()
       for (const chRecord of chRecords) {
         if (searchResults.value.length >= 50) break
 
         const book = bookshelfStore.books.find(b => b.id === chRecord.bid)
         if (!book) continue
 
-        const chapters: ChapterContent[] = JSON.parse(chRecord.data)
+        const chData = typeof chRecord.data === 'string' ? chRecord.data : JSON.stringify(chRecord)
+        const chapters: ChapterContent[] = JSON.parse(chData)
         for (let ci = 0; ci < chapters.length; ci++) {
           if (searchResults.value.length >= 50) break
           const chapter = chapters[ci]
@@ -488,11 +518,12 @@ async function searchLibrary() {
 
     // 4) Search notes (annotations of type 'note')
     if (searchNotes.value) {
-      const annRecords = await db.ann.toArray()
+      const annRecords = await api.ann.toArray()
       for (const annRecord of annRecords) {
         if (searchResults.value.length >= 50) break
 
-        const ann: Annotation = JSON.parse(annRecord.data)
+        const annData = typeof annRecord.data === 'string' ? annRecord.data : JSON.stringify(annRecord)
+        const ann: Annotation = JSON.parse(annData)
         if (ann.type !== 'note') continue
 
         const noteMatch = ann.note.toLowerCase().includes(query)
@@ -506,8 +537,12 @@ async function searchLibrary() {
         const book = bookshelfStore.books.find(b => b.id === ann.bookId)
         if (!book) continue
 
-        const chRecord = await db.ch.get(ann.bookId)
-        const chapters: ChapterContent[] = chRecord ? JSON.parse(chRecord.data) : []
+        const chRecord = await api.ch.get(ann.bookId)
+        // chRecord may be a string (electronAPI) or {bid, data} (Dexie)
+        const rawChData: string | null = chRecord
+          ? (typeof chRecord === 'string' ? chRecord : (chRecord as any).data)
+          : null
+        const chapters: ChapterContent[] = rawChData ? JSON.parse(rawChData) : []
         const chapterTitle =
           chapters[ann.chapterIndex]?.title || `第${ann.chapterIndex + 1}章`
 
@@ -527,7 +562,7 @@ async function searchLibrary() {
       searchResults.value = searchResults.value.slice(0, 50)
     }
   } catch (e) {
-    console.error('搜索失败:', e)
+    logger.error('搜索失败:', e)
   } finally {
     searching.value = false
   }
@@ -605,7 +640,7 @@ const BUILTIN_DICT_EN_ZH: Record<string, string> = {
   'pay': '支付', 'meet': '遇见', 'include': '包括', 'continue': '继续', 'set': '设置',
   'learn': '学习', 'change': '改变', 'lead': '领导', 'understand': '理解', 'watch': '观看',
   'follow': '跟随', 'stop': '停止', 'create': '创造', 'speak': '说话', 'read': '阅读',
-  'allow': '允许', 'add': '添加', 'spend': '花费', 'grow': '成长', 'open': '打开',
+  'allow': '允许', 'add': '添加', 'spend': '花费', 'grow': '成长', 'open': '打开；开放的',
   'walk': '走', 'win': '赢', 'offer': '提供', 'remember': '记住', 'consider': '考虑',
   'appear': '出现', 'buy': '买', 'wait': '等待', 'serve': '服务', 'die': '死',
   'send': '发送', 'expect': '期望', 'build': '建造', 'stay': '停留', 'fall': '落下',
@@ -623,7 +658,7 @@ const BUILTIN_DICT_EN_ZH: Record<string, string> = {
   'government': '政府', 'number': '数字', 'night': '夜晚', 'point': '点；要点',
   'home': '家', 'water': '水', 'room': '房间', 'mother': '母亲', 'area': '区域',
   'money': '钱', 'story': '故事', 'fact': '事实', 'month': '月', 'lot': '许多',
-  'right': '权利；右边', 'study': '学习', 'book': '书', 'eye': '眼睛', 'job': '工作',
+  'right': '权利；右边；正确的', 'study': '学习', 'book': '书', 'eye': '眼睛', 'job': '工作',
   'word': '词', 'business': '商业', 'issue': '问题', 'side': '边', 'kind': '种类',
   'head': '头', 'house': '房子', 'service': '服务', 'friend': '朋友', 'father': '父亲',
   'power': '力量；权力', 'hour': '小时', 'game': '游戏', 'line': '线', 'end': '结束',
@@ -639,12 +674,12 @@ const BUILTIN_DICT_EN_ZH: Record<string, string> = {
   // Adjectives
   'good': '好的', 'new': '新的', 'first': '第一', 'last': '最后', 'long': '长的',
   'great': '伟大的', 'little': '小的', 'own': '自己的', 'other': '其他的', 'old': '老的；旧的',
-  'right': '正确的', 'big': '大的', 'high': '高的', 'different': '不同的', 'small': '小的',
+  'big': '大的', 'high': '高的', 'different': '不同的', 'small': '小的',
   'large': '大的', 'next': '下一个', 'early': '早的', 'young': '年轻的', 'important': '重要的',
   'few': '很少的', 'public': '公共的', 'bad': '坏的', 'same': '相同的', 'able': '能够的',
   'possible': '可能的', 'hard': '硬的；困难的', 'sure': '确定的', 'real': '真实的',
   'simple': '简单的', 'strong': '强壮的', 'free': '自由的；免费的', 'full': '满的',
-  'special': '特别的', 'clear': '清楚的', 'true': '真的', 'open': '开放的',
+  'special': '特别的', 'clear': '清楚的', 'true': '真的',
   'whole': '全部的', 'white': '白色的', 'black': '黑色的', 'best': '最好的',
   'better': '更好的', 'ready': '准备好的', 'happy': '快乐的', 'past': '过去的',
   'social': '社会的', 'common': '常见的', 'poor': '贫穷的', 'natural': '自然的',
@@ -1173,9 +1208,9 @@ function clearAllQueries() {
 
 async function persistQueries() {
   try {
-    await db.cfg.put({ k: 'dict_recent', v: JSON.stringify(recentQueries.value) })
+    await api.cfg.put('dict_recent', JSON.stringify(recentQueries.value))
   } catch (e) {
-    console.error('保存查询记录失败:', e)
+    logger.error('保存查询记录失败:', e)
   }
 }
 
@@ -1205,9 +1240,9 @@ function truncateText(text: string, maxLen: number): string {
 onMounted(async () => {
   // Load recent queries
   try {
-    const record = await db.cfg.get('dict_recent')
-    if (record?.v) {
-      recentQueries.value = JSON.parse(record.v)
+    const v = await api.cfg.get('dict_recent')
+    if (v) {
+      recentQueries.value = JSON.parse(v)
     }
   } catch {
     /* ignore */

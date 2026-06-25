@@ -153,7 +153,12 @@
         <div
           class="reader-content"
           :style="readerStyles"
-          v-html="renderedContent"
+          v-html="lazyContent"
+        />
+        <div
+          ref="lazySentinel"
+          class="lazy-sentinel"
+          v-if="totalSegmentCount > INITIAL_SEGMENT_COUNT && renderedSegmentCount < totalSegmentCount"
         />
 
         <!-- End of chapter navigation -->
@@ -473,13 +478,14 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
 import { useReaderStore } from '@/stores/reader'
 import { useSettingsStore } from '@/stores/settings'
 import { useBookshelfStore } from '@/stores/bookshelf'
 import { useThemeStore } from '@/stores/theme'
 import { HIGHLIGHT_COLORS } from '@/constants'
-import { db } from '@/services/db'
+import { logger } from '@/services/log'
+import { renderPage, releasePdfCache } from '@/services/pdf-renderer'
 import type { Annotation, HighlightColor } from '@/types'
 
 const router = useRouter()
@@ -515,6 +521,7 @@ let toolbarTimer: ReturnType<typeof setTimeout> | null = null
 let autoScrollTimer: ReturnType<typeof setInterval> | null = null
 let readingTimeInterval: ReturnType<typeof setInterval> | null = null
 const readingSeconds = ref(0)
+let lastSavedSeconds = 0
 let isChapterTransition = false
 let isNavigatingBack = false
 
@@ -602,6 +609,113 @@ const bookProgressPct = computed(() => {
   return Math.round((book.progress || 0) * 100)
 })
 
+// ---- Lazy rendering for long chapters ----
+const INITIAL_SEGMENT_COUNT = 30
+const LOAD_MORE_COUNT = 20
+const renderedSegmentCount = ref(INITIAL_SEGMENT_COUNT)
+const totalSegmentCount = ref(0)
+const lazySentinel = ref<HTMLElement | null>(null)
+let sentinelObserver: IntersectionObserver | null = null
+
+// ---- PDF page lazy rendering ----
+const isPdfBook = computed(() => currentBook.value?.format === 'pdf')
+let pdfPageObserver: IntersectionObserver | null = null
+const renderedPdfPages = new Set<number>()
+let pdfRenderQueue: Promise<void> = Promise.resolve()
+
+function setupPdfPageObserver() {
+  teardownPdfPageObserver()
+  if (!readerContainer.value || !isPdfBook.value) return
+
+  // Reset rendered pages set when chapter changes
+  renderedPdfPages.clear()
+
+  pdfPageObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue
+        const el = entry.target as HTMLElement
+        const pageNum = parseInt(el.dataset.page || '', 10)
+        if (!pageNum || renderedPdfPages.has(pageNum)) continue
+        renderedPdfPages.add(pageNum)
+
+        const bookPath = currentBook.value?.path
+        if (!bookPath) continue
+
+        // Chain renders to avoid overwhelming pdfjs
+        pdfRenderQueue = pdfRenderQueue.then(async () => {
+          try {
+            const dataUrl = await renderPage(bookPath, pageNum)
+            if (dataUrl) {
+              const img = document.createElement('img')
+              img.src = dataUrl
+              img.alt = `第 ${pageNum} 页`
+              img.className = 'pdf-page-img'
+              // Clear placeholder
+              el.innerHTML = ''
+              el.appendChild(img)
+            } else {
+              // Render failed — show fallback text
+              const pageDiv = el.closest('.pdf-page') as HTMLElement | null
+              const fallbackText = pageDiv?.dataset.text || ''
+              el.innerHTML = fallbackText
+                ? `<div class="pdf-page-fallback"><p>${fallbackText}</p></div>`
+                : `<div class="pdf-page-error">第 ${pageNum} 页渲染失败</div>`
+            }
+          } catch {
+            // PDF page render failed at canvas level — show fallback
+            el.innerHTML = `<div class="pdf-page-error">第 ${pageNum} 页渲染失败</div>`
+          }
+        })
+      }
+    },
+    {
+      root: readerContainer.value,
+      rootMargin: '400px 0px',
+      threshold: 0.01
+    }
+  )
+
+  // Observe all .pdf-page-img-container elements
+  nextTick(() => {
+    const containers = readerContainer.value?.querySelectorAll('.pdf-page-img-container')
+    containers?.forEach(el => pdfPageObserver?.observe(el))
+  })
+}
+
+function teardownPdfPageObserver() {
+  if (pdfPageObserver) {
+    pdfPageObserver.disconnect()
+    pdfPageObserver = null
+  }
+  renderedPdfPages.clear()
+  pdfRenderQueue = Promise.resolve()
+}
+
+function splitHtmlIntoSegments(html: string): string[] {
+  if (!html) return []
+  const segments = html.split(/(?<=<\/(?:p|h[1-6]|div|blockquote|pre|ul|ol|table|figure)\s*>)/gi)
+  return segments.filter(s => s.trim().length > 0)
+}
+
+function setupLazySentinel() {
+  if (sentinelObserver) sentinelObserver.disconnect()
+  const sentinel = lazySentinel.value
+  if (!sentinel || !readerContainer.value) return
+  sentinelObserver = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting && renderedSegmentCount.value < totalSegmentCount.value) {
+      renderedSegmentCount.value = Math.min(
+        renderedSegmentCount.value + LOAD_MORE_COUNT,
+        totalSegmentCount.value
+      )
+    }
+  }, {
+    root: readerContainer.value,
+    rootMargin: '600px'
+  })
+  sentinelObserver.observe(sentinel)
+}
+
 const selectionMenu = ref({
   visible: false,
   x: 0,
@@ -637,10 +751,14 @@ function stripLeadingTitle(html: string, title: string): string {
   return html
 }
 
-const renderedContent = computed(() => {
+const lazyContent = computed(() => {
   const chapter = reader.currentChapter
   if (!chapter) return ''
-  return stripLeadingTitle(chapter.content, chapter.title)
+  const html = stripLeadingTitle(chapter.content, chapter.title)
+  const segments = splitHtmlIntoSegments(html)
+  totalSegmentCount.value = segments.length
+  if (segments.length <= INITIAL_SEGMENT_COUNT) return html
+  return segments.slice(0, renderedSegmentCount.value).join('')
 })
 
 // ---- Helpers ----
@@ -679,38 +797,42 @@ function markChapterRead(bookId: string, chapterIndex: number) {
 }
 
 async function loadPersistedReadChapters(bookId: string) {
+  if (!window.electronAPI) { bookshelf.readChapters = new Set(); return }
   try {
-    const rec = await db.cfg.get(`readChapters:${bookId}`)
-    if (rec) {
-      const arr: string[] = JSON.parse(rec.v)
+    const v = await window.electronAPI.config.get(`readChapters:${bookId}`)
+    if (v) {
+      const arr: string[] = JSON.parse(v)
       bookshelf.readChapters = new Set(arr)
     } else {
       bookshelf.readChapters = new Set()
     }
-  } catch { bookshelf.readChapters = new Set() }
+  } catch { logger.error('加载已读章节失败'); bookshelf.readChapters = new Set() }
 }
 
 async function persistReadChapters(bookId: string) {
+  if (!window.electronAPI) return
   try {
     const arr = Array.from(bookshelf.readChapters)
-    await db.cfg.put({ k: `readChapters:${bookId}`, v: JSON.stringify(arr) })
-  } catch { /* ignore */ }
+    await window.electronAPI.config.set(`readChapters:${bookId}`, JSON.stringify(arr))
+  } catch { logger.error('持久化已读章节失败') }
 }
 
 async function loadPersistedScrollPositions(bookId: string) {
+  if (!window.electronAPI) return
   try {
-    const rec = await db.cfg.get(`scroll:${bookId}`)
-    if (rec) {
-      const data: Record<number, number> = JSON.parse(rec.v)
+    const v = await window.electronAPI.config.get(`scroll:${bookId}`)
+    if (v) {
+      const data: Record<number, number> = JSON.parse(v)
       // Populate reader's in-memory scroll positions
       for (const [key, val] of Object.entries(data)) {
         reader.saveScrollPosition(Number(key), val)
       }
     }
-  } catch { /* ignore */ }
+  } catch { logger.error('加载滚动位置失败') }
 }
 
 async function persistScrollPositions(bookId: string) {
+  if (!window.electronAPI) return
   try {
     // Collect current in-memory scroll positions
     const data: Record<number, number> = {}
@@ -722,8 +844,8 @@ async function persistScrollPositions(bookId: string) {
     for (const [key, val] of Object.entries(reader.scrollPosition)) {
       data[Number(key)] = val
     }
-    await db.cfg.put({ k: `scroll:${bookId}`, v: JSON.stringify(data) })
-  } catch { /* ignore */ }
+    await window.electronAPI.config.set(`scroll:${bookId}`, JSON.stringify(data))
+  } catch { logger.error('持久化滚动位置失败') }
 }
 
 const readChaptersSet = computed(() => bookshelf.readChapters)
@@ -771,7 +893,7 @@ function applyChapterAnnotations() {
           span.style.backgroundColor = bg
           span.style.borderRadius = '2px'
           r.surroundContents(span)
-        } catch {}
+        } catch { /* surroundContents fails when range spans multiple elements */ }
         break
       }
     }
@@ -799,6 +921,9 @@ async function loadBook() {
     reader.currentChapterIndex = 0
   }
 
+  // Load content for the current chapter (fixes C-5 race condition)
+  reader.loadChapterContent(reader.currentChapterIndex)
+
   sliderValue.value = reader.currentChapterIndex
 
   // Restore scroll position for the saved chapter
@@ -818,9 +943,9 @@ async function loadBook() {
     if (aidParam) {
       // Find annotation and highlight it
       await nextTick()
-      const annRecord = await db.ann.get(aidParam as string)
+      const annRecord = window.electronAPI ? await window.electronAPI.annotations.get(aidParam as string) : null
       if (annRecord) {
-        const ann: Annotation = JSON.parse(annRecord.data)
+        const ann: Annotation = typeof annRecord.data === 'string' ? JSON.parse(annRecord.data) : annRecord
         if (ann && ann.text) {
           // Search for annotation text in the DOM and scroll+highlight
           await nextTick()
@@ -839,35 +964,41 @@ async function loadBook() {
 // ---- Navigation ----
 
 async function goBack() {
-  // Save current position before exiting
   isNavigatingBack = true
-  saveScrollNow()
-  const scrollHeight = readerContainer.value
-    ? readerContainer.value.scrollHeight - readerContainer.value.clientHeight
-    : 1
-  const progress = scrollHeight > 0
-    ? (readerContainer.value?.scrollTop || 0) / scrollHeight
-    : 0
+  try {
+    // Save current position before exiting
+    saveScrollNow()
+    const scrollHeight = readerContainer.value
+      ? readerContainer.value.scrollHeight - readerContainer.value.clientHeight
+      : 1
+    const progress = scrollHeight > 0
+      ? (readerContainer.value?.scrollTop || 0) / scrollHeight
+      : 0
 
-  // Persist all scroll positions and read chapters to DB
-  await persistScrollPositions(reader.bookId)
-  await persistReadChapters(reader.bookId)
+    // Persist all scroll positions and read chapters to DB
+    await persistScrollPositions(reader.bookId)
+    await persistReadChapters(reader.bookId)
 
-  // Await the DB save before navigating to prevent progress reset
-  await bookshelf.updateBookProgress(reader.bookId, reader.currentChapterIndex, progress)
+    // Await the DB save before navigating to prevent progress reset
+    await bookshelf.updateBookProgress(reader.bookId, reader.currentChapterIndex, progress)
 
-  // Mark current chapter as read
-  markChapterRead(reader.bookId, reader.currentChapterIndex)
+    // Mark current chapter as read
+    markChapterRead(reader.bookId, reader.currentChapterIndex)
 
-  // Stop timers
-  stopAutoScrollTimer()
-  stopReadingTimer()
-  if (readingSeconds.value > 0) {
-    await bookshelf.updateBookReadingTime(reader.bookId, readingSeconds.value)
-    readingSeconds.value = 0
+    // Stop timers
+    stopAutoScrollTimer()
+    stopReadingTimer()
+    if (readingSeconds.value > lastSavedSeconds) {
+      await bookshelf.updateBookReadingTime(reader.bookId, readingSeconds.value - lastSavedSeconds)
+      readingSeconds.value = 0
+      lastSavedSeconds = 0
+    }
+  } catch (e) {
+    logger.error('保存阅读进度失败', e)
+  } finally {
+    // Always navigate back, even if saving fails
+    router.push({ name: 'bookshelf' })
   }
-
-  router.push({ name: 'bookshelf' })
 }
 
 function goNextChapter() {
@@ -933,21 +1064,26 @@ function goToChapterFromToc(idx: number) {
 
 // ---- Scroll ----
 
+let scrollDebounceTimer: ReturnType<typeof setTimeout> | null = null
+const SCROLL_DEBOUNCE_MS = 500
+
 function onScroll() {
   if (isChapterTransition) return
   if (readerContainer.value) {
     reader.saveScrollPosition(reader.currentChapterIndex, readerContainer.value.scrollTop)
 
-    // Save reading progress
+    // Save reading progress — debounced to avoid flooding DB on every scroll event
     const scrollHeight = readerContainer.value.scrollHeight - readerContainer.value.clientHeight
     const progress = scrollHeight > 0 ? readerContainer.value.scrollTop / scrollHeight : 0
     readingProgress.value = Math.round(progress * 100)
-    bookshelf.updateBookProgress(reader.bookId, reader.currentChapterIndex, progress)
 
-    // Mark chapter as read when scrolled past 80%
-    if (progress >= 0.8) {
-      markChapterRead(reader.bookId, reader.currentChapterIndex)
-    }
+    if (scrollDebounceTimer) clearTimeout(scrollDebounceTimer)
+    scrollDebounceTimer = setTimeout(() => {
+      bookshelf.updateBookProgress(reader.bookId, reader.currentChapterIndex, progress)
+      if (progress >= 0.8) {
+        markChapterRead(reader.bookId, reader.currentChapterIndex)
+      }
+    }, SCROLL_DEBOUNCE_MS)
 
     // Update focus mode paragraph
     if (focusMode.value) {
@@ -998,15 +1134,23 @@ function updateFocusParagraph() {
 
 // Watch chapter index changes to restore scroll
 watch(() => reader.currentChapterIndex, (newIdx) => {
+  renderedSegmentCount.value = INITIAL_SEGMENT_COUNT
   if (!isChapterTransition) return
   isChapterTransition = false
   sliderValue.value = newIdx
-  restoreScrollPosition(newIdx)
-  // Apply annotation highlights to DOM
   nextTick(() => {
+    const key = `${reader.bookId}:${newIdx}`
+    if (!readChaptersSet.value.has(key)) {
+      // Unread chapter — scroll to top
+      if (readerContainer.value) readerContainer.value.scrollTop = 0
+    } else {
+      restoreScrollPosition(newIdx)
+    }
+    // Apply annotation highlights to DOM
     applyChapterAnnotations()
     isChapterLoading.value = false
     if (focusMode.value) updateFocusParagraph()
+    if (isPdfBook.value) setupPdfPageObserver()
   })
 })
 
@@ -1035,6 +1179,14 @@ watch(focusMode, (val) => {
   }
 })
 
+// Watch lazyContent changes to re-attach sentinel observer
+watch(lazyContent, () => {
+  nextTick(() => {
+    setupLazySentinel()
+    if (isPdfBook.value) setupPdfPageObserver()
+  })
+})
+
 // ---- Keyboard ----
 
 /** Convert a KeyboardEvent to the same shortcut string format used in settings */
@@ -1061,22 +1213,22 @@ function handleKeydown(e: KeyboardEvent) {
   const sc = settings.readingShortcuts
   const shortcut = eventToShortcut(e)
 
-  // Built-in hardcoded shortcuts (Left/Right for chapter nav, Ctrl+F for search, Home/End)
-  if (shortcut === 'Left') {
+  // All shortcuts read from settings.readingShortcuts — no hardcoded bindings
+  if (shortcut === sc.prevChapter) {
     e.preventDefault()
     if (!isChapterTransition) goPreviousChapter()
-  } else if (shortcut === 'Right') {
+  } else if (shortcut === sc.nextChapter) {
     e.preventDefault()
     if (!isChapterTransition) goNextChapter()
-  } else if (shortcut === 'Ctrl+F') {
+  } else if (shortcut === sc.search) {
     e.preventDefault()
     toggleSearch()
-  } else if (shortcut === 'Home') {
+  } else if (shortcut === sc.chapterStart) {
     e.preventDefault()
     if (readerContainer.value) {
       readerContainer.value.scrollTo({ top: 0, behavior: 'smooth' })
     }
-  } else if (shortcut === 'End') {
+  } else if (shortcut === sc.chapterEnd) {
     e.preventDefault()
     if (readerContainer.value) {
       readerContainer.value.scrollTo({ top: readerContainer.value.scrollHeight, behavior: 'smooth' })
@@ -1096,7 +1248,7 @@ function handleKeydown(e: KeyboardEvent) {
     if (readerContainer.value) {
       readerContainer.value.scrollBy({ top: -readerContainer.value.clientHeight * 0.9, behavior: 'smooth' })
     }
-  } else if (shortcut === sc.pageDown || shortcut === 'Space') {
+  } else if (shortcut === sc.pageDown) {
     e.preventDefault()
     if (readerContainer.value) {
       readerContainer.value.scrollBy({ top: readerContainer.value.clientHeight * 0.9, behavior: 'smooth' })
@@ -1168,13 +1320,33 @@ function handleSelection() {
     y: top
   }
 
-  // Compute rough offsets within the chapter's stripped content
-  const content = reader.currentChapter?.content || ''
-  const stripped = content.replace(/<[^>]+>/g, ' ')
-  const startIdx = stripped.indexOf(text)
-  selectedOffset.value = {
-    start: startIdx >= 0 ? startIdx : 0,
-    end: startIdx >= 0 ? startIdx + text.length : text.length
+  // Compute precise offsets using Range API — counts text before the selection
+  // in the rendered container, not by searching stripped HTML
+  const root = readerContainer.value
+  if (root) {
+    const range = selection.getRangeAt(0)
+    const startRange = document.createRange()
+    startRange.setStart(root, 0)
+    try {
+      startRange.setEnd(range.startContainer, range.startOffset)
+    } catch {
+      startRange.setEnd(range.startContainer, 0)
+    }
+    const startOffset = startRange.toString().length
+
+    const endRange = document.createRange()
+    endRange.setStart(root, 0)
+    try {
+      endRange.setEnd(range.endContainer, range.endOffset)
+    } catch {
+      endRange.setEnd(range.endContainer, 0)
+    }
+    const endOffset = endRange.toString().length
+
+    selectedOffset.value = {
+      start: startOffset,
+      end: endOffset
+    }
   }
 }
 
@@ -1193,7 +1365,7 @@ function highlightSelection(color: HighlightColor) {
     const range = sel.getRangeAt(0)
     const span = document.createElement('span')
     span.className = `hl-${color}`
-    try { range.surroundContents(span) } catch {}
+    try { range.surroundContents(span) } catch { /* selection may span across element boundaries */ }
   }
   dismissSelection()
 }
@@ -1216,7 +1388,7 @@ async function saveNote() {
 }
 
 function copySelection() {
-  navigator.clipboard.writeText(selectedText.value).catch(console.error)
+  navigator.clipboard.writeText(selectedText.value).catch((e: any) => logger.error('Clipboard write failed:', e))
   dismissSelection()
 }
 
@@ -1329,13 +1501,29 @@ function resetToolbarTimer() {
 
 // ---- Reading time ----
 
+function handleVisibilityChange() {
+  if (document.hidden) {
+    // Save accumulated reading time before pausing
+    if (readingSeconds.value > lastSavedSeconds) {
+      bookshelf.updateBookReadingTime(reader.bookId, readingSeconds.value - lastSavedSeconds)
+      lastSavedSeconds = readingSeconds.value
+    }
+    stopReadingTimer()
+  } else {
+    startReadingTimer()
+  }
+}
+
 function startReadingTimer() {
+  if (document.hidden) return
   readingSeconds.value = 0
+  lastSavedSeconds = 0
   if (readingTimeInterval) clearInterval(readingTimeInterval)
   readingTimeInterval = setInterval(() => {
     readingSeconds.value++
     if (readingSeconds.value % 30 === 0) {
-      bookshelf.updateBookReadingTime(reader.bookId, 30)
+      bookshelf.updateBookReadingTime(reader.bookId, readingSeconds.value - lastSavedSeconds)
+      lastSavedSeconds = readingSeconds.value
     }
   }, 1000)
 }
@@ -1351,8 +1539,13 @@ function stopReadingTimer() {
 
 function injectCustomCSS() {
   if (!readerContainer.value) return
-  const css = settings.readingSettings.customCSS
-  if (css) {
+  const rawCss = settings.readingSettings.customCSS
+  if (rawCss) {
+    // Sanitize: remove rules containing url() or @import to prevent data exfiltration
+    const css = rawCss
+      .split('\n')
+      .filter(line => !/(url\s*\(|@import)/i.test(line))
+      .join('\n')
     if (!customCssStyleEl) {
       customCssStyleEl = document.createElement('style')
       customCssStyleEl.id = 'reader-custom-css'
@@ -1415,10 +1608,34 @@ onMounted(async () => {
   await nextTick()
   injectCustomCSS()
   startAutoSave()
+  setupLazySentinel()
+  if (isPdfBook.value) setupPdfPageObserver()
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
-  // Only save if not already saved via goBack (which awaits the DB write)
+  // Clean up timers
+  if (toolbarTimer) clearTimeout(toolbarTimer)
+  if (scrollDebounceTimer) clearTimeout(scrollDebounceTimer)
+  stopAutoScrollTimer()
+  stopReadingTimer()
+  stopAutoSave()
+  removeCustomCSS()
+  if (sentinelObserver) sentinelObserver.disconnect()
+  teardownPdfPageObserver()
+  if (readingSeconds.value > lastSavedSeconds) {
+    bookshelf.updateBookReadingTime(reader.bookId, readingSeconds.value - lastSavedSeconds).catch(() => {})
+  }
+
+  // Clean up listeners
+  document.removeEventListener('mouseup', handleSelection)
+  document.removeEventListener('wheel', onWheel)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  releasePdfCache()
+})
+
+// Use onBeforeRouteLeave to properly await save before navigation
+onBeforeRouteLeave(async (_to, _from) => {
   if (!isNavigatingBack) {
     saveScrollNow()
     const scrollHeight = readerContainer.value
@@ -1427,27 +1644,12 @@ onUnmounted(() => {
     const progress = scrollHeight > 0
       ? (readerContainer.value?.scrollTop || 0) / scrollHeight
       : 0
-    // Await these DB operations to prevent data loss on unmount
-    Promise.allSettled([
+    await Promise.allSettled([
       bookshelf.updateBookProgress(reader.bookId, reader.currentChapterIndex, progress),
       persistScrollPositions(reader.bookId),
       persistReadChapters(reader.bookId)
     ])
   }
-
-  // Clean up timers
-  if (toolbarTimer) clearTimeout(toolbarTimer)
-  stopAutoScrollTimer()
-  stopReadingTimer()
-  stopAutoSave()
-  removeCustomCSS()
-  if (readingSeconds.value > 0) {
-    bookshelf.updateBookReadingTime(reader.bookId, readingSeconds.value)
-  }
-
-  // Clean up listeners
-  document.removeEventListener('mouseup', handleSelection)
-  document.removeEventListener('wheel', onWheel)
 })
 </script>
 
@@ -1588,6 +1790,89 @@ onUnmounted(() => {
   height: auto;
   display: block;
   margin: 16px auto;
+}
+
+/* ---- Comic page ---- */
+.reader-content :deep(.comic-page) {
+  text-indent: 0;
+  margin: 0;
+}
+.reader-content :deep(.comic-page p) {
+  text-indent: 0;
+  text-align: center;
+  margin: 4px 0;
+  color: #888;
+  font-size: 13px;
+}
+.reader-content :deep(.comic-page img) {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+/* ---- Comic truncation notice ---- */
+.reader-content :deep(.comic-truncation-notice) {
+  text-indent: 0;
+  text-align: center;
+  padding: 24px 16px;
+}
+.reader-content :deep(.comic-truncation-notice p) {
+  text-indent: 0;
+  margin: 0;
+  color: #f0a030;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* ---- PDF page ---- */
+.reader-content :deep(.pdf-page) {
+  margin-bottom: 8px;
+  text-align: center;
+  text-indent: 0;
+}
+.reader-content :deep(.pdf-page-img-container) {
+  display: inline-block;
+  max-width: 100%;
+  min-height: 120px;
+}
+.reader-content :deep(.pdf-page-img) {
+  max-width: 100%;
+  height: auto;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  display: block;
+  margin: 0 auto;
+  border-radius: 2px;
+}
+.reader-content :deep(.pdf-page-placeholder) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 120px;
+  color: #999;
+  font-size: 14px;
+  background: rgba(var(--v-theme-on-surface), 0.03);
+  border: 1px dashed rgba(var(--v-theme-on-surface), 0.1);
+  border-radius: 4px;
+}
+.reader-content :deep(.pdf-page-error) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 60px;
+  color: #e57373;
+  font-size: 13px;
+  background: rgba(229, 115, 115, 0.06);
+  border-radius: 4px;
+}
+.reader-content :deep(.pdf-page-fallback) {
+  text-align: left;
+  padding: 12px 16px;
+}
+.reader-content :deep(.pdf-page-fallback p) {
+  text-indent: 2em;
+  margin: 0.5em 0;
+  color: var(--text-color);
 }
 
 .reader-content :deep(h1),
@@ -1776,6 +2061,12 @@ onUnmounted(() => {
 .stats-value {
   font-weight: 600;
   color: #a5d6ff;
+}
+
+/* ---- Lazy sentinel ---- */
+.lazy-sentinel {
+  height: 1px;
+  width: 100%;
 }
 
 /* ---- Focus mode ---- */

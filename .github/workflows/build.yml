@@ -7,14 +7,27 @@ on:
   workflow_dispatch:
 
 jobs:
-  linux:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
+
+  linux:
+    needs: [lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
       - run: npm run build:vite
       - run: npx electron-builder --linux --publish=never
       - uses: actions/upload-artifact@v4
@@ -23,13 +36,15 @@ jobs:
           path: release/*.AppImage
 
   mac:
+    needs: [lint]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install
+          cache: 'npm'
+      - run: npm ci
       - run: npm run build:vite
       - run: npx electron-builder --mac --publish=never
       - uses: actions/upload-artifact@v4
@@ -38,25 +53,28 @@ jobs:
           path: release/*.dmg
 
   win-x64:
+    needs: [lint]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install
+          cache: 'npm'
+      - run: npm ci
       - run: npm run build:vite
       - run: npx electron-builder --win --x64 --publish=never
       - uses: actions/upload-artifact@v4
         with:
           name: Windows-x64-安装版
-          path: release/* Setup *.exe
+          path: release/*Setup*.exe
       - uses: actions/upload-artifact@v4
         with:
           name: Windows-x64-便携版
           path: release/*.zip
 
   win-ia32:
+    needs: [lint]
     continue-on-error: true
     runs-on: windows-latest
     steps:
@@ -64,15 +82,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install
+          cache: 'npm'
+      - run: npm ci
       - run: npm run build:vite
       - run: npx electron-builder --win --ia32 --publish=never
       - uses: actions/upload-artifact@v4
         with:
           name: Windows-32位-安装版
-          path: release/* Setup *.exe
+          path: release/*Setup*.exe
 
   win-arm64:
+    needs: [lint]
     continue-on-error: true
     runs-on: windows-latest
     steps:
@@ -80,17 +100,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install
+          cache: 'npm'
+      - run: npm ci
       - run: npm run build:vite
       - run: npx electron-builder --win --arm64 --publish=never
       - uses: actions/upload-artifact@v4
         with:
           name: Windows-ARM-安装版
-          path: release/* Setup *.exe
+          path: release/*Setup*.exe
 
   release:
     needs: [linux, mac, win-x64, win-ia32, win-arm64]
-    if: always() && !cancelled() && startsWith(github.ref, 'refs/tags/')
+    if: success() && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

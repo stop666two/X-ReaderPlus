@@ -67,9 +67,9 @@
     <div class="notes-content pa-4">
       <!-- ======================= Active Annotations ======================= -->
       <template v-if="activeTab === 'active'">
-        <v-list v-if="filteredAnnotations.length > 0" density="compact" class="annotation-list">
+        <v-list v-if="pagedActiveAnnotations.length > 0" density="compact" class="annotation-list">
           <v-list-item
-            v-for="ann in filteredAnnotations"
+            v-for="ann in pagedActiveAnnotations"
             :key="ann.id"
             @click="goToAnnotation(ann)"
             class="annotation-item"
@@ -197,8 +197,15 @@
           </v-list-item>
         </v-list>
 
+        <!-- Pagination -->
+        <div v-if="activeTotalPages > 1" class="pagination-bar">
+          <v-btn size="x-small" icon="mdi-chevron-left" :disabled="!activeHasPrev" @click="activePrevPage" />
+          <span class="text-caption mx-2">第 {{ activeCurrentPage }} / {{ activeTotalPages }} 页</span>
+          <v-btn size="x-small" icon="mdi-chevron-right" :disabled="!activeHasNext" @click="activeNextPage" />
+        </div>
+
         <!-- Empty state -->
-        <div v-else class="empty-state">
+        <div v-if="filteredAnnotations.length === 0" class="empty-state">
           <v-icon size="64" class="mb-2" color="medium-emphasis">mdi-note-text-outline</v-icon>
           <p class="text-medium-emphasis">
             {{ allAnnotations.length === 0 ? '暂无笔记' : '没有匹配的笔记' }}
@@ -209,9 +216,9 @@
 
       <!-- ======================= Trash ======================= -->
       <template v-if="activeTab === 'trash'">
-        <v-list v-if="deletedAnnotations.length > 0" density="compact">
+        <v-list v-if="pagedTrashAnnotations.length > 0" density="compact">
           <v-list-item
-            v-for="ann in deletedAnnotations"
+            v-for="ann in pagedTrashAnnotations"
             :key="ann.id"
           >
             <template #prepend>
@@ -273,8 +280,15 @@
           </v-list-item>
         </v-list>
 
+        <!-- Pagination -->
+        <div v-if="trashTotalPages > 1" class="pagination-bar">
+          <v-btn size="x-small" icon="mdi-chevron-left" :disabled="!trashHasPrev" @click="trashPrevPage" />
+          <span class="text-caption mx-2">第 {{ trashCurrentPage }} / {{ trashTotalPages }} 页</span>
+          <v-btn size="x-small" icon="mdi-chevron-right" :disabled="!trashHasNext" @click="trashNextPage" />
+        </div>
+
         <!-- Empty trash -->
-        <div v-else class="empty-state">
+        <div v-if="deletedAnnotations.length === 0" class="empty-state">
           <v-icon size="64" class="mb-2" color="medium-emphasis">mdi-delete-outline</v-icon>
           <p class="text-medium-emphasis">回收站为空</p>
         </div>
@@ -318,13 +332,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { db } from '@/services/db'
 import { useBookshelfStore } from '@/stores/bookshelf'
+import { usePagination, getPageSize } from '@/composables/usePagination'
 import { HIGHLIGHT_COLORS } from '@/constants'
 import type { Annotation, HighlightColor } from '@/types'
 import dayjs from 'dayjs'
+
+// ---- API helpers: prefer electronAPI, fall back to Dexie ----
+const api = {
+  ann: {
+    toArray: () => window.electronAPI?.annotations?.getAll?.() ?? db.ann.toArray(),
+    put: (data: any) => window.electronAPI?.annotations?.insert?.(data.id, JSON.stringify(data)) ?? db.ann.put(data),
+    delete: (id: string) => window.electronAPI?.annotations?.delete?.(id) ?? db.ann.delete(id),
+  },
+}
 
 const router = useRouter()
 const bookshelf = useBookshelfStore()
@@ -338,6 +362,7 @@ const editingId = ref('')
 const editingContent = ref('')
 const showClearTrashConfirm = ref(false)
 const selectedIds = ref<Set<string>>(new Set())
+const notesPageSize = ref(20)
 
 const selectedCount = computed(() => selectedIds.value.size)
 
@@ -364,7 +389,7 @@ const filteredAnnotations = computed(() => {
     const q = searchQuery.value.toLowerCase()
     result = result.filter(a =>
       a.text.toLowerCase().includes(q) ||
-      a.note.toLowerCase().includes(q)
+      (a.note || '').toLowerCase().includes(q)
     )
   }
 
@@ -375,6 +400,33 @@ const filteredAnnotations = computed(() => {
   result.sort((a, b) => b.createdAt - a.createdAt)
   return result
 })
+
+// ---- Pagination (active) ----
+const scrollNotesToTop = () => { nextTick(() => {
+  const el = document.querySelector('.notes-content')
+  if (el) el.scrollTop = 0
+})}
+
+const {
+  currentPage: activeCurrentPage,
+  totalPages: activeTotalPages,
+  hasPrev: activeHasPrev,
+  hasNext: activeHasNext,
+  pagedItems: pagedActiveAnnotations,
+  prevPage: activePrevPage,
+  nextPage: activeNextPage
+} = usePagination(filteredAnnotations, notesPageSize, { onPageChange: scrollNotesToTop })
+
+// ---- Pagination (trash) ----
+const {
+  currentPage: trashCurrentPage,
+  totalPages: trashTotalPages,
+  hasPrev: trashHasPrev,
+  hasNext: trashHasNext,
+  pagedItems: pagedTrashAnnotations,
+  prevPage: trashPrevPage,
+  nextPage: trashNextPage
+} = usePagination(deletedAnnotations, notesPageSize, { onPageChange: scrollNotesToTop })
 
 // ---- Helpers ----
 
@@ -391,8 +443,6 @@ function getBookTitle(bookId: string): string {
 }
 
 function getChapterTitle(ann: Annotation): string {
-  // Try to load chapter from db (cached in memory if the book was opened)
-  // Fallback to chapter index
   return `第 ${ann.chapterIndex + 1} 章`
 }
 
@@ -403,13 +453,13 @@ function formatDate(ts: number): string {
 // ---- Load ----
 
 async function loadAnnotations() {
-  const records = await db.ann.toArray()
+  const records = await api.ann.toArray()
   allAnnotations.value = records
-    .map(r => {
-      try { return JSON.parse(r.data) as Annotation }
+    .map((r: any) => {
+      try { return (typeof r.data === 'string' ? JSON.parse(r.data) : r) as Annotation }
       catch { return null }
     })
-    .filter((a): a is Annotation => a !== null)
+    .filter((a: any): a is Annotation => a !== null)
 }
 
 // ---- Navigation ----
@@ -437,7 +487,7 @@ function cancelEdit() {
 async function saveEdit(ann: Annotation) {
   ann.note = editingContent.value
   ann.deleted = ann.deleted || false
-  await db.ann.put({ id: ann.id, data: JSON.stringify(ann) })
+  await api.ann.put({ id: ann.id, data: JSON.stringify(ann) })
   const idx = allAnnotations.value.findIndex(a => a.id === ann.id)
   if (idx >= 0) allAnnotations.value[idx] = { ...ann }
   editingId.value = ''
@@ -448,26 +498,26 @@ async function saveEdit(ann: Annotation) {
 
 async function softDeleteAnnotation(ann: Annotation) {
   ann.deleted = true
-  await db.ann.put({ id: ann.id, data: JSON.stringify(ann) })
+  await api.ann.put({ id: ann.id, data: JSON.stringify(ann) })
   const idx = allAnnotations.value.findIndex(a => a.id === ann.id)
   if (idx >= 0) allAnnotations.value[idx] = { ...ann }
 }
 
 async function restoreAnnotation(ann: Annotation) {
   ann.deleted = false
-  await db.ann.put({ id: ann.id, data: JSON.stringify(ann) })
+  await api.ann.put({ id: ann.id, data: JSON.stringify(ann) })
   const idx = allAnnotations.value.findIndex(a => a.id === ann.id)
   if (idx >= 0) allAnnotations.value[idx] = { ...ann }
 }
 
 async function permanentlyDeleteAnnotation(ann: Annotation) {
-  await db.ann.delete(ann.id)
+  await api.ann.delete(ann.id)
   allAnnotations.value = allAnnotations.value.filter(a => a.id !== ann.id)
 }
 
 async function clearTrash() {
   const ids = deletedAnnotations.value.map(a => a.id)
-  await Promise.all(ids.map(id => db.ann.delete(id)))
+  await Promise.all(ids.map(id => api.ann.delete(id)))
   allAnnotations.value = allAnnotations.value.filter(a => !a.deleted)
   showClearTrashConfirm.value = false
 }
@@ -481,7 +531,6 @@ function toggleSelect(id: string) {
   } else {
     s.add(id)
   }
-  // trigger reactivity
   selectedIds.value = new Set(s)
 }
 
@@ -513,7 +562,7 @@ async function batchDelete() {
     const ann = allAnnotations.value.find(a => a.id === id)
     if (ann) {
       ann.deleted = true
-      await db.ann.put({ id: ann.id, data: JSON.stringify(ann) })
+      await api.ann.put({ id: ann.id, data: JSON.stringify(ann) })
       const idx = allAnnotations.value.findIndex(a => a.id === ann.id)
       if (idx >= 0) allAnnotations.value[idx] = { ...ann }
     }
@@ -526,7 +575,7 @@ async function batchRestore() {
     const ann = allAnnotations.value.find(a => a.id === id)
     if (ann) {
       ann.deleted = false
-      await db.ann.put({ id: ann.id, data: JSON.stringify(ann) })
+      await api.ann.put({ id: ann.id, data: JSON.stringify(ann) })
       const idx = allAnnotations.value.findIndex(a => a.id === ann.id)
       if (idx >= 0) allAnnotations.value[idx] = { ...ann }
     }
@@ -536,7 +585,7 @@ async function batchRestore() {
 
 async function batchPermanentDelete() {
   const ids = [...selectedIds.value]
-  await Promise.all(ids.map(id => db.ann.delete(id)))
+  await Promise.all(ids.map(id => api.ann.delete(id)))
   allAnnotations.value = allAnnotations.value.filter(a => !ids.includes(a.id))
   clearSelection()
 }
@@ -546,6 +595,7 @@ async function batchPermanentDelete() {
 onMounted(async () => {
   await bookshelf.loadBooks()
   await loadAnnotations()
+  notesPageSize.value = await getPageSize('notes')
 })
 </script>
 
@@ -567,6 +617,16 @@ onMounted(async () => {
 
 .book-select {
   max-width: 180px;
+}
+
+/* ---- Pagination ---- */
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 0;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.06);
 }
 
 /* ---- Annotation list ---- */

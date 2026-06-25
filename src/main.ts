@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import vuetify from './plugins/vuetify'
+import i18n from './plugins/i18n'
 import { initDb } from './services/db'
 import { useThemeStore } from './stores/theme'
 import { useSettingsStore } from './stores/settings'
@@ -17,6 +18,7 @@ async function bootstrap() {
   app.use(pinia)
   app.use(router)
   app.use(vuetify)
+  app.use(i18n)
 
   // Load persisted settings
   const themeStore = useThemeStore()

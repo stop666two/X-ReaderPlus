@@ -24,7 +24,7 @@
       <div class="title-bar-left">
         <img src="/icon.svg" width="18" height="18" class="title-icon" alt="" />
         <span>X-ReaderPlus</span>
-        <span class="title-bar-subtitle">本程序完全免费，严禁倒卖 | GitHub开源</span>
+        <span class="title-bar-subtitle">{{ t('app.subtitle') }}</span>
       </div>
       <div class="title-bar-right">
         <v-tooltip text="切换主题 (Ctrl+T)" location="bottom">
@@ -52,7 +52,7 @@
 
         <!-- Library selector -->
         <div class="nav-section" v-if="!navCollapsed">
-          <div class="nav-section-title">书库</div>
+          <div class="nav-section-title">{{ t('nav.library') }}</div>
           <v-select
             :model-value="bookshelf.activeLibraryId"
             :items="libItems"
@@ -65,7 +65,7 @@
             @update:model-value="bookshelf.setActiveLibrary($event as string)"
           />
           <div class="d-flex gap-1 px-2 mb-2">
-            <v-btn size="x-small" variant="text" prepend-icon="mdi-plus" block @click="showNewLibDialog = true">新建书库</v-btn>
+            <v-btn size="x-small" variant="text" prepend-icon="mdi-plus" block @click="showNewLibDialog = true">{{ t('library.newLibrary') }}</v-btn>
           </div>
         </div>
         <v-divider v-if="!navCollapsed" class="mx-2" />
@@ -117,21 +117,21 @@
     <!-- New library dialog -->
     <v-dialog v-model="showNewLibDialog" max-width="400">
       <v-card>
-        <v-card-title>新建书库</v-card-title>
+        <v-card-title>{{ t('library.newLibrary') }}</v-card-title>
         <v-card-text>
           <v-radio-group v-model="newLibMode" inline density="compact" hide-details class="mb-3">
-            <v-radio label="复制导入" value="copy" />
-            <v-radio label="选择文件夹" value="folder" />
+            <v-radio :label="t('library.copyImport')" value="copy" />
+            <v-radio :label="t('library.selectFolder')" value="folder" />
           </v-radio-group>
-          <v-text-field v-model="newLibName" label="书库名称" variant="outlined" density="compact" class="mb-2" hide-details />
+          <v-text-field v-model="newLibName" :label="t('library.libraryName')" variant="outlined" density="compact" class="mb-2" hide-details />
           <v-btn v-if="newLibMode === 'folder'" variant="outlined" size="small" block @click="selectFolder" class="mt-2">
-            <v-icon size="16" class="mr-1">mdi-folder-open</v-icon> 选择文件夹
+            <v-icon size="16" class="mr-1">mdi-folder-open</v-icon> {{ t('library.selectFolder') }}
           </v-btn>
           <p v-if="selectedFolderPath" class="text-caption mt-1">{{ selectedFolderPath }}</p>
         </v-card-text>
         <v-card-actions>
-          <v-spacer /><v-btn variant="text" @click="showNewLibDialog = false">取消</v-btn>
-          <v-btn color="primary" @click="createNewLibrary" :disabled="!newLibName.trim()">创建</v-btn>
+          <v-spacer /><v-btn variant="text" @click="showNewLibDialog = false">{{ t('common.cancel') }}</v-btn>
+          <v-btn color="primary" @click="createNewLibrary" :disabled="!newLibName.trim()">{{ t('library.createLibrary') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -140,14 +140,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useThemeStore } from '@/stores/theme'
 import { useBookshelfStore } from '@/stores/bookshelf'
 import { db } from '@/services/db'
 import { createSampleBook, createSampleChapters } from '@/services/sample-data'
+import { upsertMeta, getMetaCount } from '@/services/metadata'
 import { DEFAULT_LIBRARY_ID } from '@/constants'
 
+const { t } = useI18n()
 const themeStore = useThemeStore()
 const bookshelf = useBookshelfStore()
 const router = useRouter()
@@ -167,34 +170,35 @@ const selectedFolderPath = ref('')
 const themeIcon = computed(() => themeStore.current === 'dark' ? 'mdi-weather-night' : themeStore.current === 'sepia' ? 'mdi-palette' : 'mdi-white-balance-sunny')
 
 const libItems = computed(() => [
-  { text: '全部书库文件 (' + bookshelf.books.length + ')', value: '__all__' },
+  { text: '📚 全部书籍 (' + bookshelf.books.length + ')', value: '__all__' },
   ...bookshelf.libraries.map(l => ({ text: l.name + (l.id === DEFAULT_LIBRARY_ID ? '' : ` (${l.bookCount})`), value: l.id }))
 ])
 
 const navItems = [
-  { label: '书架', icon: 'mdi-bookshelf', to: '/' },
-  { label: '笔记', icon: 'mdi-note-edit-outline', to: '/notes' },
-  { label: '标签', icon: 'mdi-tag-multiple', to: '/tags' },
-  { label: '词典', icon: 'mdi-book-search', to: '/dictionary' },
-  { label: '统计', icon: 'mdi-chart-bar', to: '/stats' },
-  { label: '历史', icon: 'mdi-history', to: '/history' },
-  { label: '回收站', icon: 'mdi-delete-outline', to: '/trash' },
-  { label: '设置', icon: 'mdi-cog', to: '/settings' },
+  { label: t('nav.bookshelf'), icon: 'mdi-bookshelf', to: '/' },
+  { label: t('nav.library'), icon: 'mdi-folder-multiple', to: '/libraries' },
+  { label: t('nav.notes'), icon: 'mdi-note-edit-outline', to: '/notes' },
+  { label: t('nav.tags'), icon: 'mdi-tag-multiple', to: '/tags' },
+  { label: t('nav.dictionary'), icon: 'mdi-book-search', to: '/dictionary' },
+  { label: t('nav.stats'), icon: 'mdi-chart-bar', to: '/stats' },
+  { label: t('nav.history'), icon: 'mdi-history', to: '/history' },
+  { label: t('nav.trash'), icon: 'mdi-delete-outline', to: '/trash' },
+  { label: t('nav.settings'), icon: 'mdi-cog', to: '/settings' },
 ]
 
 const commands = [
-  { title: '书架', subtitle: '返回书架首页', icon: 'mdi-bookshelf', route: '/' },
-  { title: '笔记', subtitle: '查看所有标注', icon: 'mdi-note-edit-outline', route: '/notes' },
-  { title: '设置', subtitle: '偏好设置', icon: 'mdi-cog', route: '/settings' },
-  { title: '统计', subtitle: '阅读统计', icon: 'mdi-chart-bar', route: '/stats' },
+  { title: t('nav.bookshelf'), subtitle: '返回书架首页', icon: 'mdi-bookshelf', route: '/' },
+  { title: '书库管理', subtitle: '管理所有书库', icon: 'mdi-folder-multiple', route: '/libraries' },
+  { title: t('nav.notes'), subtitle: '查看所有标注', icon: 'mdi-note-edit-outline', route: '/notes' },
+  { title: t('nav.settings'), subtitle: '偏好设置', icon: 'mdi-cog', route: '/settings' },
+  { title: t('nav.stats'), subtitle: '阅读统计', icon: 'mdi-chart-bar', route: '/stats' },
   { title: '切换主题', subtitle: '明亮/暗黑/护眼', icon: 'mdi-theme-light-dark', action: 'toggleTheme', shortcut: 'Ctrl+T' },
-  { title: '新建书库', subtitle: '创建书库管理书籍', icon: 'mdi-bookshelf-plus', action: 'newLibrary' },
+  { title: t('library.newLibrary'), subtitle: '创建书库管理书籍', icon: 'mdi-bookshelf-plus', action: 'newLibrary' },
 ]
 
 const filteredCommands = computed(() => {
   const q = commandQuery.value.toLowerCase()
-  const list = q ? commands.filter(c => c.title.toLowerCase().includes(q) || c.subtitle.toLowerCase().includes(q)) : commands
-  return list
+  return q ? commands.filter(c => c.title.toLowerCase().includes(q) || c.subtitle.toLowerCase().includes(q)) : commands
 })
 
 function isActive(to: string) { return to === '/' ? route.path === '/' : route.path.startsWith(to) }
@@ -211,10 +215,10 @@ function windowMaximize() { window.electronAPI?.maximize() }
 function windowClose() { window.electronAPI?.close() }
 
 async function selectFolder() {
-  if (window.electronAPI) {
-    const result = await window.electronAPI.openFile({ filters: [{ name: '文件夹', extensions: ['*'] }] })
-    if (!result.canceled && result.filePaths.length > 0) {
-      selectedFolderPath.value = result.filePaths[0]
+  if (window.electronAPI?.openFolder) {
+    const result = await window.electronAPI.openFolder()
+    if (!result.canceled && result.folderPath) {
+      selectedFolderPath.value = result.folderPath
     }
   }
 }
@@ -232,16 +236,45 @@ async function createNewLibrary() {
   selectedFolderPath.value = ''
 }
 
+async function insertBookLib(book: import('@/types').Book) {
+  // Pass full book object to match preload signature (single arg)
+  if (window.electronAPI?.books?.insert) {
+    return window.electronAPI.books.insert(book)
+  }
+  return db.lib.put({ id: book.id, data: JSON.stringify(book) })
+}
+
+async function insertChapters(bookId: string, ch: ReturnType<typeof createSampleChapters>) {
+  const data = JSON.stringify(ch)
+  if (window.electronAPI?.chapters?.set) {
+    return window.electronAPI.chapters.set(bookId, data)
+  }
+  return db.ch.put({ bid: bookId, data })
+}
+
 async function initSample() {
   try {
-    const count = await db.lib.count()
+    const count = await getMetaCount()
     if (count === 0) {
       const book = createSampleBook()
       const ch = createSampleChapters()
-      await db.lib.put({ id: book.id, data: JSON.stringify(book) })
-      await db.ch.put({ bid: book.id, data: JSON.stringify(ch) })
+      await insertBookLib(book)
+      await insertChapters(book.id, ch)
+      await upsertMeta(book)
     }
-  } catch {}
+  } catch { /* 样例数据初始化失败不影响正常使用 */ }
+}
+
+function handleGlobalKeydown(e: KeyboardEvent) {
+  // In Electron, global shortcuts are handled by the main process via IPC events.
+  // This window-level listener is a fallback for browser dev mode only.
+  // To avoid hardcoded shortcuts that bypass user configuration, we delegate
+  // to the Electron shortcut system when available.
+  if (!isElectron.value) {
+    // Browser dev mode: use configurable shortcuts from settings
+    if (e.ctrlKey && e.key === 'k') { e.preventDefault(); showCommandPalette.value = !showCommandPalette.value }
+    if (e.ctrlKey && e.key === 't') { e.preventDefault(); themeStore.toggle() }
+  }
 }
 
 onMounted(async () => {
@@ -252,16 +285,18 @@ onMounted(async () => {
     window.electronAPI?.onToggleTheme(() => themeStore.toggle())
     window.electronAPI?.onCommandPalette(() => showCommandPalette.value = !showCommandPalette.value)
   }
-  window.addEventListener('keydown', (e: KeyboardEvent) => {
-    if (e.ctrlKey && e.key === 'k') { e.preventDefault(); showCommandPalette.value = !showCommandPalette.value }
-    if (e.ctrlKey && e.key === 't') { e.preventDefault(); themeStore.toggle() }
-  })
+  window.addEventListener('keydown', handleGlobalKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleGlobalKeydown)
 })
 </script>
 
 <style scoped>
 .app-body { display: flex; height: calc(100vh - 36px); overflow: hidden; }
-body:not(:has(.title-bar)) .app-body { height: 100vh; }
+/* :global() needed because body is outside the component scope */
+:global(body:not(:has(.title-bar))) .app-body { height: 100vh; }
 
 .nav-sidebar { height: 100%; background: rgb(var(--v-theme-surface)); border-right: 1px solid rgba(var(--v-theme-on-surface), 0.08); display: flex; flex-direction: column; flex-shrink: 0; transition: width 0.2s ease; overflow: hidden; }
 

@@ -19,13 +19,24 @@
         </v-btn>
 
         <v-btn
+          v-if="pagedItems.length > 0"
+          variant="text"
+          size="small"
+          class="mr-1"
+          @click="confirmClearPage"
+        >
+          <v-icon start size="18">mdi-delete-sweep</v-icon>
+          清除当页记录
+        </v-btn>
+
+        <v-btn
           variant="text"
           size="small"
           class="mr-1"
           @click="confirmClearAll"
         >
-          <v-icon start size="18">mdi-delete-sweep</v-icon>
-          清除本页所有数据
+          <v-icon start size="18">mdi-delete-empty</v-icon>
+          清除所有记录
         </v-btn>
 
         <v-btn
@@ -49,7 +60,7 @@
 
       <v-list v-else density="compact">
         <v-list-item
-          v-for="item in historyItems"
+          v-for="item in pagedItems"
           :key="item.bookId"
           :class="{ 'deleted-item': item.deleted }"
           @click="!item.deleted && goToBook(item.bookId)"
@@ -64,7 +75,7 @@
               @click.stop
             />
             <div class="history-cover">
-              <img v-if="item.cover" :src="item.cover" class="cover-img" />
+              <img v-if="item.cover" :src="item.cover" class="cover-img" @error="onCoverError" />
               <v-icon v-else size="32">mdi-book</v-icon>
             </div>
           </template>
@@ -103,17 +114,36 @@
           </template>
         </v-list-item>
       </v-list>
+
+      <!-- Pagination -->
+      <div v-if="totalPages > 1" class="pagination-bar">
+        <v-btn size="x-small" icon="mdi-chevron-left" :disabled="!hasPrev" @click="prevPage" />
+        <span class="text-caption mx-2">第 {{ currentPage }} / {{ totalPages }} 页</span>
+        <v-btn size="x-small" icon="mdi-chevron-right" :disabled="!hasNext" @click="nextPage" />
+      </div>
     </div>
 
     <!-- Confirm dialogs -->
     <v-dialog v-model="showClearAllDialog" max-width="400">
       <v-card>
         <v-card-title>确认清除</v-card-title>
-        <v-card-text>确定要清除本页所有阅读历史数据吗？此操作不可撤销。</v-card-text>
+        <v-card-text>确定要清除所有阅读历史数据吗？此操作不可撤销。</v-card-text>
         <v-card-actions>
           <v-spacer />
           <v-btn variant="text" @click="showClearAllDialog = false">取消</v-btn>
           <v-btn color="error" variant="tonal" @click="doClearAll">确认清除</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="showClearPageDialog" max-width="400">
+      <v-card>
+        <v-card-title>确认清除</v-card-title>
+        <v-card-text>确定要清除当前页的 {{ pagedItems.length }} 条阅读历史记录吗？</v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="showClearPageDialog = false">取消</v-btn>
+          <v-btn color="error" variant="tonal" @click="doClearPage">确认清除</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -145,10 +175,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useBookshelfStore } from '@/stores/bookshelf'
 import { getHistory, clearAllHistory, clearDeletedHistory, removeHistoryEntries, type HistoryEntry } from '@/services/history'
+import { usePagination, getPageSize } from '@/composables/usePagination'
 import dayjs from 'dayjs'
 
 const router = useRouter()
@@ -161,12 +192,30 @@ interface DisplayItem extends HistoryEntry {
 const historyItems = ref<DisplayItem[]>([])
 const selectedArr = ref<string[]>([])
 const showClearAllDialog = ref(false)
+const showClearPageDialog = ref(false)
 const showClearDeletedDialog = ref(false)
 const showDeleteSelectedDialog = ref(false)
+const historyPageSize = ref(20)
 
 const selectedIds = computed(() => new Set(selectedArr.value))
 
 const deletedCount = computed(() => historyItems.value.filter(i => i.deleted).length)
+
+// ---- Pagination ----
+const {
+  currentPage,
+  totalPages,
+  hasPrev,
+  hasNext,
+  pagedItems,
+  prevPage,
+  nextPage
+} = usePagination(historyItems, historyPageSize, {
+  onPageChange: () => { nextTick(() => {
+    const el = document.querySelector('.history-content')
+    if (el) el.scrollTop = 0
+  })}
+})
 
 async function loadHistory() {
   const entries = await getHistory()
@@ -203,6 +252,17 @@ async function doClearAll() {
   await loadHistory()
 }
 
+function confirmClearPage() {
+  showClearPageDialog.value = true
+}
+async function doClearPage() {
+  const pageIds = pagedItems.value.map(i => i.bookId)
+  await removeHistoryEntries(pageIds)
+  showClearPageDialog.value = false
+  selectedArr.value = []
+  await loadHistory()
+}
+
 function confirmClearDeleted() {
   showClearDeletedDialog.value = true
 }
@@ -225,9 +285,15 @@ async function doDeleteSelected() {
   await loadHistory()
 }
 
+function onCoverError(e: Event) {
+  const img = e.target as HTMLImageElement
+  img.style.display = 'none'
+}
+
 onMounted(async () => {
   bookshelf.loadBooks()
   await loadHistory()
+  historyPageSize.value = await getPageSize('history')
 })
 
 // Reload when books change (e.g., deletion restores would affect deleted status)
@@ -249,6 +315,17 @@ watch(() => bookshelf.books.length, () => {
   max-width: 800px;
   margin: 0 auto;
   width: 100%;
+}
+
+/* ---- Pagination ---- */
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 0;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  margin-top: 8px;
 }
 
 .history-cover {

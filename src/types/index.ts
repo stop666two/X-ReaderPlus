@@ -1,6 +1,6 @@
 export type ThemeMode = 'light' | 'dark' | 'sepia'
 export type ViewMode = 'grid' | 'list'
-export type SortField = 'addedAt' | 'title' | 'author' | 'libraryName'
+export type SortField = 'addedAt' | 'title' | 'author' | 'libraryName' | 'chapterCount'
 export type SortOrder = 'asc' | 'desc'
 export type AnnotationType = 'highlight' | 'note'
 export type HighlightColor = 'yellow' | 'green' | 'blue' | 'pink' | 'orange' | 'purple'
@@ -29,6 +29,7 @@ export interface Book {
   rating: number
   review: string
   wordCount: number
+  chapterCount: number
   totalReadingTime: number
   libraryId: string
   contentHash?: string
@@ -132,6 +133,9 @@ export interface ReadingShortcuts {
   prevChapter: string
   nextChapter: string
   search: string
+  chapterStart: string
+  chapterEnd: string
+  [key: string]: string
 }
 
 export interface AppSettings {
@@ -177,6 +181,7 @@ export interface PinState {
   lockedUntil: number
   failedAttempts: number
   escalation?: PinEscalation
+  encryptionKey?: string
 }
 
 export interface BackupData {

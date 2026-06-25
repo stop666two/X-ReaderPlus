@@ -1,5 +1,3 @@
-import { db } from './db'
-
 export interface HistoryEntry {
   bookId: string
   title: string
@@ -14,16 +12,33 @@ export interface HistoryEntry {
 
 const HISTORY_KEY = 'history_data'
 
+// Config helper — uses electronAPI in Electron, localStorage fallback in browser dev mode
+function configGet(key: string): Promise<string | null> {
+  if (typeof window !== 'undefined' && window.electronAPI?.config) {
+    return window.electronAPI.config.get(key).then((v: string | undefined | null) => v ?? null)
+  }
+  // Fallback for browser dev mode
+  return Promise.resolve(localStorage.getItem(key))
+}
+
+function configSet(key: string, value: string): Promise<void> {
+  if (typeof window !== 'undefined' && window.electronAPI?.config) {
+    return window.electronAPI.config.set(key, value)
+  }
+  localStorage.setItem(key, value)
+  return Promise.resolve()
+}
+
 async function readHistory(): Promise<HistoryEntry[]> {
-  const rec = await db.cfg.get(HISTORY_KEY)
-  if (rec && rec.v) {
-    try { return JSON.parse(rec.v) } catch { return [] }
+  const v = await configGet(HISTORY_KEY)
+  if (v) {
+    try { return JSON.parse(v) } catch { return [] }
   }
   return []
 }
 
 async function writeHistory(entries: HistoryEntry[]): Promise<void> {
-  await db.cfg.put({ k: HISTORY_KEY, v: JSON.stringify(entries) })
+  await configSet(HISTORY_KEY, JSON.stringify(entries))
 }
 
 export async function getHistory(): Promise<HistoryEntry[]> {

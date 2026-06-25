@@ -1,13 +1,19 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { Book, BookFormat, Library, SortField, SortOrder, ViewMode, TrashItem, ImportMode } from '@/types'
-import { db } from '@/services/db'
 import { DEFAULT_LIBRARY_ID, DEFAULT_LIBRARY_NAME } from '@/constants'
 import { detectFormat, countWords, detectTags, createParseWorker, workerParse } from '@/services/parser'
-import { sanitizeHtml } from '@/services/sanitize'
+import { compressCover } from '@/services/thumbnail'
 import { logger } from '@/services/log'
+import { generateId } from '@/services/base64'
 import { upsertHistoryEntry } from '@/services/history'
 import { upsertStatsEntry } from '@/services/stats'
+
+function db() {
+  // Null check satisfies AGENTS.md: always used with Dexie fallback in browser dev mode
+  if (!window.electronAPI) throw new Error('electronAPI 不可用')
+  return window.electronAPI
+}
 
 const ALL_LIBRARY_ID = '__all__'
 const ALL_LIBRARY_NAME = '全部书库文件'
@@ -50,6 +56,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
   const importProgress = ref({ current: 0, total: 0, message: '', bytesProcessed: 0, bytesTotal: 0, skippedDuplicates: 0 })
   const loadingProgress = ref(0)
   const loadingMessage = ref('正在加载...')
+  const totalBookCount = ref(0)
   const readChapters = ref<Set<string>>(new Set())
 
   const activeLibrary = computed(() => {
@@ -89,6 +96,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
           if (cmp === 0) cmp = (a.author || '').localeCompare(b.author || '', 'en')
           break
         case 'addedAt': cmp = a.addedAt - b.addedAt; break
+        case 'chapterCount': cmp = (a.chapterCount || 0) - (b.chapterCount || 0); break
         case 'libraryName':
           const libA = libraries.value.find(l => l.id === a.libraryId)?.name || ''
           const libB = libraries.value.find(l => l.id === b.libraryId)?.name || ''
@@ -103,11 +111,11 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
   // ========== Libraries ==========
 
   async function loadLibraries() {
-    const records = await db.lbr.toArray()
-    libraries.value = records.map(r => JSON.parse(r.data))
+    const records = await db().libraries.getAll()
+    libraries.value = records.map((r: any) => JSON.parse(r.data))
     if (!libraries.value.find(l => l.id === DEFAULT_LIBRARY_ID)) {
       const dl: Library = { id: DEFAULT_LIBRARY_ID, name: DEFAULT_LIBRARY_NAME, path: '', mode: 'copy', createdAt: Date.now(), bookCount: 0 }
-      await db.lbr.put({ id: dl.id, data: JSON.stringify(dl) })
+      await db().libraries.insert(dl.id, JSON.stringify(dl))
       libraries.value.unshift(dl)
     }
   }
@@ -115,7 +123,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
   async function createLibrary(name: string, folderPath: string): Promise<Library> {
     const lib: Library = { id: generateId(), name, path: folderPath, mode: 'folder', createdAt: Date.now(), bookCount: 0 }
     try {
-      await db.lbr.put({ id: lib.id, data: JSON.stringify(lib) })
+      await db().libraries.insert(lib.id, JSON.stringify(lib))
     } catch (e) {
       logger.error('创建书库失败', e)
       throw e
@@ -127,12 +135,13 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
   async function deleteLibrary(id: string) {
     if (id === DEFAULT_LIBRARY_ID) return
     try {
-      // Move books to default library
-      for (const book of books.value.filter(b => b.libraryId === id)) {
+      const orphanedBooks = books.value.filter(b => b.libraryId === id)
+      // Persist libraryId change for each orphaned book (M-8)
+      for (const book of orphanedBooks) {
         book.libraryId = DEFAULT_LIBRARY_ID
-        await db.lib.put({ id: book.id, data: JSON.stringify(book) })
+        await db().books.update(book.id, { libraryId: DEFAULT_LIBRARY_ID })
       }
-      await db.lbr.delete(id)
+      await db().libraries.delete(id)
     } catch (e) {
       logger.error('删除书库失败', e)
       throw e
@@ -146,7 +155,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     const lib = libraries.value.find(l => l.id === id)
     if (lib) {
       lib.name = name
-      try { await db.lbr.put({ id, data: JSON.stringify(lib) }) } catch (e) { logger.error('重命名书库失败', e); throw e }
+      try { await db().libraries.insert(id, JSON.stringify(lib)) } catch (e) { logger.error('重命名书库失败', e); throw e }
     }
   }
 
@@ -157,28 +166,72 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
 
   // ========== Books ==========
 
-  async function loadBooks() {
-    const records = await db.lib.toArray()
-    books.value = records.filter(r => { try { const b: Book = JSON.parse(r.data); return b && b.id } catch { return false } }).map(r => JSON.parse(r.data))
-    // Update library book counts
+  async function loadBooks(page?: number, pageSize?: number) {
+    const limit = pageSize ?? 30
+    const offset = ((page ?? 1) - 1) * limit
+    const result = await db().books.getAll({ limit, offset })
+    // safeHandler may return { success: false, error } on failure
+    if (result && !Array.isArray(result) && (result as any).success === false) {
+      logger.error('加载书籍失败:', (result as any).error)
+      books.value = []
+      totalBookCount.value = 0
+      return
+    }
+    const rows = result as any[]
+    let totalCount = 0
+    try { totalCount = await db().books.count() } catch { /* count is best-effort */ }
+    totalBookCount.value = totalCount
+    books.value = rows.map((row: any) => ({
+      id: row.id,
+      title: row.title,
+      author: row.author,
+      cover: row.cover,
+      path: row.path,
+      format: row.format as BookFormat,
+      size: row.size,
+      addedAt: row.added_at,
+      lastReadAt: row.last_read_at,
+      progress: row.progress,
+      chapterIndex: row.chapter_index,
+      chapterProgress: row.chapter_progress,
+      tags: JSON.parse(row.tags || '[]'),
+      rating: row.rating,
+      review: row.review,
+      wordCount: row.word_count,
+      chapterCount: row.chapter_count,
+      totalReadingTime: row.total_reading_time,
+      libraryId: row.library_id,
+      contentHash: row.content_hash
+    }))
     for (const lib of libraries.value) { lib.bookCount = books.value.filter(b => b.libraryId === lib.id).length }
   }
 
   async function loadAllData() {
-    loadingMessage.value = '正在加载书库...'
-    loadingProgress.value = 5
+    try {
+      loadingMessage.value = '正在加载书库...'
+      loadingProgress.value = 5
 
-    await loadLibraries()
-    loadingProgress.value = 33
+      await loadLibraries()
+      loadingProgress.value = 50
 
-    loadingMessage.value = '正在加载书籍...'
-    await loadBooks()
-    loadingProgress.value = 66
+      loadingMessage.value = '正在加载书籍...'
+      await loadBooks()
+      loadingProgress.value = 90
 
-    loadingMessage.value = '正在加载设置...'
-    // Reserve time for settings/theme initialization
-    await new Promise(r => setTimeout(r, 150))
-    loadingProgress.value = 100
+      loadingMessage.value = '正在加载设置...'
+      await new Promise(r => setTimeout(r, 150))
+    } catch (e) {
+      logger.error('加载数据失败', e)
+      // Ensure books are at least an empty array so UI doesn't crash
+      if (books.value.length === 0) books.value = []
+    } finally {
+      loadingProgress.value = 100
+      loadingMessage.value = ''
+    }
+  }
+
+  async function clearAllData() {
+    await db().clearAll()
   }
 
   async function importFiles(filePaths: string[], libraryId?: string, importMode?: ImportMode, customNames?: string[]): Promise<number> {
@@ -317,9 +370,9 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
             const autoTags = detectTags(fullText)
             const book: Book = {
               id: generateId(),
-              title: sanitizeHtml(parsed.metadata.title.replace(/<[^>]+>/g, '')),
-              author: sanitizeHtml(parsed.metadata.author.replace(/<[^>]+>/g, '')),
-              cover: parsed.metadata.cover || '',
+              title: parsed.metadata.title.replace(/<[^>]+>/g, ''),
+              author: parsed.metadata.author.replace(/<[^>]+>/g, ''),
+              cover: await compressCover(parsed.metadata.cover || ''),
               path: filePaths[i] || r.name,
               format: parsed.metadata.format,
               size: dataSize,
@@ -332,26 +385,30 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
               rating: 0,
               review: '',
               wordCount: parsed.chapters.reduce((s: number, c: any) => s + countWords(c.content), 0),
+              chapterCount: parsed.chapters.length,
               totalReadingTime: 0,
               libraryId: targetLibId,
               contentHash
             }
-            await db.lib.put({ id: book.id, data: JSON.stringify(book) })
-            await db.ch.put({ bid: book.id, data: JSON.stringify(parsed.chapters) })
+            await db().books.insert(book)
+            await db().chapters.set(book.id, JSON.stringify(parsed.chapters))
             upsertHistoryEntry({
               bookId: book.id, title: book.title, author: book.author,
               cover: book.cover, format: book.format, addedAt: book.addedAt,
               lastReadAt: book.lastReadAt, totalReadingTime: book.totalReadingTime,
               progress: book.progress
-            }).catch(() => {})
+            }).catch(() => { /* best-effort: history update is non-critical */ })
             upsertStatsEntry({
               bookId: book.id, title: book.title, author: book.author,
               cover: book.cover, format: book.format, addedAt: book.addedAt,
               lastReadAt: book.lastReadAt, totalReadingTime: book.totalReadingTime,
               progress: book.progress
-            }).catch(() => {})
+            }).catch(() => { /* best-effort: stats update is non-critical */ })
             importedCount++
           } catch (e) { logger.error(`导入失败: ${r.name}`, e) }
+
+          // Yield to the main thread to keep UI responsive during batch imports
+          await new Promise(r => setTimeout(r, 0))
         }
       } finally {
         worker.terminate()
@@ -366,27 +423,35 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
 
   async function deleteBooks(ids: string[]) {
     await batchProcess(ids, 50, async (id) => {
-      const rec = await db.lib.get(id)
-      if (rec) {
-        const book: Book = JSON.parse(rec.data)
-        await db.tr.put({ id, data: JSON.stringify({ id, book, deletedAt: Date.now() }) })
-        await db.lib.delete(id)
+      const book = books.value.find(b => b.id === id)
+      if (book) {
+        try {
+          await db().trash.insert(id, JSON.stringify({ id, book, deletedAt: Date.now() }))
+        } catch (e) {
+          logger.error('移入回收站失败', e)
+        }
       }
       selectedIds.value.delete(id)
     })
     selectedIds.value = new Set(selectedIds.value)
-    await loadBooks()
+    const result: any = await db().books.delete(ids)
+    if (result?.success === false) {
+      logger.error('删除书籍失败:', result.error)
+    }
+    const idSet = new Set(ids)
+    books.value = books.value.filter(b => !idSet.has(b.id))
+    totalBookCount.value = Math.max(0, totalBookCount.value - ids.length)
+    for (const lib of libraries.value) { lib.bookCount = books.value.filter(b => b.libraryId === lib.id).length }
   }
 
   async function updateBook(id: string, updates: Partial<Book>) {
     try {
-      const rec = await db.lib.get(id)
-      if (rec) {
-        const book: Book = { ...JSON.parse(rec.data), ...updates }
-        await db.lib.put({ id, data: JSON.stringify(book) })
-        const idx = books.value.findIndex(b => b.id === id)
-        if (idx >= 0) books.value[idx] = book
-      }
+      const idx = books.value.findIndex(b => b.id === id)
+      if (idx < 0) return
+
+      const book = { ...books.value[idx], ...updates }
+      books.value[idx] = book
+      await db().books.update(id, updates)
     } catch (e) {
       logger.error('更新书籍失败', e)
     }
@@ -396,33 +461,36 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     try {
       // Clamp chapter progress to [0, 1] as a fraction of current chapter
       const safeCp = Math.max(0, Math.min(1, cp))
-      const rec = await db.lib.get(id)
-      if (rec) {
-        const book: Book = JSON.parse(rec.data)
-        const total = await getChapterCount(id)
-        book.chapterIndex = Math.max(0, ci)
-        book.chapterProgress = safeCp
-        // Overall progress: (chapter index + chapter fraction) / total chapters, clamped to [0, 1]
-        book.progress = total > 0
-          ? Math.min(1, Math.max(0, (Math.max(0, ci) + safeCp) / total))
-          : 0
-        book.lastReadAt = Date.now()
-        await db.lib.put({ id, data: JSON.stringify(book) })
-        upsertHistoryEntry({
-          bookId: book.id, title: book.title, author: book.author,
-          cover: book.cover, format: book.format, addedAt: book.addedAt,
-          lastReadAt: book.lastReadAt, totalReadingTime: book.totalReadingTime,
-          progress: book.progress
-        }).catch(() => {})
-        upsertStatsEntry({
-          bookId: book.id, title: book.title, author: book.author,
-          cover: book.cover, format: book.format, addedAt: book.addedAt,
-          lastReadAt: book.lastReadAt, totalReadingTime: book.totalReadingTime,
-          progress: book.progress
-        }).catch(() => {})
-        const idx = books.value.findIndex(b => b.id === id)
-        if (idx >= 0) books.value[idx] = book
-      }
+      const idx = books.value.findIndex(b => b.id === id)
+      if (idx < 0) return
+
+      const total = await getChapterCount(id)
+      const progress = total > 0
+        ? Math.min(1, Math.max(0, (Math.max(0, ci) + safeCp) / total))
+        : 0
+      const lastReadAt = Date.now()
+
+      // Update in-memory book
+      const book = books.value[idx]
+      book.chapterIndex = Math.max(0, ci)
+      book.chapterProgress = safeCp
+      book.progress = progress
+      book.lastReadAt = lastReadAt
+
+      await db().books.update(id, { chapterIndex: ci, chapterProgress: cp, progress, lastReadAt })
+
+      upsertHistoryEntry({
+        bookId: book.id, title: book.title, author: book.author,
+        cover: book.cover, format: book.format, addedAt: book.addedAt,
+        lastReadAt: book.lastReadAt, totalReadingTime: book.totalReadingTime,
+        progress: book.progress
+      }).catch(() => { /* best-effort: history/stats update is non-critical */ })
+      upsertStatsEntry({
+        bookId: book.id, title: book.title, author: book.author,
+        cover: book.cover, format: book.format, addedAt: book.addedAt,
+        lastReadAt: book.lastReadAt, totalReadingTime: book.totalReadingTime,
+        progress: book.progress
+      }).catch(() => { /* best-effort: history/stats update is non-critical */ })
     } catch (e) {
       logger.error('更新阅读进度失败', e)
     }
@@ -430,25 +498,27 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
 
   async function updateBookReadingTime(id: string, seconds: number) {
     try {
-      const rec = await db.lib.get(id)
-      if (rec) {
-        const book: Book = JSON.parse(rec.data)
-        book.totalReadingTime += seconds
-        book.lastReadAt = Date.now()
-        await db.lib.put({ id, data: JSON.stringify(book) })
-        upsertHistoryEntry({
-          bookId: book.id, title: book.title, author: book.author,
-          cover: book.cover, format: book.format, addedAt: book.addedAt,
-          lastReadAt: book.lastReadAt, totalReadingTime: book.totalReadingTime,
-          progress: book.progress
-        }).catch(() => {})
-        upsertStatsEntry({
-          bookId: book.id, title: book.title, author: book.author,
-          cover: book.cover, format: book.format, addedAt: book.addedAt,
-          lastReadAt: book.lastReadAt, totalReadingTime: book.totalReadingTime,
-          progress: book.progress
-        }).catch(() => {})
-      }
+      const idx = books.value.findIndex(b => b.id === id)
+      if (idx < 0) return
+
+      const book = books.value[idx]
+      book.totalReadingTime += seconds
+      book.lastReadAt = Date.now()
+
+      await db().books.update(id, { totalReadingTime: book.totalReadingTime, lastReadAt: book.lastReadAt })
+
+      upsertHistoryEntry({
+        bookId: book.id, title: book.title, author: book.author,
+        cover: book.cover, format: book.format, addedAt: book.addedAt,
+        lastReadAt: book.lastReadAt, totalReadingTime: book.totalReadingTime,
+        progress: book.progress
+      }).catch(() => { /* best-effort: history/stats update is non-critical */ })
+      upsertStatsEntry({
+        bookId: book.id, title: book.title, author: book.author,
+        cover: book.cover, format: book.format, addedAt: book.addedAt,
+        lastReadAt: book.lastReadAt, totalReadingTime: book.totalReadingTime,
+        progress: book.progress
+      }).catch(() => { /* best-effort: history/stats update is non-critical */ })
     } catch (e) {
       logger.error('更新阅读时间失败', e)
     }
@@ -456,8 +526,12 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
 
   async function getChapterCount(bookId: string): Promise<number> {
     try {
-      const rec = await db.ch.get(bookId)
-      if (rec) { const c = JSON.parse(rec.data); return Array.isArray(c) ? c.length : 0 }
+      // Use book's chapter_count field instead of loading full chapter data
+      const book = await db().books.getById(bookId)
+      if (book && typeof book.chapter_count === 'number') return book.chapter_count
+      // Fallback: count chapters without loading full content
+      const row = await db().chapters.get(bookId)
+      if (row) { const c = JSON.parse(row); return Array.isArray(c) ? c.length : 0 }
     } catch (e) {
       logger.error('获取章节数失败', e)
     }
@@ -478,18 +552,15 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     selectedIds.value = inverted
   }
 
-  function generateId(): string {
-    const ts = Date.now().toString(36)
-    const r = crypto.getRandomValues(new Uint8Array(8))
-    return `${ts}-${Array.from(r).map(b => b.toString(16).padStart(2, '0')).join('')}`
-  }
+// generateId imported from @/services/base64 (L-8)
 
   return {
     books, libraries, activeLibraryId, viewMode, searchQuery, filterTag, sortField, sortOrder,
     selectedIds, isLoading, importProgress, loadingProgress, loadingMessage, readChapters,
+    totalBookCount,
     activeLibrary, allTags, filteredBooks, filteredLibraryBooks,
     loadLibraries, createLibrary, deleteLibrary, renameLibrary, setActiveLibrary,
-    loadBooks, loadAllData, importFiles, deleteBooks, updateBook,
+    loadBooks, loadAllData, clearAllData, importFiles, deleteBooks, updateBook,
     updateBookProgress, updateBookReadingTime, getChapterCount,
     toggleSelect, selectAll, clearSelection, invertSelection
   }

@@ -6,7 +6,7 @@
         <v-icon size="20" class="mr-1" color="medium-emphasis">mdi-bookshelf</v-icon>
         <span class="text-body-2 font-weight-medium">{{ store.activeLibrary?.name || '默认书库' }}</span>
         <v-icon size="14" class="mx-1" color="medium-emphasis">mdi-chevron-right</v-icon>
-        <span class="text-caption text-medium-emphasis">{{ store.filteredBooks.length }} 本书</span>
+        <span class="text-caption text-medium-emphasis">{{ localFilteredBooks.length }} 本书</span>
       </div>
       <v-spacer />
       <!-- Library switcher -->
@@ -17,7 +17,7 @@
             size="x-small"
             variant="text"
             icon="mdi-chevron-down"
-            v-tooltip="'切换书库'"
+            title="切换书库"
           />
         </template>
         <v-list density="compact" min-width="180">
@@ -48,8 +48,20 @@
     <!-- ========== Toolbar ========== -->
     <div class="toolbar-custom border-b px-3 py-1">
       <div class="d-flex align-center flex-wrap gap-2">
-        <v-text-field v-model="store.searchQuery" prepend-inner-icon="mdi-magnify" placeholder="搜索书名或作者..." hide-details variant="outlined" density="compact" class="search-field" clearable />
-        <v-select :model-value="currentSortLabel" :items="sortOptions" item-title="title" density="compact" variant="outlined" hide-details class="sort-select" @update:model-value="onSortChange" />
+        <v-text-field v-model="searchInput" prepend-inner-icon="mdi-magnify" placeholder="搜索书名或作者..." hide-details variant="outlined" density="compact" class="search-field" clearable />
+        <v-select v-model="sortModel" :items="sortOptions" item-title="title" item-value="value" density="compact" variant="outlined" hide-details class="sort-select" />
+        <v-tooltip :text="store.sortOrder === 'desc' ? '当前倒序 · 点击切换正序' : '当前正序 · 点击切换倒序'">
+          <template #activator="{ props }">
+            <v-btn
+              v-bind="props"
+              size="x-small"
+              :variant="store.sortOrder === 'desc' ? 'tonal' : 'text'"
+              :color="store.sortOrder === 'desc' ? 'primary' : ''"
+              icon="mdi-sort-reverse-variant"
+              @click="toggleSortOrder"
+            />
+          </template>
+        </v-tooltip>
         <v-select v-model="store.filterTag" :items="tagItems" item-title="title" item-value="value" density="compact" variant="outlined" hide-details clearable placeholder="标签" class="tag-select" />
         <v-spacer />
         <div class="d-flex align-center gap-2">
@@ -67,15 +79,15 @@
             divided
             class="grid-size-toggle-group"
           >
-            <v-btn size="x-small" icon="mdi-image-size-select-small" v-tooltip="'小封面'" />
-            <v-btn size="x-small" icon="mdi-image-size-select-actual" v-tooltip="'中封面'" />
-            <v-btn size="x-small" icon="mdi-image-size-select-large" v-tooltip="'大封面'" />
+            <v-btn size="x-small" icon="mdi-image-size-select-small" title="小封面" />
+            <v-btn size="x-small" icon="mdi-image-size-select-actual" title="中封面" />
+            <v-btn size="x-small" icon="mdi-image-size-select-large" title="大封面" />
           </v-btn-toggle>
-          <template v-if="store.selectedIds.size > 0">
-            <v-btn size="small" variant="tonal" prepend-icon="mdi-select-all" @click="store.selectAll()">全选</v-btn>
-            <v-btn size="small" variant="tonal" prepend-icon="mdi-select-off" @click="store.clearSelection()">取消选择</v-btn>
-            <v-btn size="small" variant="tonal" prepend-icon="mdi-swap-horizontal" @click="store.invertSelection()">反选</v-btn>
-            <v-btn size="small" color="error" variant="tonal" prepend-icon="mdi-delete" @click="showConfirm = true">删除({{ store.selectedIds.size }})</v-btn>
+          <template v-if="crossPageSelectedIds.size > 0 || store.selectedIds.size > 0">
+            <v-btn size="small" variant="tonal" prepend-icon="mdi-select-all" @click="selectAllCurrentPage()">全选</v-btn>
+            <v-btn size="small" variant="tonal" prepend-icon="mdi-select-off" @click="clearSelectionCurrentPage()">取消选择</v-btn>
+            <v-btn size="small" variant="tonal" prepend-icon="mdi-swap-horizontal" @click="invertSelectionCurrentPage()">反选</v-btn>
+            <v-btn size="small" color="error" variant="tonal" prepend-icon="mdi-delete" @click="showConfirm = true">删除({{ crossPageSelectedIds.size }})</v-btn>
           </template>
           <v-btn color="primary" size="small" variant="tonal" prepend-icon="mdi-plus" @click="showImportDialog = true">导入</v-btn>
           <v-btn
@@ -171,13 +183,14 @@
 
     <!-- ========== Grid View ========== -->
     <div
-      v-if="store.viewMode === 'grid' && store.filteredBooks.length > 0"
+      v-if="store.viewMode === 'grid' && localFilteredBooks.length > 0"
       class="books-grid pa-4"
       :class="'grid-' + gridSize"
     >
       <div
-        v-for="book in store.filteredBooks"
+        v-for="book in displayedBooks"
         :key="book.id"
+        v-memo="[book.id, store.selectedIds.has(book.id), book.progress]"
         class="book-card"
         :class="{ 'book-card-selected': store.selectedIds.has(book.id) }"
         @click="openBook(book.id)"
@@ -186,18 +199,20 @@
         <!-- Cover -->
         <div class="cover-wrapper">
           <img
-            v-if="book.cover"
+            v-if="book.cover && !failedCovers.has(book.id)"
             :src="book.cover"
             class="cover-img"
             :alt="book.title"
             draggable="false"
+            loading="lazy"
+            @error="onCoverError(book.id)"
           />
           <div
             v-else
             class="cover-img cover-placeholder"
             :style="{ backgroundColor: getCoverColor(book.title) }"
           >
-            <v-icon size="44" color="white">mdi-book</v-icon>
+            <v-icon size="32" color="white">mdi-book</v-icon>
           </div>
 
           <!-- Format badge (top-right) -->
@@ -208,7 +223,7 @@
           <!-- Selection checkbox -->
           <v-checkbox
             :model-value="store.selectedIds.has(book.id)"
-            @click.stop="store.toggleSelect(book.id)"
+            @click.stop="toggleSelectBook(book.id)"
             density="compact"
             hide-details
             class="select-check"
@@ -231,18 +246,6 @@
             {{ getLibraryName(book.libraryId) }}
           </div>
 
-          <!-- Rating -->
-          <div v-if="book.rating > 0" class="book-rating">
-            <v-icon
-              v-for="i in 5"
-              :key="i"
-              size="11"
-              :color="i <= book.rating ? 'warning' : ''"
-            >
-              {{ i <= book.rating ? 'mdi-star' : 'mdi-star-outline' }}
-            </v-icon>
-          </div>
-
           <!-- Progress bar -->
           <div class="progress-bar-wrap">
             <div class="progress-bar">
@@ -261,13 +264,14 @@
 
     <!-- ========== List View ========== -->
     <div
-      v-else-if="store.viewMode === 'list' && store.filteredBooks.length > 0"
+      v-else-if="store.viewMode === 'list' && localFilteredBooks.length > 0"
       class="books-list pa-2"
     >
       <v-list density="compact" lines="two">
         <v-list-item
-          v-for="book in store.filteredBooks"
+          v-for="book in displayedBooks"
           :key="book.id"
+          v-memo="[book.id, store.selectedIds.has(book.id), book.progress]"
           :class="{ 'list-item-selected': store.selectedIds.has(book.id) }"
           @click="openBook(book.id)"
           @contextmenu.prevent="openContextMenu($event, book)"
@@ -276,10 +280,12 @@
           <template #prepend>
             <div class="list-cover-wrapper">
               <img
-                v-if="book.cover"
+                v-if="book.cover && !failedCovers.has(book.id)"
                 :src="book.cover"
                 class="list-cover"
                 draggable="false"
+                loading="lazy"
+                @error="onCoverError(book.id)"
               />
               <div
                 v-else
@@ -331,7 +337,7 @@
               </div>
               <v-checkbox
                 :model-value="store.selectedIds.has(book.id)"
-                @click.stop="store.toggleSelect(book.id)"
+                @click.stop="toggleSelectBook(book.id)"
                 density="compact"
                 hide-details
                 class="ml-1"
@@ -342,9 +348,62 @@
       </v-list>
     </div>
 
+    <!-- ========== Pagination Nav ========== -->
+    <div
+      v-if="totalPages > 1 && localFilteredBooks.length > 0"
+      class="pagination-bar"
+    >
+      <div class="d-flex align-center justify-center gap-2">
+        <v-tooltip text="上一页">
+          <template #activator="{ props }">
+            <v-btn
+              v-bind="props"
+              size="small"
+              variant="text"
+              icon="mdi-chevron-left"
+              :disabled="!hasPrev"
+              @click="prevPage()"
+            />
+          </template>
+        </v-tooltip>
+        <!-- Page number buttons -->
+        <template v-for="p in totalPages" :key="p">
+          <v-btn
+            v-if="p <= 7 || p > totalPages - 2 || Math.abs(p - currentPage) <= 1"
+            size="x-small"
+            :variant="p === currentPage ? 'tonal' : 'text'"
+            :color="p === currentPage ? 'primary' : ''"
+            class="page-btn"
+            @click="goToPage(p)"
+          >
+            {{ p }}
+          </v-btn>
+          <span
+            v-else-if="p === (currentPage <= 5 ? totalPages - 2 : 3) || p === (currentPage >= totalPages - 4 ? 3 : totalPages - 2)"
+            class="text-caption text-medium-emphasis px-1"
+          >...</span>
+        </template>
+        <v-tooltip text="下一页">
+          <template #activator="{ props }">
+            <v-btn
+              v-bind="props"
+              size="small"
+              variant="text"
+              icon="mdi-chevron-right"
+              :disabled="!hasNext"
+              @click="nextPage()"
+            />
+          </template>
+        </v-tooltip>
+        <span class="text-caption text-medium-emphasis ml-2">
+          第 {{ currentPage }}/{{ totalPages }} 页
+        </span>
+      </div>
+    </div>
+
     <!-- Empty search results -->
     <div
-      v-else-if="store.filteredBooks.length === 0 && store.books.length > 0 && !store.isLoading"
+      v-else-if="localFilteredBooks.length === 0 && store.books.length > 0 && !store.isLoading"
       class="text-center py-8"
     >
       <v-icon size="48" color="medium-emphasis" class="mb-2">mdi-magnify</v-icon>
@@ -357,23 +416,23 @@
       <span class="text-caption text-medium-emphasis">
         共 {{ store.filteredLibraryBooks.length }} 本书
         <template v-if="store.searchQuery || store.filterTag">
-          · 筛选出 {{ store.filteredBooks.length }} 本
+          · 筛选出 {{ localFilteredBooks.length }} 本
         </template>
       </span>
       <v-spacer />
-      <span v-if="store.selectedIds.size > 0" class="text-caption text-primary">
-        已选 {{ store.selectedIds.size }} 本
+      <span v-if="crossPageSelectedIds.size > 0" class="text-caption text-primary">
+        已选 {{ crossPageSelectedIds.size }} 本
       </span>
     </div>
 
     <!-- ========== Floating Batch Action Bar ========== -->
-    <div v-if="store.selectedIds.size > 0" class="floating-batch-bar">
-      <span class="text-body-2 font-weight-medium">已选 {{ store.selectedIds.size }} 本</span>
+    <div v-if="crossPageSelectedIds.size > 0" class="floating-batch-bar">
+      <span class="text-body-2 font-weight-medium">已选 {{ crossPageSelectedIds.size }} 本</span>
       <v-spacer />
-      <v-btn size="small" color="primary" variant="elevated" prepend-icon="mdi-swap-horizontal" @click="store.invertSelection()">
+      <v-btn size="small" color="primary" variant="elevated" prepend-icon="mdi-swap-horizontal" @click="invertSelectionCurrentPage()">
         反选
       </v-btn>
-      <v-btn size="small" color="primary" variant="elevated" prepend-icon="mdi-select-all" @click="store.selectAll()">
+      <v-btn size="small" color="primary" variant="elevated" prepend-icon="mdi-select-all" @click="selectAllCurrentPage()">
         全选
       </v-btn>
       <v-btn size="small" color="error" variant="elevated" prepend-icon="mdi-delete" @click="showConfirm = true">
@@ -396,11 +455,16 @@
           @click="openDetail(contextMenuBook?.id || '')"
         />
         <v-list-item
-          :prepend-icon="contextMenuBook && store.selectedIds.has(contextMenuBook.id) ? 'mdi-checkbox-marked' : 'mdi-checkbox-blank-outline'"
-          :title="contextMenuBook && store.selectedIds.has(contextMenuBook.id) ? '取消选择' : '选择'"
-          @click="contextMenuBook && store.toggleSelect(contextMenuBook.id)"
+          :prepend-icon="contextMenuBook && crossPageSelectedIds.has(contextMenuBook.id) ? 'mdi-checkbox-marked' : 'mdi-checkbox-blank-outline'"
+          :title="contextMenuBook && crossPageSelectedIds.has(contextMenuBook.id) ? '取消选择' : '选择'"
+          @click="contextMenuBook && toggleSelectBook(contextMenuBook.id)"
         />
         <v-divider />
+        <v-list-item
+          prepend-icon="mdi-export"
+          title="导出此书"
+          @click="contextMenuBook && exportSingleBook(contextMenuBook)"
+        />
         <v-list-item
           prepend-icon="mdi-delete-outline"
           title="删除"
@@ -429,6 +493,22 @@
 
           <!-- Copy mode: drag zone + file picker -->
           <template v-if="importMode === 'copy'">
+            <!-- Library selector -->
+            <label class="text-caption font-weight-medium d-block mb-1">导入到书库</label>
+            <v-select
+              v-model="importTargetLibId"
+              :items="importLibOptions"
+              item-title="text"
+              item-value="value"
+              density="compact"
+              variant="outlined"
+              hide-details
+              class="mb-3"
+            />
+            <div class="d-flex gap-1 mb-3">
+              <v-btn size="x-small" variant="text" prepend-icon="mdi-plus" @click="showNewLibDialog = true; showImportDialog = false">新建书库</v-btn>
+            </div>
+
             <div
               class="import-drop-zone"
               :class="{ 'import-drop-zone-active': importDragOver }"
@@ -546,9 +626,11 @@
             <!-- Cover -->
             <div class="detail-cover">
               <img
-                v-if="detailBook.cover"
+                v-if="detailBook.cover && !failedCovers.has(detailBook.id)"
                 :src="detailBook.cover"
                 class="detail-cover-img"
+                loading="lazy"
+                @error="onCoverError(detailBook.id)"
               />
               <div
                 v-else
@@ -632,6 +714,7 @@
           </div>
         </v-card-text>
         <v-card-actions class="border-t">
+          <v-btn variant="text" prepend-icon="mdi-export" @click="exportSingleBook(detailBook!)">导出此书</v-btn>
           <v-spacer />
           <v-btn variant="text" @click="showDetailDialog = false">取消</v-btn>
           <v-btn color="primary" @click="saveDetail">保存</v-btn>
@@ -644,7 +727,7 @@
       <v-card>
         <v-card-title class="text-body-1">确认删除</v-card-title>
         <v-card-text>
-          <p class="mb-1">确定要删除选中的 {{ store.selectedIds.size }} 本书吗？</p>
+          <p class="mb-1">确定要删除选中的 {{ crossPageSelectedIds.size }} 本书吗？</p>
           <p class="text-caption text-medium-emphasis">删除的书籍将移入回收站，可以恢复。</p>
         </v-card-text>
         <v-card-actions>
@@ -658,11 +741,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch, nextTick, shallowRef } from 'vue'
 import { useRouter } from 'vue-router'
 import { useBookshelfStore } from '@/stores/bookshelf'
+import { usePagination, getPageSize } from '@/composables/usePagination'
 import dayjs from 'dayjs'
-import type { Book, ImportMode } from '@/types'
+import { logger } from '@/services/log'
+import { DEFAULT_LIBRARY_ID } from '@/constants'
+import type { Book, ImportMode, SortField, SortOrder } from '@/types'
 
 // ========== Stores & Router ==========
 const store = useBookshelfStore()
@@ -681,6 +767,12 @@ interface ImportHistoryEntry {
 
 // ========== Local State ==========
 const isDragOver = ref(false)
+
+// Track cover images that failed to load so we show fallback instead of broken image
+const failedCovers = ref(new Set<string>())
+function onCoverError(bookId: string) {
+  failedCovers.value = new Set([...failedCovers.value, bookId])
+}
 
 // Grid size: 0=small, 1=medium(default), 2=large
 const gridSizeToggle = ref(1)
@@ -724,29 +816,175 @@ const pendingFiles = ref<{ name: string; path: string }[]>([])
 const newLibraryName = ref('')
 const newLibraryPath = ref('')
 const dialogImporting = ref(false)
+const importTargetLibId = ref(DEFAULT_LIBRARY_ID)
 
-// ========== Computed ==========
-const sortOptions = [
-  { title: '最近添加 (新→旧)', value: 'addedAt', order: 'desc' as const },
-  { title: '最早添加 (旧→新)', value: 'addedAt', order: 'asc' as const },
-  { title: '书名 A→Z', value: 'title', order: 'asc' as const },
-  { title: '书名 Z→A', value: 'title', order: 'desc' as const },
-  { title: '作者 A→Z', value: 'author', order: 'asc' as const },
-  { title: '作者 Z→A', value: 'author', order: 'desc' as const },
-  { title: '书库名称', value: 'libraryName', order: 'asc' as const },
-]
+const importLibOptions = computed(() => [
+  ...store.libraries.map(l => ({ text: l.name + (l.id === DEFAULT_LIBRARY_ID ? '（默认）' : ''), value: l.id }))
+])
 
-const currentSortLabel = computed(() => {
-  const opt = sortOptions.find(o => o.value === store.sortField && o.order === store.sortOrder)
-  return opt?.title || sortOptions[0].title
+// ========== Debounced Search ==========
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
+const searchInput = ref(store.searchQuery)
+
+watch(searchInput, (val) => {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => {
+    store.searchQuery = val
+  }, 300)
 })
 
-function onSortChange(title: string) {
-  const opt = sortOptions.find(o => o.title === title)
-  if (opt) {
-    store.sortField = opt.value
-    store.sortOrder = opt.order
+// Sync external changes back (e.g. if store.searchQuery is cleared elsewhere)
+watch(() => store.searchQuery, (val) => {
+  if (val !== searchInput.value) {
+    searchInput.value = val
   }
+})
+
+// ========== Local filtered books (shallowRef to reduce reactivity depth) ==========
+const localFilteredBooks = shallowRef<Book[]>([])
+
+watch(
+  [() => store.filteredLibraryBooks, () => store.searchQuery, () => store.filterTag, () => store.sortField, () => store.sortOrder] as const,
+  ([flb, sq, ft, sf, so]) => {
+    let result = [...flb]
+    if (sq) {
+      const q = sq.toLowerCase()
+      result = result.filter(b => b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q))
+    }
+    if (ft) result = result.filter(b => b.tags.includes(ft))
+    result.sort((a, b) => {
+      let cmp = 0
+      switch (sf) {
+        case 'title':
+          cmp = (a.title || '').localeCompare(b.title || '', 'zh-CN')
+          if (cmp === 0) cmp = (a.title || '').localeCompare(b.title || '', 'en')
+          break
+        case 'author':
+          cmp = (a.author || '').localeCompare(b.author || '', 'zh-CN')
+          if (cmp === 0) cmp = (a.author || '').localeCompare(b.author || '', 'en')
+          break
+        case 'addedAt': cmp = a.addedAt - b.addedAt; break
+        case 'chapterCount': cmp = (a.chapterCount || 0) - (b.chapterCount || 0); break
+        case 'libraryName':
+          const libA = store.libraries.find(l => l.id === a.libraryId)?.name || ''
+          const libB = store.libraries.find(l => l.id === b.libraryId)?.name || ''
+          cmp = libA.localeCompare(libB, 'zh-CN')
+          break
+      }
+      return so === 'asc' ? cmp : -cmp
+    })
+    localFilteredBooks.value = result
+  },
+  { immediate: true }
+)
+
+// ========== Pagination ==========
+const bookshelfPageSize = ref(30)
+function scrollToTop() {
+  nextTick(() => {
+    const grid = document.querySelector('.books-grid') || document.querySelector('.books-list')
+    if (grid) grid.scrollTop = 0
+  })
+}
+
+const {
+  currentPage, totalPages, pagedItems,
+  hasNext, hasPrev, nextPage, prevPage, goToPage, reset: resetPagination
+} = usePagination(localFilteredBooks, bookshelfPageSize, { onPageChange: scrollToTop })
+
+// Display alias — keep template using `displayedBooks` for minimal changes
+const displayedBooks = computed(() => pagedItems.value)
+
+// Reset pagination when sort/search/tag/library changes
+watch(
+  [() => store.searchQuery, () => store.filterTag, () => store.sortField, () => store.sortOrder, () => store.activeLibraryId],
+  () => { resetPagination() }
+)
+
+// ========== Cross-Page Batch Selection ==========
+const crossPageSelectedIds = ref<Set<string>>(new Set())
+
+/** Sync a single book toggle to cross-page set */
+function toggleSelectBook(id: string) {
+  store.toggleSelect(id)
+  const cross = new Set(crossPageSelectedIds.value)
+  if (store.selectedIds.has(id)) {
+    cross.add(id)
+  } else {
+    cross.delete(id)
+  }
+  crossPageSelectedIds.value = cross
+}
+
+/** Select all books on the current page — adds to cross-page set */
+function selectAllCurrentPage() {
+  const cross = new Set(crossPageSelectedIds.value)
+  const currentIds = pagedItems.value.map(b => b.id)
+  for (const id of currentIds) cross.add(id)
+  crossPageSelectedIds.value = cross
+  store.selectedIds = new Set(currentIds)
+}
+
+/** Clear current-page books from both store.selectedIds and cross-page set */
+function clearSelectionCurrentPage() {
+  const currentIds = new Set(pagedItems.value.map(b => b.id))
+  const cross = new Set(crossPageSelectedIds.value)
+  for (const id of currentIds) cross.delete(id)
+  crossPageSelectedIds.value = cross
+  store.clearSelection()
+}
+
+/** Invert selection on current page only — syncs to cross-page set */
+function invertSelectionCurrentPage() {
+  const currentIds = pagedItems.value.map(b => b.id)
+  const cross = new Set(crossPageSelectedIds.value)
+  const newStore = new Set<string>()
+  for (const id of currentIds) {
+    if (cross.has(id)) {
+      cross.delete(id)
+    } else {
+      cross.add(id)
+      newStore.add(id)
+    }
+  }
+  crossPageSelectedIds.value = cross
+  store.selectedIds = newStore
+}
+
+// When page changes, restore store.selectedIds from crossPageSelectedIds for the new page
+watch(currentPage, () => {
+  const currentIds = new Set(pagedItems.value.map(b => b.id))
+  const restored = new Set<string>()
+  currentIds.forEach(id => {
+    if (crossPageSelectedIds.value.has(id)) restored.add(id)
+  })
+  store.selectedIds = restored
+})
+
+// ========== Sort ==========
+const sortOptions: Array<{ title: string; value: string }> = [
+  { title: '最近添加 (新→旧)', value: 'addedAt:desc' },
+  { title: '最早添加 (旧→新)', value: 'addedAt:asc' },
+  { title: '书名 A→Z', value: 'title:asc' },
+  { title: '书名 Z→A', value: 'title:desc' },
+  { title: '作者 A→Z', value: 'author:asc' },
+  { title: '作者 Z→A', value: 'author:desc' },
+  { title: '章节数 多→少', value: 'chapterCount:desc' },
+  { title: '章节数 少→多', value: 'chapterCount:asc' },
+  { title: '书库名称', value: 'libraryName:asc' },
+]
+
+const sortModel = computed({
+  get: () => `${store.sortField}:${store.sortOrder}`,
+  set: (val: string) => {
+    const [field, order] = val.split(':') as [SortField, SortOrder]
+    if (field) store.sortField = field
+    if (order) store.sortOrder = order
+  },
+})
+
+function toggleSortOrder() {
+  store.sortOrder = store.sortOrder === 'desc' ? 'asc' : 'desc'
 }
 
 const tagItems = computed(() =>
@@ -795,6 +1033,40 @@ function openContextMenu(event: MouseEvent, book: Book) {
 async function deleteContextBook() {
   if (contextMenuBook.value) {
     await store.deleteBooks([contextMenuBook.value.id])
+  }
+}
+
+async function exportSingleBook(book: Book) {
+  if (!window.electronAPI) return
+  try {
+    const chapters = await window.electronAPI.chapters.get(book.id)
+    const annotations = await window.electronAPI.annotations.getByBook(book.id)
+    const bookmarks = await window.electronAPI.bookmarks.getByBook(book.id)
+
+    const exportData = {
+      book,
+      chapters: chapters ? JSON.parse(chapters) : [],
+      annotations: (annotations || []).map((a: any) =>
+        typeof a.data === 'string' ? JSON.parse(a.data) : a
+      ),
+      bookmarks: (bookmarks || []).map((b: any) =>
+        typeof b.data === 'string' ? JSON.parse(b.data) : b
+      )
+    }
+
+    const json = JSON.stringify(exportData, null, 2)
+    const safeName = book.title.replace(/[\\/:*?"<>|]/g, '_')
+    const result = await window.electronAPI.saveFile({
+      defaultPath: `${safeName}.json`,
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    })
+
+    if (!result.canceled && result.filePath) {
+      const encoder = new TextEncoder()
+      await window.electronAPI.writeFile(result.filePath, encoder.encode(json).buffer)
+    }
+  } catch (e) {
+    logger.error('Export book failed:', e)
   }
 }
 
@@ -869,7 +1141,7 @@ async function startImport() {
     if (importMode.value === 'copy') {
       const paths = pendingFiles.value.map(f => f.path)
       importedFiles.push(...pendingFiles.value.map(f => ({ name: f.name, path: f.path })))
-      await store.importFiles(paths)
+      await store.importFiles(paths, importTargetLibId.value)
     } else {
       // Folder mode: create library then import files into it
       const lib = await store.createLibrary(newLibraryName.value.trim(), newLibraryPath.value)
@@ -924,7 +1196,7 @@ async function startImport() {
     newLibraryPath.value = ''
     showImportDialog.value = false
   } catch (e) {
-    console.error('Import failed:', e)
+    logger.error('Import failed:', e)
     // Record failures for pending files
     for (const file of importedFiles.length > 0 ? importedFiles : pendingFiles.value.map(f => ({ name: f.name, path: f.path }))) {
       importHistory.value.push(createHistoryEntry(file.name, 'failed'))
@@ -984,7 +1256,9 @@ async function handleDrop(e: DragEvent) {
 
 // ========== Batch Delete ==========
 async function confirmDelete() {
-  await store.deleteBooks(Array.from(store.selectedIds))
+  await store.deleteBooks(Array.from(crossPageSelectedIds.value))
+  crossPageSelectedIds.value = new Set()
+  store.clearSelection()
   showConfirm.value = false
 }
 
@@ -1052,6 +1326,9 @@ function getCoverColor(title: string): string {
 
 // ========== Lifecycle ==========
 onMounted(async () => {
+  bookshelfPageSize.value = await getPageSize('bookshelf')
+  // Skip if data already loaded by App.vue's loadAllData()
+  if (store.libraries.length > 0) return
   await store.loadLibraries()
   await store.loadBooks()
 })
@@ -1170,10 +1447,14 @@ onMounted(async () => {
 
 /* ========== Book Card ========== */
 .book-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 280px;
+  contain: layout style paint;
   cursor: pointer;
   border-radius: 10px;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   padding: 4px;
+  will-change: transform;
 }
 .book-card:hover {
   transform: translateY(-2px);
@@ -1451,5 +1732,17 @@ onMounted(async () => {
 }
 .import-history-panel .v-list {
   background: transparent;
+}
+
+/* ========== Pagination Nav ========== */
+.pagination-bar {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border-top: 1px solid rgb(var(--v-theme-border));
+  background: rgb(var(--v-theme-surface));
+}
+.page-btn {
+  min-width: 28px !important;
+  padding: 0 2px !important;
 }
 </style>

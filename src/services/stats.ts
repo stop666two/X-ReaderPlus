@@ -1,5 +1,3 @@
-import { db } from './db'
-
 export interface StatsEntry {
   bookId: string
   title: string
@@ -14,16 +12,32 @@ export interface StatsEntry {
 
 const STATS_KEY = 'stats_data'
 
+// Config helper — uses electronAPI in Electron, localStorage fallback in browser dev mode
+function configGet(key: string): Promise<string | null> {
+  if (typeof window !== 'undefined' && window.electronAPI?.config) {
+    return window.electronAPI.config.get(key).then((v: string | undefined | null) => v ?? null)
+  }
+  return Promise.resolve(localStorage.getItem(key))
+}
+
+function configSet(key: string, value: string): Promise<void> {
+  if (typeof window !== 'undefined' && window.electronAPI?.config) {
+    return window.electronAPI.config.set(key, value)
+  }
+  localStorage.setItem(key, value)
+  return Promise.resolve()
+}
+
 async function readStats(): Promise<StatsEntry[]> {
-  const rec = await db.cfg.get(STATS_KEY)
-  if (rec && rec.v) {
-    try { return JSON.parse(rec.v) } catch { return [] }
+  const v = await configGet(STATS_KEY)
+  if (v) {
+    try { return JSON.parse(v) } catch { return [] }
   }
   return []
 }
 
 async function writeStats(entries: StatsEntry[]): Promise<void> {
-  await db.cfg.put({ k: STATS_KEY, v: JSON.stringify(entries) })
+  await configSet(STATS_KEY, JSON.stringify(entries))
 }
 
 export async function getStatsData(): Promise<StatsEntry[]> {

@@ -1,8 +1,29 @@
 {
   "name": "x-reader-plus",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "完全脱机的现代化多格式阅读器",
   "author": "stop666",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stop666two/X-ReaderPlus.git"
+  },
+  "bugs": {
+    "url": "https://github.com/stop666two/X-ReaderPlus/issues"
+  },
+  "homepage": "https://github.com/stop666two/X-ReaderPlus",
+  "keywords": [
+    "ebook-reader",
+    "electron",
+    "vue",
+    "offline",
+    "epub",
+    "pdf",
+    "reader"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -13,10 +34,13 @@
     "build:all": "vite build && electron-builder --win --linux --mac",
     "build:vite": "vite build",
     "preview": "vite preview",
-    "lint": "vue-tsc --noEmit"
+    "lint": "vue-tsc --noEmit",
+    "postinstall": "@electron/rebuild -f -w better-sqlite3",
+    "rebuild": "@electron/rebuild -f -w better-sqlite3"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
+    "better-sqlite3": "^12.11.1",
     "dayjs": "^1.11.13",
     "dexie": "^4.0.11",
     "dompurify": "^3.2.4",
@@ -26,14 +50,17 @@
     "pdfjs-dist": "^4.0.379",
     "pinia": "^3.0.3",
     "vue": "^3.5.17",
+    "vue-i18n": "^11.1.1",
     "vue-router": "^4.5.1",
     "vuetify": "^3.8.4"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/dompurify": "^3.2.0",
     "@vitejs/plugin-vue": "^5.2.4",
-    "electron": "^31.7.7",
-    "electron-builder": "^25.1.8",
+    "electron": "^42.5.0",
+    "electron-builder": "^26.15.5",
     "typescript": "~5.7.3",
     "vite": "^6.3.5",
     "vite-plugin-electron": "^0.28.8",
@@ -43,12 +70,31 @@
   "build": {
     "appId": "com.x-reader-plus.app",
     "productName": "X-ReaderPlus",
-    "directories": { "output": "release" },
-    "files": ["dist/**/*", "dist-electron/**/*"],
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64", "ia32", "arm64"] },
-        { "target": "zip", "arch": ["x64", "ia32", "arm64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "ia32",
+            "arm64"
+          ]
+        }
       ]
     },
     "nsis": {
@@ -60,11 +106,15 @@
       "artifactName": "${productName}-${version}-win-portable.${ext}"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "category": "public.app-category.books"
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "category": "Office"
     }
   }

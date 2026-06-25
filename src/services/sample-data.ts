@@ -21,6 +21,7 @@ export function createSampleBook(): Book {
     rating: 4,
     review: '一本详细的功能使用指南，帮助您快速上手 X-ReaderPlus。',
     wordCount: 500,
+    chapterCount: 7,
     totalReadingTime: 0,
     libraryId: DEFAULT_LIBRARY_ID
   }

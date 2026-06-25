@@ -5,7 +5,7 @@
 
       <v-spacer />
 
-      <template v-if="recentDisplayItems.length > 0">
+      <template v-if="allRecentItems.length > 0">
         <v-btn
           variant="text"
           size="small"
@@ -13,7 +13,7 @@
           @click="confirmClearAll"
         >
           <v-icon start size="18">mdi-delete-sweep</v-icon>
-          清除本页所有数据
+          清除所有数据
         </v-btn>
 
         <v-btn
@@ -60,8 +60,12 @@
         <!-- Format distribution -->
         <v-card class="format-card" title="格式分布">
           <v-card-text>
-            <div v-if="Object.keys(stats.formatDistribution).length === 0" class="text-center py-4">
+            <div v-if="Object.keys(stats.formatDistribution).length === 0 && bookshelf.books.length > 0" class="text-center py-4">
               <p class="text-medium-emphasis">暂无数据</p>
+            </div>
+            <div v-if="Object.keys(stats.formatDistribution).length === 0 && bookshelf.books.length === 0" class="text-center py-4">
+              <v-progress-circular indeterminate size="24" class="mb-2" />
+              <p class="text-medium-emphasis">加载中...</p>
             </div>
             <div v-else>
               <div
@@ -85,9 +89,9 @@
         <!-- Recently added -->
         <v-card title="最近添加" class="recent-card">
           <v-card-text>
-            <v-list v-if="recentDisplayItems.length > 0" density="compact">
+            <v-list v-if="pagedRecentItems.length > 0" density="compact">
               <v-list-item
-                v-for="item in recentDisplayItems"
+                v-for="item in pagedRecentItems"
                 :key="item.bookId"
                 :class="{ 'deleted-item': item.deleted }"
               >
@@ -115,6 +119,13 @@
             <div v-else class="text-center py-4">
               <p class="text-medium-emphasis">暂无书籍</p>
             </div>
+
+            <!-- Pagination -->
+            <div v-if="totalPages > 1" class="pagination-bar">
+              <v-btn size="x-small" icon="mdi-chevron-left" :disabled="!hasPrev" @click="prevPage" />
+              <span class="text-caption mx-2">第 {{ currentPage }} / {{ totalPages }} 页</span>
+              <v-btn size="x-small" icon="mdi-chevron-right" :disabled="!hasNext" @click="nextPage" />
+            </div>
           </v-card-text>
         </v-card>
       </div>
@@ -124,7 +135,7 @@
     <v-dialog v-model="showClearAllDialog" max-width="400">
       <v-card>
         <v-card-title>确认清除</v-card-title>
-        <v-card-text>确定要清除本页所有统计数据吗？此操作不可撤销。</v-card-text>
+        <v-card-text>确定要清除所有统计数据吗？此操作不可撤销。</v-card-text>
         <v-card-actions>
           <v-spacer />
           <v-btn variant="text" @click="showClearAllDialog = false">取消</v-btn>
@@ -151,6 +162,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useBookshelfStore } from '@/stores/bookshelf'
 import { getStatsData, clearAllStats, clearDeletedStats, type StatsEntry } from '@/services/stats'
+import { usePagination } from '@/composables/usePagination'
 import dayjs from 'dayjs'
 
 const bookshelf = useBookshelfStore()
@@ -159,11 +171,23 @@ interface DisplayItem extends StatsEntry {
   deleted: boolean
 }
 
-const recentDisplayItems = ref<DisplayItem[]>([])
+const allRecentItems = ref<DisplayItem[]>([])
 const showClearAllDialog = ref(false)
 const showClearDeletedDialog = ref(false)
+const statsPageSize = ref(20)
 
-const deletedCount = computed(() => recentDisplayItems.value.filter(i => i.deleted).length)
+// ---- Pagination ----
+const {
+  currentPage,
+  totalPages,
+  hasPrev,
+  hasNext,
+  pagedItems: pagedRecentItems,
+  prevPage,
+  nextPage
+} = usePagination(allRecentItems, statsPageSize)
+
+const deletedCount = computed(() => allRecentItems.value.filter(i => i.deleted).length)
 
 const stats = computed(() => {
   const totalBooks = bookshelf.books.length
@@ -181,9 +205,8 @@ const stats = computed(() => {
 async function loadRecent() {
   const entries = await getStatsData()
   const existingIds = new Set(bookshelf.books.map(b => b.id))
-  recentDisplayItems.value = entries
+  allRecentItems.value = entries
     .sort((a, b) => b.addedAt - a.addedAt)
-    .slice(0, 10)
     .map(e => ({ ...e, deleted: !existingIds.has(e.bookId) }))
 }
 
@@ -319,6 +342,17 @@ watch(() => bookshelf.books.length, () => {
   text-align: right;
   font-size: 13px;
   flex-shrink: 0;
+}
+
+/* ---- Pagination ---- */
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 0;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  margin-top: 8px;
 }
 
 .deleted-item {
