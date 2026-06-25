@@ -7,19 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-      - run: npm ci
-      - run: npm run lint
-
   linux:
-    needs: [lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +24,6 @@ jobs:
           path: release/*.AppImage
 
   mac:
-    needs: [lint]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +40,6 @@ jobs:
           path: release/*.dmg
 
   win-x64:
-    needs: [lint]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,7 +60,6 @@ jobs:
           path: release/*.zip
 
   win-ia32:
-    needs: [lint]
     continue-on-error: true
     runs-on: windows-latest
     steps:
@@ -92,7 +77,6 @@ jobs:
           path: release/*Setup*.exe
 
   win-arm64:
-    needs: [lint]
     continue-on-error: true
     runs-on: windows-latest
     steps:

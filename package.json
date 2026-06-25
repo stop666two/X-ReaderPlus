@@ -34,9 +34,8 @@
     "build:all": "vite build && electron-builder --win --linux --mac",
     "build:vite": "vite build",
     "preview": "vite preview",
-    "lint": "node_modules\\.bin\\vue-tsc --noEmit",
-    "postinstall": "@electron/rebuild -f -w better-sqlite3",
-    "rebuild": "@electron/rebuild -f -w better-sqlite3"
+    "lint": "vue-tsc --noEmit",
+    "rebuild": "npx @electron/rebuild -f -w better-sqlite3"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
