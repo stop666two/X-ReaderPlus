@@ -45,9 +45,17 @@ X-ReaderPlus 是一款**完全脱机**的桌面多格式电子书阅读器。不
 
 访问 [Releases](https://github.com/stop666two/X-ReaderPlus/releases) 下载对应平台版本：
 
-- **Windows**: `X-ReaderPlus-Windows.zip` — 解压后双击 `x-reader.exe`
-- **macOS**: `X-ReaderPlus-macOS.tar.gz` — 解压后运行 `./x-reader`
-- **Linux**: `X-ReaderPlus-Linux.tar.gz` — 解压后运行 `./x-reader`
+| 平台 | 架构 | 说明 |
+|------|------|------|
+| Windows | x64 / x86 / ARM64 | 便携版解压即用 |
+| macOS | Apple Silicon / Intel | `chmod +x` 后运行 |
+| Linux | x86_64 / ARM64 | 需 GTK3 / WebKit2GTK |
+
+**Windows 用户**: 如遇 Defender 拦截，点击"更多信息"→"仍要运行"。不要将程序放在系统保护目录。
+
+**macOS 用户**: 首次运行如提示"无法验证"，进入 系统设置→隐私与安全性→仍要打开。
+
+**Linux 用户**: `sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0`
 
 更新日志详见 [RELEASE_NOTES.md](RELEASE_NOTES.md)。
 
