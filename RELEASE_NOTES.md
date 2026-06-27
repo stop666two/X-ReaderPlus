@@ -64,7 +64,7 @@ meta.db      →  书籍、书签、标注、回收站、历史、统计
 | Windows 不想折腾 → 解压即用 | `X-ReaderPlus-win-portable.zip` |
 | Mac Intel 芯片（2020 年前） | `X-ReaderPlus-mac-intel` |
 | Mac Apple Silicon（M1/M2/M3） | `X-ReaderPlus-mac-apple` |
-| Linux x86_64 | `X-ReaderPlus-linux-x64` |
+| Linux x86_64 | `X-ReaderPlus-linux-amd64` |
 | Linux ARM64（树莓派等） | `X-ReaderPlus-linux-arm64` |
 
 > **不确定？** Windows 用户一律推荐 `X-ReaderPlus-win-portable.zip`，解压双击即用。Mac 用户去「关于本机」看处理器是 Intel 还是 Apple。
