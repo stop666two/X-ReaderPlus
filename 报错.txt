@@ -1,5 +1,5 @@
 Annotations
-2 errors, 8 warnings, and 2 notices
+2 errors, 7 warnings, and 2 notices
 build-linux (amd64)
 Process completed with exit code 1.
 build-windows (x64)
@@ -8,18 +8,16 @@ build-macos (arm64)
 Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-go@v5, actions/setup-node@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
 build-macos (amd64)
 Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-go@v5, actions/setup-node@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
-build-windows (x86)
-Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-go@v5, actions/setup-node@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
 build-linux (arm64)
 Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-go@v5, actions/setup-node@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
 build-linux (amd64)
 Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-go@v5, actions/setup-node@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+build-windows (x86)
+Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-go@v5, actions/setup-node@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+build-windows (x64)
+Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-go@v5, actions/setup-node@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
 build-windows (arm64)
 Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-go@v5, actions/setup-node@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
-build-windows (x64)
-Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-go@v5, actions/setup-node@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
-build-windows (x64)
-No files were found with the provided path: dist/X-ReaderPlus-Setup-x64.exe. No artifacts will be uploaded.
 build-macos (arm64)
 The macos-latest label will migrate to macOS 26 beginning June 15, 2026. For more information see https://github.com/actions/runner-images/issues/14167
 build-macos (amd64)
@@ -29,19 +27,22 @@ Produced during runtime
 Name	Size	Digest	
 X-ReaderPlus-linux-amd64
 7.69 MB	
-sha256:a7a4d1140c25329aef0ad63bf19bc8bc8f6cb5f9a3bee577de1f5e913590e198
+sha256:e82f2f76eef735f8192fcc5b703b8af6edd78eb423a1d82f3d5d0656a5c36e43
 X-ReaderPlus-linux-arm64
 7.19 MB	
-sha256:1015830f1f43b892b6f8822cd033d1700756c8d87a0eebf1470b259205011678
+sha256:fbe4bf06964b53b21380f3d0932f8012e355615e170e6ffe9b360fbcb513c776
 X-ReaderPlus-mac-apple
 8.33 MB	
-sha256:296835bfb2aebd96da97c7b8bdf66bd407aed004469d115a9b474509a920e0a4
+sha256:2d014a1086076362f83f0ed5b68fc82bcb261e74af37960391e8c010f8a0754b
 X-ReaderPlus-mac-intel
 8.29 MB	
-sha256:f10168d9027cec9ce2188ea4b7cf241564563b5a8313c64f67835e35fee997dc
+sha256:05991741b4b7d46f951b9bedc0f34e44a00d5b25063647e05f5c3e2f08f4c376
 X-ReaderPlus-win-arm64-portable
 10.8 MB	
-sha256:bd657b44b626d70041d0132e265049ab972662267e95a3efd224dc1845cf85e6
+sha256:e55704dec393781de30d304cb1b0a0db4454d54ac01dc6da2906d91db7decf78
+X-ReaderPlus-win-x64
+15.7 MB	
+sha256:6007faa637f4cd1c27390b521c0dddef2f4df6bad6c55eb88d4531df2450124f
 X-ReaderPlus-win-x86-portable
 11 MB	
-sha256:f16cad7bccad3b165caf26c40bfc555b7c7c148b0091696724d7108c44e64d7e
+sha256:87b9130275d8faf5e413151ece7014488d76af7617416be5de25482f883afb65
