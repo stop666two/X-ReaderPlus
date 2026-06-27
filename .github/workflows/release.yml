@@ -1,0 +1,27 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
+
+jobs:
+  release:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create Release
+        if: startsWith(github.event.workflow_run.head_branch, 'v')
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
+          files: release-assets/*
