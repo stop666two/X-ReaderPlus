@@ -40,3 +40,6 @@ githublogs/
 *.db
 *.db-wal
 *.db-shm
+
+
+报错.txt
