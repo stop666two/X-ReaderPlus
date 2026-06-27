@@ -1,3 +1,5 @@
+Annotations
+2 errors, 8 warnings, and 2 notices
 build-linux (amd64)
 Process completed with exit code 1.
 build-windows (x64)
