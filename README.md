@@ -53,7 +53,7 @@ X-ReaderPlus 是一款**完全脱机**的桌面多格式电子书阅读器。不
 | 🪟 Windows 推荐 → 解压即用 | `X-ReaderPlus-win-portable.zip` |
 | 🍎 Mac Intel（2020 年前） | `X-ReaderPlus-mac-intel` |
 | 🍎 Mac Apple Silicon（M1/M2/M3） | `X-ReaderPlus-mac-apple` |
-| 🐧 Linux x86_64 | `X-ReaderPlus-linux-x64` |
+| 🐧 Linux x86_64 | `X-ReaderPlus-linux-amd64` |
 | 🐧 Linux ARM64（树莓派） | `X-ReaderPlus-linux-arm64` |
 
 > **不确定？** Windows 推荐便携版 zip，Mac 去「关于本机→处理器」查看。
