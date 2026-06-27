@@ -1,8 +1,4 @@
-build-windows (x64)
+build-linux (amd64)
 Process completed with exit code 1.
 build-windows (x64)
-golang.org/x/sys@v0.44.0: Get "https://proxy.golang.org/golang.org/x/sys/@v/v0.44.0.zip": net/http: TLS handshake timeout
-build-windows (x64)
-github.com/jchv/go-webview2@v0.0.0-20260205173254-56598839c808: Get "https://proxy.golang.org/github.com/jchv/go-webview2/@v/v0.0.0-20260205173254-56598839c808.zip": net/http: TLS handshake timeout
-build-linux (amd64)
 Process completed with exit code 1.
