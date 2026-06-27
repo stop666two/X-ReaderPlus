@@ -54,28 +54,20 @@ meta.db      →  书籍、书签、标注、回收站、历史、统计
 
 ## 📦 下载
 
-### Windows
+### 我该下哪个？
 
-| 架构 | 文件 |
-|------|------|
-| 64-bit (x64) | `X-ReaderPlus-Windows-amd64/x-reader-amd64.exe` |
-| 32-bit (x86) | `X-ReaderPlus-Windows-386/x-reader-386.exe` |
-| ARM64 | `X-ReaderPlus-Windows-arm64/x-reader-arm64.exe` |
-| 便携版 (含前端) | `X-ReaderPlus-Windows-Portable.zip` |
+| 你的电脑 | 下载这个 |
+|----------|----------|
+| Windows 64 位（大多数电脑） | `X-ReaderPlus-win-x64` |
+| Windows 32 位（老电脑） | `X-ReaderPlus-win-x86` |
+| Windows ARM（Surface Pro X 等） | `X-ReaderPlus-win-arm64` |
+| Windows 不想折腾 → 解压即用 | `X-ReaderPlus-win-portable.zip` |
+| Mac Intel 芯片（2020 年前） | `X-ReaderPlus-mac-intel` |
+| Mac Apple Silicon（M1/M2/M3） | `X-ReaderPlus-mac-apple` |
+| Linux x86_64 | `X-ReaderPlus-linux-x64` |
+| Linux ARM64（树莓派等） | `X-ReaderPlus-linux-arm64` |
 
-### macOS
-
-| 芯片 | 文件 |
-|------|------|
-| Apple Silicon (M1/M2/M3) | `X-ReaderPlus-macOS-arm64/x-reader-arm64` |
-| Intel | `X-ReaderPlus-macOS-amd64/x-reader-amd64` |
-
-### Linux
-
-| 架构 | 文件 |
-|------|------|
-| x86_64 | `X-ReaderPlus-Linux-amd64/x-reader-amd64` |
-| ARM64 | `X-ReaderPlus-Linux-arm64/x-reader-arm64` |
+> **不确定？** Windows 用户一律推荐 `X-ReaderPlus-win-portable.zip`，解压双击即用。Mac 用户去「关于本机」看处理器是 Intel 还是 Apple。
 
 ---
 
@@ -83,42 +75,40 @@ meta.db      →  书籍、书签、标注、回收站、历史、统计
 
 ### Windows
 
-1. **便携版** (`Portable.zip`) 解压后直接双击 `x-reader.exe` 即可运行，无需安装。
-2. **单文件版** 需配合前端文件。先解压便携版获取 `dist/` 目录，将 `x-reader.exe` 放入 `dist/` 同目录，确保 `dist/` 目录存在。
-3. 首次运行会自动创建数据库目录 `%APPDATA%\x-reader-plus\X-ReaderPlus\data\`。
-4. 如遇 Windows Defender 拦截，点击"更多信息"→"仍要运行"。本软件完全开源无恶意代码。
-5. **不要将程序放在系统保护目录**（如 `C:\Program Files`、`C:\Windows`），推荐放在 `D:\X-ReaderPlus` 或桌面。
+1. **便携版** (`win-portable.zip`)：解压到任意目录（推荐 `D:\X-ReaderPlus`），双击 `X-ReaderPlus.exe`。
+2. **单文件版** (`win-x64`/`win-x86`/`win-arm64`)：需放在包含 `dist/` 目录的文件夹中（`dist/` 来自解压便携版后的目录）。
+3. 如遇 Windows Defender 拦截，点击**"更多信息"→"仍要运行"**。本软件开源无毒。
+4. **不要放在系统保护目录**（`C:\Program Files`、`C:\Windows`），否则无法写入数据。
+5. 首次运行自动创建数据库 `%APPDATA%\x-reader-plus\X-ReaderPlus\data\`。
 
 ### macOS
 
-1. 下载对应芯片版本后，在终端执行：
+1. 下载后在终端执行：
    ```bash
-   chmod +x x-reader-arm64    # Apple Silicon
-   chmod +x x-reader-amd64    # Intel
-   ./x-reader-arm64
+   chmod +x X-ReaderPlus-mac-apple    # Apple Silicon
+   chmod +x X-ReaderPlus-mac-intel    # Intel
    ```
-2. 首次运行如提示"无法验证开发者"，进入 **系统设置 → 隐私与安全性 → 仍要打开**。
-3. 确保 `dist/` 目录与可执行文件在同一目录。
+2. 首次运行提示"无法验证开发者"→ **系统设置 → 隐私与安全性 → 仍要打开**。
+3. 需与 `dist/` 目录放在同一文件夹。
 
 ### Linux
 
-1. 赋予执行权限：
-   ```bash
-   chmod +x x-reader-amd64
-   ./x-reader-amd64
+1. ```bash
+   chmod +x X-ReaderPlus-linux-x64
+   ./X-ReaderPlus-linux-x64
    ```
-2. 需要 GTK3 或 WebKit2GTK 运行环境。Ubuntu/Debian 用户：
+2. Ubuntu/Debian 需安装依赖：
    ```bash
    sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0
    ```
-3. 确保 `dist/` 目录与可执行文件在同一目录。
+3. 需与 `dist/` 目录放在同一文件夹。
 
 ### 通用
 
-- 数据库存储在用户目录下的 `x-reader-plus/X-ReaderPlus/data/`
+- 数据库：`~/.config/x-reader-plus/X-ReaderPlus/data/` (Linux/Mac) 或 `%APPDATA%\x-reader-plus\` (Win)
 - 首次启动自动创建示例书籍
-- **不要手动删除或修改数据库文件**，避免数据损坏
-- WebDAV 备份建议先测试连接再执行备份
+- 不要手动修改数据库文件
+- WebDAV 备份前先点击"测试连接"
 
 ---
 
