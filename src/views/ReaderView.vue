@@ -95,7 +95,7 @@
               prepend-inner-icon="mdi-magnify"
               clearable
               @keyup.enter="performSearch"
-              @update:model-value="performSearch"
+              @update:model-value="debouncedSearch"
               autofocus
             >
               <template #append>
@@ -137,6 +137,7 @@
       @scroll="onScroll"
       @mousemove="resetToolbarTimer"
     >
+      <div v-if="focusMode" ref="focusOverlay" class="focus-overlay" :style="focusOverlayStyle" />
       <v-progress-linear
         v-if="isChapterLoading"
         indeterminate
@@ -498,6 +499,7 @@ const theme = useThemeStore()
 const readerRef = ref<HTMLElement | null>(null)
 const readerContainer = ref<HTMLElement | null>(null)
 const searchInput = ref('')
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 const sliderValue = ref(0)
 const showNoteDialog = ref(false)
 const showEditAnnotation = ref(false)
@@ -788,11 +790,16 @@ function saveScrollNow() {
 }
 
 function markChapterRead(bookId: string, chapterIndex: number) {
+  // Only mark as read if user has scrolled past 90% of chapter
+  if (readerContainer.value) {
+    const { scrollTop, scrollHeight, clientHeight } = readerContainer.value
+    const scrollPercent = scrollHeight > clientHeight ? scrollTop / (scrollHeight - clientHeight) : 1
+    if (scrollPercent < 0.9) return
+  }
   const key = `${bookId}:${chapterIndex}`
   const s = new Set(bookshelf.readChapters)
   s.add(key)
   bookshelf.readChapters = s
-  // Persist to DB
   persistReadChapters(bookId)
 }
 
@@ -929,32 +936,19 @@ async function loadBook() {
   // Restore scroll position for the saved chapter
   await nextTick()
   if (readerContainer.value) {
-    // Check if coming from annotation jump (query params ci + aid)
     const ciParam = route.query.ci
-    const aidParam = route.query.aid
     if (ciParam !== undefined) {
       const targetCi = parseInt(ciParam as string)
       if (targetCi >= 0 && targetCi < reader.chapterCount) {
-        reader.currentChapterIndex = targetCi
-        sliderValue.value = targetCi
-        await nextTick()
-      }
-    }
-    if (aidParam) {
-      // Find annotation and highlight it
-      await nextTick()
-      const annRecord = window.electronAPI ? await window.electronAPI.annotations.get(aidParam as string) : null
-      if (annRecord) {
-        const ann: Annotation = typeof annRecord.data === 'string' ? JSON.parse(annRecord.data) : annRecord
-        if (ann && ann.text) {
-          // Search for annotation text in the DOM and scroll+highlight
-          await nextTick()
-          highlightAnnotationInDom(ann.text)
-        }
+        reader.currentChapterIndex = targetCi; sliderValue.value = targetCi; await nextTick()
       }
     }
     const saved = reader.getScrollPosition(reader.currentChapterIndex)
-    readerContainer.value.scrollTop = saved
+    if (saved > 0) {
+      readerContainer.value.scrollTop = saved
+    } else {
+      readerContainer.value.scrollTop = 0
+    }
   }
 
   // Start reading time tracking
@@ -965,40 +959,31 @@ async function loadBook() {
 
 async function goBack() {
   isNavigatingBack = true
+  saveScrollNow()
+  const scrollHeight = readerContainer.value
+    ? readerContainer.value.scrollHeight - readerContainer.value.clientHeight
+    : 1
+  const progress = scrollHeight > 0
+    ? (readerContainer.value?.scrollTop || 0) / scrollHeight
+    : 0
+  markChapterRead(reader.bookId, reader.currentChapterIndex)
+  stopAutoScrollTimer()
+  stopReadingTimer()
+
+  // Save progress BEFORE navigating
   try {
-    // Save current position before exiting
-    saveScrollNow()
-    const scrollHeight = readerContainer.value
-      ? readerContainer.value.scrollHeight - readerContainer.value.clientHeight
-      : 1
-    const progress = scrollHeight > 0
-      ? (readerContainer.value?.scrollTop || 0) / scrollHeight
-      : 0
-
-    // Persist all scroll positions and read chapters to DB
-    await persistScrollPositions(reader.bookId)
-    await persistReadChapters(reader.bookId)
-
-    // Await the DB save before navigating to prevent progress reset
     await bookshelf.updateBookProgress(reader.bookId, reader.currentChapterIndex, progress)
+  } catch {}
 
-    // Mark current chapter as read
-    markChapterRead(reader.bookId, reader.currentChapterIndex)
-
-    // Stop timers
-    stopAutoScrollTimer()
-    stopReadingTimer()
-    if (readingSeconds.value > lastSavedSeconds) {
-      await bookshelf.updateBookReadingTime(reader.bookId, readingSeconds.value - lastSavedSeconds)
-      readingSeconds.value = 0
-      lastSavedSeconds = 0
-    }
-  } catch (e) {
-    logger.error('保存阅读进度失败', e)
-  } finally {
-    // Always navigate back, even if saving fails
-    router.push({ name: 'bookshelf' })
+  if (readingSeconds.value > lastSavedSeconds) {
+    bookshelf.updateBookReadingTime(reader.bookId, readingSeconds.value - lastSavedSeconds)
+    readingSeconds.value = 0; lastSavedSeconds = 0
   }
+  // Fire remaining saves in background
+  persistScrollPositions(reader.bookId)
+  persistReadChapters(reader.bookId)
+
+  router.push({ name: 'bookshelf' })
 }
 
 function goNextChapter() {
@@ -1025,17 +1010,8 @@ function goPreviousChapter() {
   isChapterLoading.value = true
   reader.previousChapter()
   sliderValue.value = reader.currentChapterIndex
-
-  // Persist scroll positions when switching chapters
   persistScrollPositions(reader.bookId)
-
-  // Restore saved position for previous chapter
-  nextTick(() => {
-    if (readerContainer.value) {
-      const saved = reader.getScrollPosition(reader.currentChapterIndex)
-      readerContainer.value.scrollTop = saved
-    }
-  })
+  // Scroll restored by lazyContent watcher after content renders
 }
 
 function onSliderChange(val: number) {
@@ -1092,64 +1068,87 @@ function onScroll() {
   }
 }
 
-function updateFocusParagraph() {
-  if (!readerContainer.value || !focusMode.value) return
-  const container = readerContainer.value
-  const paras = container.querySelectorAll('.reader-content p')
-  if (paras.length === 0) return
+let focusObserver: IntersectionObserver | null = null
+let focusActiveEl: HTMLElement | null = null
 
-  const viewportCenter = container.getBoundingClientRect().top + container.clientHeight / 2
-  let closestPara: HTMLParagraphElement | null = null
-  let closestDist = Infinity
+function setupFocusObserver() {
+  destroyFocusObserver()
+  if (!readerContainer.value) return
 
-  paras.forEach(p => {
-    const rect = p.getBoundingClientRect()
-    const paraCenter = rect.top + rect.height / 2
-    const dist = Math.abs(paraCenter - viewportCenter)
-    if (dist < closestDist) {
-      closestDist = dist
-      closestPara = p as HTMLParagraphElement
+  // Mark paragraph closest to viewport center as active
+  const updateActive = () => {
+    if (!readerContainer.value || !focusMode.value) return
+    const container = readerContainer.value
+    const vpCenter = container.getBoundingClientRect().top + container.clientHeight / 2
+    const paras = container.querySelectorAll<HTMLParagraphElement>('.reader-content p')
+    let best: HTMLParagraphElement | null = null
+    let bestDist = Infinity
+    for (let i = 0; i < paras.length; i++) {
+      const p = paras[i]
+      const rect = p.getBoundingClientRect()
+      const dist = Math.abs(rect.top + rect.height / 2 - vpCenter)
+      if (dist < bestDist) { bestDist = dist; best = p }
     }
-  })
-
-  // Remove active class from all, add to closest
-  paras.forEach(p => p.classList.remove('focus-active'))
-  if (closestPara) {
-    closestPara.classList.add('focus-active')
-    // Mark nearby paragraphs for progressive dimming
-    let prev = closestPara.previousElementSibling as HTMLElement | null
-    let next = closestPara.nextElementSibling as HTMLElement | null
-    for (let i = 1; i <= 3; i++) {
-      if (prev && prev.tagName === 'P') {
-        prev.style.setProperty('--focus-dist', String(i))
-        prev = prev.previousElementSibling as HTMLElement | null
-      }
-      if (next && next.tagName === 'P') {
-        next.style.setProperty('--focus-dist', String(i))
-        next = next.nextElementSibling as HTMLElement | null
-      }
-    }
+    for (let i = 0; i < paras.length; i++) paras[i].classList.remove('focus-active')
+    if (best) best.classList.add('focus-active')
+    focusActiveEl = best
   }
+
+  focusObserver = new IntersectionObserver(() => updateActive(), {
+    root: readerContainer.value,
+    rootMargin: '-20% 0px',
+    threshold: 0.1,
+  })
+  readerContainer.value.querySelectorAll('.reader-content p').forEach(p => focusObserver!.observe(p))
+  updateActive()
+}
+
+function destroyFocusObserver() {
+  if (focusObserver) { focusObserver.disconnect(); focusObserver = null }
+  if (readerContainer.value) {
+    readerContainer.value.querySelectorAll('.reader-content .focus-active').forEach((el: any) => el.classList.remove('focus-active'))
+  }
+  focusActiveEl = null
+}
+
+const focusOverlay = ref<HTMLElement | null>(null)
+const focusOverlayStyle = ref('')
+
+function positionFocusOverlay() {
+  if (!readerContainer.value || !focusMode.value) return
+  const rect = readerContainer.value.getBoundingClientRect()
+  focusOverlayStyle.value = `top:${rect.top}px;left:${rect.left}px;width:${rect.width}px;height:${rect.height}px`
+}
+
+function updateFocusParagraph() {
+  if (!focusMode.value || !readerContainer.value) return
+  const container = readerContainer.value
+  const vpCenter = container.getBoundingClientRect().top + container.clientHeight / 2
+  const paras = container.querySelectorAll<HTMLParagraphElement>('.reader-content p')
+  let best: HTMLParagraphElement | null = null
+  let bestDist = Infinity
+  for (let i = 0; i < paras.length; i++) {
+    const p = paras[i]
+    const rect = p.getBoundingClientRect()
+    const dist = Math.abs(rect.top + rect.height / 2 - vpCenter)
+    if (dist < bestDist) { bestDist = dist; best = p }
+  }
+  for (let i = 0; i < paras.length; i++) paras[i].classList.remove('focus-active')
+  if (best) best.classList.add('focus-active')
+  positionFocusOverlay()
 }
 
 // Watch chapter index changes to restore scroll
 watch(() => reader.currentChapterIndex, (newIdx) => {
   renderedSegmentCount.value = INITIAL_SEGMENT_COUNT
-  if (!isChapterTransition) return
+  if (!isChapterTransition && !isNavigatingBack) return
   isChapterTransition = false
   sliderValue.value = newIdx
+  // Restore scroll after content renders (deferred to lazyContent watcher)
   nextTick(() => {
-    const key = `${reader.bookId}:${newIdx}`
-    if (!readChaptersSet.value.has(key)) {
-      // Unread chapter — scroll to top
-      if (readerContainer.value) readerContainer.value.scrollTop = 0
-    } else {
-      restoreScrollPosition(newIdx)
-    }
-    // Apply annotation highlights to DOM
     applyChapterAnnotations()
     isChapterLoading.value = false
-    if (focusMode.value) updateFocusParagraph()
+    if (focusMode.value) { updateFocusParagraph() }
     if (isPdfBook.value) setupPdfPageObserver()
   })
 })
@@ -1167,23 +1166,34 @@ watch(() => settings.readingSettings.autoSaveInterval, () => {
 // Watch for focus mode toggle
 watch(focusMode, (val) => {
   if (val) {
-    nextTick(() => updateFocusParagraph())
+    nextTick(() => {
+      positionFocusOverlay()
+      updateFocusParagraph()
+    })
   } else {
-    // Remove all focus classes
     if (readerContainer.value) {
-      readerContainer.value.querySelectorAll('.reader-content .focus-active').forEach(el => el.classList.remove('focus-active'))
-      readerContainer.value.querySelectorAll('.reader-content p').forEach(el => {
-        (el as HTMLElement).style.removeProperty('--focus-dist')
-      })
+      readerContainer.value.querySelectorAll('.reader-content .focus-active').forEach((el: any) => el.classList.remove('focus-active'))
     }
   }
 })
+
+window.addEventListener('resize', positionFocusOverlay)
+
+onUnmounted(() => { window.removeEventListener('resize', positionFocusOverlay) })
 
 // Watch lazyContent changes to re-attach sentinel observer
 watch(lazyContent, () => {
   nextTick(() => {
     setupLazySentinel()
     if (isPdfBook.value) setupPdfPageObserver()
+    // Restore scroll position after content renders
+    const key = `${reader.bookId}:${reader.currentChapterIndex}`
+    if (!readChaptersSet.value.has(key)) {
+      if (readerContainer.value) readerContainer.value.scrollTop = 0
+    } else {
+      const saved = reader.getScrollPosition(reader.currentChapterIndex)
+      if (readerContainer.value && saved > 0) readerContainer.value.scrollTop = saved
+    }
   })
 })
 
@@ -1272,11 +1282,17 @@ function performSearch() {
   reader.performSearch(searchInput.value)
 }
 
+function debouncedSearch() {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => performSearch(), 300)
+}
+
 function prevSearchResult() {
   if (reader.searchResults.length === 0) return
   reader.currentSearchIndex = reader.currentSearchIndex > 0
     ? reader.currentSearchIndex - 1
     : reader.searchResults.length - 1
+  scrollToSearchResult()
 }
 
 function nextSearchResult() {
@@ -1284,6 +1300,53 @@ function nextSearchResult() {
   reader.currentSearchIndex = reader.currentSearchIndex < reader.searchResults.length - 1
     ? reader.currentSearchIndex + 1
     : 0
+  scrollToSearchResult()
+}
+
+function scrollToSearchResult() {
+  if (!readerContainer.value || reader.searchResults.length === 0) return
+  const result = reader.searchResults[reader.currentSearchIndex]
+  if (!result) return
+
+  // Navigate to the chapter containing the result
+  if (result.chapterIndex !== reader.currentChapterIndex) {
+    reader.navigateToChapter(result.chapterIndex)
+    sliderValue.value = result.chapterIndex
+    nextTick(() => highlightAndScrollToMatch(result))
+  } else {
+    highlightAndScrollToMatch(result)
+  }
+}
+
+function highlightAndScrollToMatch(result: { text: string; chapterIndex: number }) {
+  if (!readerContainer.value) return
+  // Clear previous highlights
+  readerContainer.value.querySelectorAll('.search-highlight').forEach((el: any) => {
+    const parent = el.parentNode
+    if (parent) { parent.replaceChild(document.createTextNode(el.textContent || ''), el); parent.normalize() }
+  })
+
+  // Find and highlight the match text
+  const walker = document.createTreeWalker(readerContainer.value, NodeFilter.SHOW_TEXT)
+  let node: Text | null
+  const searchText = result.text.trim()
+  while ((node = walker.nextNode() as Text | null)) {
+    const content = node.textContent || ''
+    const idx = content.toLowerCase().indexOf(searchText.toLowerCase())
+    if (idx >= 0) {
+      const span = document.createElement('span')
+      span.className = 'search-highlight'
+      span.textContent = content.substring(idx, idx + searchText.length)
+      const range = document.createRange()
+      range.setStart(node, idx)
+      range.setEnd(node, idx + searchText.length)
+      range.deleteContents()
+      range.insertNode(span)
+      // Scroll to it
+      span.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      break
+    }
+  }
 }
 
 // ---- Selection handling ----
@@ -2069,30 +2132,26 @@ onBeforeRouteLeave(async (_to, _from) => {
   width: 100%;
 }
 
-/* ---- Focus mode ---- */
-.focus-mode .reader-content :deep(p) {
-  transition: opacity 0.35s ease, filter 0.35s ease;
-  opacity: 0.22;
-  filter: blur(0.6px);
+/* ---- Focus mode — 60% dark overlay + bold center paragraph ---- */
+.focus-mode {
+  position: relative;
+}
+.focus-overlay {
+  position: fixed;
+  background: rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  z-index: 5;
 }
 .focus-mode .reader-content :deep(p.focus-active) {
-  opacity: 1;
-  filter: none;
+  position: relative;
+  z-index: 6;
+  font-weight: 700 !important;
 }
-.focus-mode .reader-content :deep(p.focus-active)::first-line {
-  font-weight: 500;
-}
-/* Progressive dimming: closer paragraphs are slightly more visible */
-.focus-mode .reader-content :deep(p[style*='--focus-dist: 1']) {
-  opacity: 0.45;
-  filter: blur(0.2px);
-}
-.focus-mode .reader-content :deep(p[style*='--focus-dist: 2']) {
-  opacity: 0.32;
-  filter: blur(0.4px);
-}
-.focus-mode .reader-content :deep(p[style*='--focus-dist: 3']) {
-  opacity: 0.25;
-  filter: blur(0.5px);
+/* Search highlight */
+:deep(.search-highlight) {
+  background: #ff1744;
+  color: #fff;
+  border-radius: 2px;
+  padding: 0 1px;
 }
 </style>

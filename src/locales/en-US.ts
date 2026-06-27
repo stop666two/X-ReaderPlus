@@ -117,7 +117,7 @@ export default {
     },
     page: 'Page {page}/{total}',
     importErrors: {
-      electronOnly: 'Please import in Electron environment',
+      electronOnly: 'Please import in desktop environment',
       readFailed: 'Read failed: {name}',
       fileTooLarge: 'File too large: {name}',
       epubTooMany: 'Too many files in EPUB',
@@ -280,7 +280,7 @@ export default {
     confirmPermanentDeleteMsg: 'Permanently delete {n} selected items? This cannot be undone!',
     confirmRestore: 'Confirm Restore',
     confirmRestoreMsg: 'Restore {n} selected books?',
-    electronOnly: 'electronAPI unavailable — trash operations require Electron'
+    electronOnly: 'Bridge unavailable — trash operations require desktop environment'
   },
   settings: {
     title: 'Settings',
@@ -391,7 +391,7 @@ export default {
     unknown: 'Unknown'
   },
   errors: {
-    electronUnavailable: 'electronAPI unavailable',
+    electronUnavailable: 'Tauri Bridge unavailable',
     sqliteAvailable: 'SQLite database available',
     sqliteUnavailable: 'SQLite unavailable, falling back to IndexedDB',
     decryptFailed: 'Decryption failed: incorrect key or corrupted data',

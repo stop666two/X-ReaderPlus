@@ -741,7 +741,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick, shallowRef } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useBookshelfStore } from '@/stores/bookshelf'
 import { usePagination, getPageSize } from '@/composables/usePagination'
@@ -810,6 +810,7 @@ const showConfirm = ref(false)
 
 // Import dialog
 const showImportDialog = ref(false)
+const showNewLibDialog = ref(false)
 const importMode = ref<ImportMode>('copy')
 const importDragOver = ref(false)
 const pendingFiles = ref<{ name: string; path: string }[]>([])
@@ -840,43 +841,8 @@ watch(() => store.searchQuery, (val) => {
   }
 })
 
-// ========== Local filtered books (shallowRef to reduce reactivity depth) ==========
-const localFilteredBooks = shallowRef<Book[]>([])
-
-watch(
-  [() => store.filteredLibraryBooks, () => store.searchQuery, () => store.filterTag, () => store.sortField, () => store.sortOrder] as const,
-  ([flb, sq, ft, sf, so]) => {
-    let result = [...flb]
-    if (sq) {
-      const q = sq.toLowerCase()
-      result = result.filter(b => b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q))
-    }
-    if (ft) result = result.filter(b => b.tags.includes(ft))
-    result.sort((a, b) => {
-      let cmp = 0
-      switch (sf) {
-        case 'title':
-          cmp = (a.title || '').localeCompare(b.title || '', 'zh-CN')
-          if (cmp === 0) cmp = (a.title || '').localeCompare(b.title || '', 'en')
-          break
-        case 'author':
-          cmp = (a.author || '').localeCompare(b.author || '', 'zh-CN')
-          if (cmp === 0) cmp = (a.author || '').localeCompare(b.author || '', 'en')
-          break
-        case 'addedAt': cmp = a.addedAt - b.addedAt; break
-        case 'chapterCount': cmp = (a.chapterCount || 0) - (b.chapterCount || 0); break
-        case 'libraryName':
-          const libA = store.libraries.find(l => l.id === a.libraryId)?.name || ''
-          const libB = store.libraries.find(l => l.id === b.libraryId)?.name || ''
-          cmp = libA.localeCompare(libB, 'zh-CN')
-          break
-      }
-      return so === 'asc' ? cmp : -cmp
-    })
-    localFilteredBooks.value = result
-  },
-  { immediate: true }
-)
+// ========== Local filtered books — use the store's pre-computed filteredBooks ==========
+const localFilteredBooks = computed(() => store.filteredBooks)
 
 // ========== Pagination ==========
 const bookshelfPageSize = ref(30)
@@ -892,8 +858,8 @@ const {
   hasNext, hasPrev, nextPage, prevPage, goToPage, reset: resetPagination
 } = usePagination(localFilteredBooks, bookshelfPageSize, { onPageChange: scrollToTop })
 
-// Display alias — keep template using `displayedBooks` for minimal changes
-const displayedBooks = computed(() => pagedItems.value)
+// Direct alias — pagedItems is already a computed
+const displayedBooks = pagedItems
 
 // Reset pagination when sort/search/tag/library changes
 watch(
@@ -953,12 +919,14 @@ function invertSelectionCurrentPage() {
 
 // When page changes, restore store.selectedIds from crossPageSelectedIds for the new page
 watch(currentPage, () => {
-  const currentIds = new Set(pagedItems.value.map(b => b.id))
-  const restored = new Set<string>()
-  currentIds.forEach(id => {
-    if (crossPageSelectedIds.value.has(id)) restored.add(id)
+  nextTick(() => {
+    const currentIds = new Set(pagedItems.value.map(b => b.id))
+    const restored = new Set<string>()
+    currentIds.forEach(id => {
+      if (crossPageSelectedIds.value.has(id)) restored.add(id)
+    })
+    store.selectedIds = restored
   })
-  store.selectedIds = restored
 })
 
 // ========== Sort ==========
@@ -1037,37 +1005,32 @@ async function deleteContextBook() {
 }
 
 async function exportSingleBook(book: Book) {
-  if (!window.electronAPI) return
   try {
-    const chapters = await window.electronAPI.chapters.get(book.id)
-    const annotations = await window.electronAPI.annotations.getByBook(book.id)
-    const bookmarks = await window.electronAPI.bookmarks.getByBook(book.id)
-
-    const exportData = {
-      book,
-      chapters: chapters ? JSON.parse(chapters) : [],
-      annotations: (annotations || []).map((a: any) =>
-        typeof a.data === 'string' ? JSON.parse(a.data) : a
-      ),
-      bookmarks: (bookmarks || []).map((b: any) =>
-        typeof b.data === 'string' ? JSON.parse(b.data) : b
-      )
+    // Try downloading original file first
+    const rawUrl = `http://127.0.0.1:34123/api/raw/${book.id}`
+    const res = await fetch(rawUrl)
+    if (res.ok) {
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const ext = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1]
+      a.download = ext || `${book.title.replace(/[\\/:*?"<>|]/g, '_')}.${book.format}`
+      a.click()
+      URL.revokeObjectURL(url)
+      return
     }
-
-    const json = JSON.stringify(exportData, null, 2)
-    const safeName = book.title.replace(/[\\/:*?"<>|]/g, '_')
-    const result = await window.electronAPI.saveFile({
-      defaultPath: `${safeName}.json`,
-      filters: [{ name: 'JSON', extensions: ['json'] }]
-    })
-
-    if (!result.canceled && result.filePath) {
-      const encoder = new TextEncoder()
-      await window.electronAPI.writeFile(result.filePath, encoder.encode(json).buffer)
-    }
-  } catch (e) {
-    logger.error('Export book failed:', e)
-  }
+  } catch {}
+  // Fallback: export JSON metadata
+  try {
+    const chapters = book.chapterCount > 0 ? await window.electronAPI?.chapters.get(book.id) : null
+    const json = JSON.stringify({ book, chapters: chapters ? JSON.parse(chapters) : [] }, null, 2)
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `${book.title.replace(/[\\/:*?"<>|]/g, '_')}.json`
+    a.click(); URL.revokeObjectURL(url)
+  } catch {}
 }
 
 // ========== Import ==========

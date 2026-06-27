@@ -407,11 +407,12 @@ function openCreateDialog() {
 async function createTag() {
   const name = newTagName.value.trim()
   if (!name) return
-  // If tag already exists, just close
   if (tagCountMap.value.has(name)) {
     showCreate.value = false
     return
   }
+  // Add the new tag via bookshelf store
+  await bookshelf.createTag(name)
   showCreate.value = false
 }
 

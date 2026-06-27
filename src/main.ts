@@ -4,6 +4,7 @@ import App from './App.vue'
 import router from './router'
 import vuetify from './plugins/vuetify'
 import i18n from './plugins/i18n'
+import './services/api-bridge'  // Go HTTP backend API
 import { initDb } from './services/db'
 import { useThemeStore } from './stores/theme'
 import { useSettingsStore } from './stores/settings'

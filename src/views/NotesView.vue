@@ -439,8 +439,11 @@ function getColorLabel(color: HighlightColor): string {
 }
 
 function getBookTitle(bookId: string): string {
-  return bookshelf.books.find(b => b.id === bookId)?.title || '未知书籍'
+  const b = bookshelf.books.find(b => b.id === bookId)
+  return b ? b.title : '已删除'
 }
+
+const bookExists = (bookId: string) => bookshelf.books.some(b => b.id === bookId)
 
 function getChapterTitle(ann: Annotation): string {
   return `第 ${ann.chapterIndex + 1} 章`
