@@ -53,11 +53,14 @@ jobs:
           $nsisOk = $false
           if (Get-Command choco -ErrorAction SilentlyContinue) {
             choco install nsis -y --no-progress 2>$null
-            if ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) {
-              makensis scripts/installer.nsi
-              if ($LASTEXITCODE -eq 0) {
-                $nsisOk = $true
-              }
+            if ($LASTEXITCODE -eq 0) {
+              Import-Module "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1" -ErrorAction SilentlyContinue
+              Update-SessionEnvironment -ErrorAction SilentlyContinue
+              $env:PATH = "C:\Program Files (x86)\NSIS;$env:PATH"
+              try {
+                makensis scripts/installer.nsi 2>$null
+                if ($LASTEXITCODE -eq 0) { $nsisOk = $true }
+              } catch {}
             }
           }
           "nsis_ok=$nsisOk" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
@@ -224,7 +227,7 @@ jobs:
         if: matrix.arch == 'amd64'
         id: appimage
         run: |
-          bash scripts/build-linux.sh "dist/X-ReaderPlus-linux-amd64" "x86_64"
+          bash scripts/build-linux.sh "dist/X-ReaderPlus-linux-amd64" "x86_64" || true
           if [ -f "dist/X-ReaderPlus-linux-x86_64.AppImage" ]; then
             echo "appimage_ok=true" >> "$GITHUB_OUTPUT"
           else
