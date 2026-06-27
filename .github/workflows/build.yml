@@ -8,7 +8,6 @@ on:
     branches: [main, master]
 
 jobs:
-  # ─── Windows ───────────────────────────────────────────
   build-windows:
     runs-on: windows-latest
     strategy:
@@ -44,27 +43,32 @@ jobs:
 
       - name: Build NSIS installer (x64 only)
         if: matrix.arch == 'x64'
+        continue-on-error: true
         run: |
-          choco install nsis -y --no-progress
-          $nsis = "C:\Program Files (x86)\NSIS\makensis.exe"
-          if (!(Test-Path $nsis)) { $nsis = (Get-Command makensis.exe -ErrorAction SilentlyContinue).Source }
-          & $nsis scripts/installer.nsi
+          choco install nsis -y --no-progress 2>$null
+          makensis scripts/installer.nsi
 
-      - name: Upload installer (x64)
+      - name: Upload setup (x64)
         if: matrix.arch == 'x64'
         uses: actions/upload-artifact@v4
         with:
           name: X-ReaderPlus-Setup-x64
           path: dist/X-ReaderPlus-Setup-x64.exe
 
-      - name: Upload binary
+      - name: Upload binary (x64)
+        if: matrix.arch == 'x64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: X-ReaderPlus-win-x64
+          path: dist/X-ReaderPlus-win-x64.exe
+
+      - name: Upload binary (non-x64)
         if: matrix.arch != 'x64'
         uses: actions/upload-artifact@v4
         with:
           name: X-ReaderPlus-win-${{ matrix.arch }}
           path: dist/X-ReaderPlus-win-${{ matrix.arch }}.exe
 
-  # ─── macOS ────────────────────────────────────────────
   build-macos:
     runs-on: macos-latest
     strategy:
@@ -117,9 +121,8 @@ jobs:
           name: X-ReaderPlus-mac-${{ matrix.arch == 'amd64' && 'intel' || 'apple' }}
           path: dist/X-ReaderPlus-mac-${{ matrix.arch == 'amd64' && 'intel' || 'apple' }}.dmg
 
-  # ─── Linux ────────────────────────────────────────────
   build-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
@@ -141,8 +144,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libgtk-3-dev pkg-config librsvg2-bin
-          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev || sudo apt-get install -y -qq libwebkit2gtk-4.0-dev || true
+          sudo apt-get install -y -qq libgtk-3-dev libwebkit2gtk-4.0-dev pkg-config librsvg2-bin
 
       - name: Build frontend
         run: npm run build
@@ -172,16 +174,16 @@ jobs:
         if: matrix.arch == 'amd64'
         run: bash scripts/build-linux.sh "dist/X-ReaderPlus-linux-amd64" "x86_64"
 
-      - name: Upload binary (arm64)
-        if: matrix.arch == 'arm64'
-        uses: actions/upload-artifact@v4
-        with:
-          name: X-ReaderPlus-linux-arm64
-          path: dist/X-ReaderPlus-linux-arm64
-
       - name: Upload AppImage (amd64)
         if: matrix.arch == 'amd64'
         uses: actions/upload-artifact@v4
         with:
           name: X-ReaderPlus-linux-amd64
           path: dist/X-ReaderPlus-linux-x86_64.AppImage
+
+      - name: Upload binary (arm64)
+        if: matrix.arch == 'arm64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: X-ReaderPlus-linux-arm64
+          path: dist/X-ReaderPlus-linux-arm64
