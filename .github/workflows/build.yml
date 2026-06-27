@@ -40,14 +40,14 @@ jobs:
         env:
           GOARCH: ${{ matrix.arch == 'x64' && 'amd64' || matrix.arch == 'x86' && '386' || matrix.arch }}
         run: |
-          go mod tidy
           go build -ldflags="-s -w -H=windowsgui" -o "../dist/X-ReaderPlus-win-${{ matrix.arch }}.exe" .
 
       - name: Build NSIS installer (x64 only)
         if: matrix.arch == 'x64'
         run: |
           choco install nsis -y --no-progress
-          $nsis = (Get-ChildItem -Path "C:\Program Files*\NSIS\makensis.exe" -Recurse | Select-Object -First 1).FullName
+          $nsis = "C:\Program Files (x86)\NSIS\makensis.exe"
+          if (!(Test-Path $nsis)) { $nsis = (Get-Command makensis.exe -ErrorAction SilentlyContinue).Source }
           & $nsis scripts/installer.nsi
 
       - name: Upload installer (x64)
@@ -91,14 +91,23 @@ jobs:
       - name: Copy frontend for embed
         run: node scripts/copy-frontend.js
 
-      - name: Build Go backend
+      - name: Build Go backend (arm64 native)
+        if: matrix.arch == 'arm64'
         working-directory: backend
         env:
-          GOARCH: ${{ matrix.arch }}
+          GOARCH: arm64
           CGO_ENABLED: 1
         run: |
-          go mod tidy
-          go build -ldflags="-s -w" -o "../dist/X-ReaderPlus-mac-${{ matrix.arch }}" .
+          go build -ldflags="-s -w" -o "../dist/X-ReaderPlus-mac-arm64" .
+
+      - name: Build Go backend (amd64 headless)
+        if: matrix.arch == 'amd64'
+        working-directory: backend
+        env:
+          GOARCH: amd64
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags="-s -w" -o "../dist/X-ReaderPlus-mac-amd64" .
 
       - name: Package .app + .dmg
         run: bash scripts/build-macos.sh "dist/X-ReaderPlus-mac-${{ matrix.arch }}" "${{ matrix.arch == 'amd64' && 'intel' || 'apple' }}"
@@ -132,7 +141,8 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libgtk-3-dev libwebkit2gtk-4.0-dev librsvg2-bin
+          sudo apt-get install -y -qq libgtk-3-dev pkg-config librsvg2-bin
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev || sudo apt-get install -y -qq libwebkit2gtk-4.0-dev || true
 
       - name: Build frontend
         run: npm run build
@@ -140,19 +150,38 @@ jobs:
       - name: Copy frontend for embed
         run: node scripts/copy-frontend.js
 
-      - name: Build Go backend
+      - name: Build Go backend (amd64)
+        if: matrix.arch == 'amd64'
         working-directory: backend
         env:
-          GOARCH: ${{ matrix.arch }}
+          GOARCH: amd64
           CGO_ENABLED: 1
         run: |
-          go mod tidy
-          go build -ldflags="-s -w" -o "../dist/X-ReaderPlus-linux-${{ matrix.arch }}" .
+          go build -ldflags="-s -w" -o "../dist/X-ReaderPlus-linux-amd64" .
 
-      - name: Package AppImage
-        run: bash scripts/build-linux.sh "dist/X-ReaderPlus-linux-${{ matrix.arch }}" "${{ matrix.arch }}"
+      - name: Build Go backend (arm64 headless)
+        if: matrix.arch == 'arm64'
+        working-directory: backend
+        env:
+          GOARCH: arm64
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags="-s -w" -o "../dist/X-ReaderPlus-linux-arm64" .
 
-      - uses: actions/upload-artifact@v4
+      - name: Package AppImage (amd64 only)
+        if: matrix.arch == 'amd64'
+        run: bash scripts/build-linux.sh "dist/X-ReaderPlus-linux-amd64" "x86_64"
+
+      - name: Upload binary (arm64)
+        if: matrix.arch == 'arm64'
+        uses: actions/upload-artifact@v4
         with:
-          name: X-ReaderPlus-linux-${{ matrix.arch }}
-          path: dist/X-ReaderPlus-linux-${{ matrix.arch }}.AppImage
+          name: X-ReaderPlus-linux-arm64
+          path: dist/X-ReaderPlus-linux-arm64
+
+      - name: Upload AppImage (amd64)
+        if: matrix.arch == 'amd64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: X-ReaderPlus-linux-amd64
+          path: dist/X-ReaderPlus-linux-x86_64.AppImage
