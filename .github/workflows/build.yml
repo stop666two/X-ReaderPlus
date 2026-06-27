@@ -3,7 +3,7 @@ name: Build
 on:
   push:
     branches: [main, master]
-    tags: ['v*']
+    tags: ['*']
   pull_request:
     branches: [main, master]
 
@@ -127,12 +127,8 @@ jobs:
           path: dist/X-ReaderPlus-linux-${{ matrix.arch }}
 
   release:
-    needs:
-      - build-windows
-      - build-windows-portable
-      - build-macos
-      - build-linux
-    if: always() && startsWith(github.ref, 'refs/tags/v')
+    needs: [build-windows-portable]
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -140,6 +136,8 @@ jobs:
         with:
           path: release-assets
           merge-multiple: true
+      - name: Show files
+        run: ls -la release-assets/
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
