@@ -45,19 +45,24 @@ X-ReaderPlus 是一款**完全脱机**的桌面多格式电子书阅读器。不
 
 访问 [Releases](https://github.com/stop666two/X-ReaderPlus/releases) 下载对应平台版本：
 
-| 平台 | 架构 | 说明 |
-|------|------|------|
-| Windows | x64 / x86 / ARM64 | 便携版解压即用 |
-| macOS | Apple Silicon / Intel | `chmod +x` 后运行 |
-| Linux | x86_64 / ARM64 | 需 GTK3 / WebKit2GTK |
+| 你的电脑 | 下载 |
+|----------|------|
+| 🪟 Windows 64 位（大多数） | `X-ReaderPlus-win-x64` |
+| 🪟 Windows 32 位（老电脑） | `X-ReaderPlus-win-x86` |
+| 🪟 Windows ARM | `X-ReaderPlus-win-arm64` |
+| 🪟 Windows 推荐 → 解压即用 | `X-ReaderPlus-win-portable.zip` |
+| 🍎 Mac Intel（2020 年前） | `X-ReaderPlus-mac-intel` |
+| 🍎 Mac Apple Silicon（M1/M2/M3） | `X-ReaderPlus-mac-apple` |
+| 🐧 Linux x86_64 | `X-ReaderPlus-linux-x64` |
+| 🐧 Linux ARM64（树莓派） | `X-ReaderPlus-linux-arm64` |
 
-**Windows 用户**: 如遇 Defender 拦截，点击"更多信息"→"仍要运行"。不要将程序放在系统保护目录。
+> **不确定？** Windows 推荐便携版 zip，Mac 去「关于本机→处理器」查看。
 
-**macOS 用户**: 首次运行如提示"无法验证"，进入 系统设置→隐私与安全性→仍要打开。
+**Windows**: Defender 拦截点"更多信息→仍要运行"。不要放系统保护目录。
+**Mac**: `chmod +x` 后运行。首次去「系统设置→隐私→仍要打开」。
+**Linux**: `chmod +x` 后运行。`apt install libgtk-3-0 libwebkit2gtk-4.1-0`。
 
-**Linux 用户**: `sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0`
-
-更新日志详见 [RELEASE_NOTES.md](RELEASE_NOTES.md)。
+详情见 [RELEASE_NOTES.md](RELEASE_NOTES.md)。
 
 ### 开发构建
 

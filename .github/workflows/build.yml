@@ -8,171 +8,153 @@ on:
     branches: [main, master]
 
 jobs:
+  # ═══════════════════ Windows ═══════════════════
+
   build-windows-amd64:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version: '1.23' }
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
+      - uses: actions/setup-go@v5; with: { go-version: '1.23' }
+      - uses: actions/setup-node@v4; with: { node-version: '20', cache: 'npm' }
       - run: npm ci
       - run: npm run build
-      - name: Build Go
+      - name: Build
         working-directory: backend
-        env: { GOARCH: amd64, CGO_ENABLED: '0' }
-        run: go build -ldflags="-s -w -H=windowsgui" -o ../dist/x-reader-amd64.exe .
+        run: go build -ldflags="-s -w -H=windowsgui" -o ../dist/X-ReaderPlus-win-x64.exe .
       - uses: actions/upload-artifact@v4
-        with: { name: win-amd64, path: dist/x-reader-amd64.exe }
+        with: { name: X-ReaderPlus-win-x64, path: dist/X-ReaderPlus-win-x64.exe }
 
-  build-windows-386:
+  build-windows-x86:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version: '1.23' }
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
+      - uses: actions/setup-go@v5; with: { go-version: '1.23' }
+      - uses: actions/setup-node@v4; with: { node-version: '20', cache: 'npm' }
       - run: npm ci
       - run: npm run build
-      - name: Build Go
+      - name: Build
         working-directory: backend
-        env: { GOARCH: '386', CGO_ENABLED: '0' }
-        run: go build -ldflags="-s -w -H=windowsgui" -o ../dist/x-reader-386.exe .
+        env: { GOARCH: '386' }
+        run: go build -ldflags="-s -w -H=windowsgui" -o ../dist/X-ReaderPlus-win-x86.exe .
       - uses: actions/upload-artifact@v4
-        with: { name: win-386, path: dist/x-reader-386.exe }
+        with: { name: X-ReaderPlus-win-x86, path: dist/X-ReaderPlus-win-x86.exe }
 
   build-windows-arm64:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version: '1.23' }
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
+      - uses: actions/setup-go@v5; with: { go-version: '1.23' }
+      - uses: actions/setup-node@v4; with: { node-version: '20', cache: 'npm' }
       - run: npm ci
       - run: npm run build
-      - name: Build Go
+      - name: Build
         working-directory: backend
-        env: { GOARCH: arm64, CGO_ENABLED: '0' }
-        run: go build -ldflags="-s -w -H=windowsgui" -o ../dist/x-reader-arm64.exe .
+        env: { GOARCH: arm64 }
+        run: go build -ldflags="-s -w -H=windowsgui" -o ../dist/X-ReaderPlus-win-arm64.exe .
       - uses: actions/upload-artifact@v4
-        with: { name: win-arm64, path: dist/x-reader-arm64.exe }
+        with: { name: X-ReaderPlus-win-arm64, path: dist/X-ReaderPlus-win-arm64.exe }
 
   build-windows-portable:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version: '1.23' }
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
+      - uses: actions/setup-go@v5; with: { go-version: '1.23' }
+      - uses: actions/setup-node@v4; with: { node-version: '20', cache: 'npm' }
       - run: npm ci
       - run: npm run build
-      - name: Build Go
+      - name: Build
         working-directory: backend
-        env: { GOARCH: amd64, CGO_ENABLED: '0' }
-        run: go build -ldflags="-s -w -H=windowsgui" -o ../dist/x-reader.exe .
+        run: go build -ldflags="-s -w -H=windowsgui" -o ../dist/X-ReaderPlus.exe .
       - name: Package
         run: |
           copy README.md dist\
-          Compress-Archive -Path dist\* -DestinationPath X-ReaderPlus-Windows-Portable.zip
+          Compress-Archive -Path dist\* -DestinationPath X-ReaderPlus-win-portable.zip
       - uses: actions/upload-artifact@v4
-        with: { name: win-portable, path: X-ReaderPlus-Windows-Portable.zip }
+        with: { name: X-ReaderPlus-win-portable, path: X-ReaderPlus-win-portable.zip }
 
-  build-macos-amd64:
+  # ═══════════════════ macOS ═══════════════════
+
+  build-macos-intel:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version: '1.23' }
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
+      - uses: actions/setup-go@v5; with: { go-version: '1.23' }
+      - uses: actions/setup-node@v4; with: { node-version: '20', cache: 'npm' }
       - run: npm ci
       - run: npm run build
-      - name: Build Go
+      - name: Build
         working-directory: backend
-        env: { GOARCH: amd64, CGO_ENABLED: '0' }
-        run: go build -ldflags="-s -w" -o ../dist/x-reader-amd64 .
+        run: go build -ldflags="-s -w" -o ../dist/X-ReaderPlus-mac-intel .
       - uses: actions/upload-artifact@v4
-        with: { name: mac-amd64, path: dist/x-reader-amd64 }
+        with: { name: X-ReaderPlus-mac-intel, path: dist/X-ReaderPlus-mac-intel }
 
-  build-macos-arm64:
+  build-macos-apple:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version: '1.23' }
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
+      - uses: actions/setup-go@v5; with: { go-version: '1.23' }
+      - uses: actions/setup-node@v4; with: { node-version: '20', cache: 'npm' }
       - run: npm ci
       - run: npm run build
-      - name: Build Go
+      - name: Build
         working-directory: backend
-        env: { GOARCH: arm64, CGO_ENABLED: '0' }
-        run: go build -ldflags="-s -w" -o ../dist/x-reader-arm64 .
+        env: { GOARCH: arm64 }
+        run: go build -ldflags="-s -w" -o ../dist/X-ReaderPlus-mac-apple .
       - uses: actions/upload-artifact@v4
-        with: { name: mac-arm64, path: dist/x-reader-arm64 }
+        with: { name: X-ReaderPlus-mac-apple, path: dist/X-ReaderPlus-mac-apple }
 
-  build-linux-amd64:
+  # ═══════════════════ Linux ═══════════════════
+
+  build-linux-x64:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version: '1.23' }
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
+      - uses: actions/setup-go@v5; with: { go-version: '1.23' }
+      - uses: actions/setup-node@v4; with: { node-version: '20', cache: 'npm' }
       - run: npm ci
       - run: npm run build
-      - name: Build Go
+      - name: Build
         working-directory: backend
-        env: { GOARCH: amd64, CGO_ENABLED: '0' }
-        run: go build -ldflags="-s -w" -o ../dist/x-reader-amd64 .
+        run: go build -ldflags="-s -w" -o ../dist/X-ReaderPlus-linux-x64 .
       - uses: actions/upload-artifact@v4
-        with: { name: linux-amd64, path: dist/x-reader-amd64 }
+        with: { name: X-ReaderPlus-linux-x64, path: dist/X-ReaderPlus-linux-x64 }
 
   build-linux-arm64:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version: '1.23' }
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
+      - uses: actions/setup-go@v5; with: { go-version: '1.23' }
+      - uses: actions/setup-node@v4; with: { node-version: '20', cache: 'npm' }
       - run: npm ci
       - run: npm run build
-      - name: Build Go
+      - name: Build
         working-directory: backend
-        env: { GOARCH: arm64, CGO_ENABLED: '0' }
-        run: go build -ldflags="-s -w" -o ../dist/x-reader-arm64 .
+        env: { GOARCH: arm64 }
+        run: go build -ldflags="-s -w" -o ../dist/X-ReaderPlus-linux-arm64 .
       - uses: actions/upload-artifact@v4
-        with: { name: linux-arm64, path: dist/x-reader-arm64 }
+        with: { name: X-ReaderPlus-linux-arm64, path: dist/X-ReaderPlus-linux-arm64 }
+
+  # ═══════════════════ Release ═══════════════════
 
   release:
     needs:
       - build-windows-amd64
-      - build-windows-386
+      - build-windows-x86
       - build-windows-arm64
       - build-windows-portable
-      - build-macos-amd64
-      - build-macos-arm64
-      - build-linux-amd64
+      - build-macos-intel
+      - build-macos-apple
+      - build-linux-x64
       - build-linux-arm64
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
           merge-multiple: true
-
-      - name: Package Windows portable with frontend
-        run: |
-          mkdir -p packages
-          ls -la release-assets/
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           body_path: RELEASE_NOTES.md
           files: release-assets/*
