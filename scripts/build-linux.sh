@@ -43,25 +43,35 @@ cp "${APPDIR}/${APP_NAME}.desktop" "${APPDIR}/"
 
 if [ -f "public/icon.svg" ]; then
   if command -v rsvg-convert &>/dev/null; then
-    rsvg-convert -w 256 -h 256 "public/icon.svg" -o "${APPDIR}/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png" 2>/dev/null || true
+    rsvg-convert -w 256 -h 256 "public/icon.svg" -o "${APPDIR}/${APP_NAME}.png" 2>/dev/null || true
   elif command -v convert &>/dev/null; then
-    convert -background none -resize 256x256 "public/icon.svg" "${APPDIR}/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png" 2>/dev/null || true
+    convert -background none -resize 256x256 "public/icon.svg" "${APPDIR}/${APP_NAME}.png" 2>/dev/null || true
   fi
-  if [ -f "${APPDIR}/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png" ]; then
-    cp "${APPDIR}/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png" "${APPDIR}/${APP_NAME}.png" 2>/dev/null || true
+  if [ -f "${APPDIR}/${APP_NAME}.png" ]; then
+    cp "${APPDIR}/${APP_NAME}.png" "${APPDIR}/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png" 2>/dev/null || true
   fi
 fi
 
 APPIMAGETOOL="appimagetool-${ARCH}.AppImage"
 if [ ! -f "$APPIMAGETOOL" ]; then
-  curl -fsSL "https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-${ARCH}.AppImage" -o "$APPIMAGETOOL" || \
-    curl -fsSL "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${ARCH}.AppImage" -o "$APPIMAGETOOL" || \
-    { echo "Failed to download appimagetool"; exit 1; }
+  echo "Downloading appimagetool..."
+  curl -fsSL --retry 3 --connect-timeout 30 \
+    "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${ARCH}.AppImage" \
+    -o "$APPIMAGETOOL" 2>/dev/null || true
+  if [ ! -f "$APPIMAGETOOL" ] || [ ! -s "$APPIMAGETOOL" ]; then
+    echo "appimagetool download failed, skipping AppImage"
+    rm -rf "${APPDIR}"
+    exit 0
+  fi
   chmod +x "$APPIMAGETOOL"
 fi
 
 export APPIMAGE_EXTRACT_AND_RUN=1
-ARCH="${ARCH}" ./"$APPIMAGETOOL" "${APPDIR}" "${APPIMAGE_OUT}"
+ARCH="${ARCH}" ./"$APPIMAGETOOL" "${APPDIR}" "${APPIMAGE_OUT}" 2>/dev/null || {
+  echo "appimagetool failed, skipping AppImage"
+  rm -rf "${APPDIR}"
+  exit 0
+}
 
 rm -rf "${APPDIR}"
 echo "Created ${APPIMAGE_OUT}"

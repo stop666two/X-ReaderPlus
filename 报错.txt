@@ -4,3 +4,44 @@ build-linux (amd64)
 Process completed with exit code 1.
 build-windows (x64)
 Process completed with exit code 1.
+build-macos (arm64)
+Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-go@v5, actions/setup-node@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+build-macos (amd64)
+Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-go@v5, actions/setup-node@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+build-windows (x86)
+Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-go@v5, actions/setup-node@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+build-linux (arm64)
+Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-go@v5, actions/setup-node@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+build-linux (amd64)
+Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-go@v5, actions/setup-node@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+build-windows (arm64)
+Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-go@v5, actions/setup-node@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+build-windows (x64)
+Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-go@v5, actions/setup-node@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+build-windows (x64)
+No files were found with the provided path: dist/X-ReaderPlus-Setup-x64.exe. No artifacts will be uploaded.
+build-macos (arm64)
+The macos-latest label will migrate to macOS 26 beginning June 15, 2026. For more information see https://github.com/actions/runner-images/issues/14167
+build-macos (amd64)
+The macos-latest label will migrate to macOS 26 beginning June 15, 2026. For more information see https://github.com/actions/runner-images/issues/14167
+Artifacts
+Produced during runtime
+Name	Size	Digest	
+X-ReaderPlus-linux-amd64
+7.69 MB	
+sha256:a7a4d1140c25329aef0ad63bf19bc8bc8f6cb5f9a3bee577de1f5e913590e198
+X-ReaderPlus-linux-arm64
+7.19 MB	
+sha256:1015830f1f43b892b6f8822cd033d1700756c8d87a0eebf1470b259205011678
+X-ReaderPlus-mac-apple
+8.33 MB	
+sha256:296835bfb2aebd96da97c7b8bdf66bd407aed004469d115a9b474509a920e0a4
+X-ReaderPlus-mac-intel
+8.29 MB	
+sha256:f10168d9027cec9ce2188ea4b7cf241564563b5a8313c64f67835e35fee997dc
+X-ReaderPlus-win-arm64-portable
+10.8 MB	
+sha256:bd657b44b626d70041d0132e265049ab972662267e95a3efd224dc1845cf85e6
+X-ReaderPlus-win-x86-portable
+11 MB	
+sha256:f16cad7bccad3b165caf26c40bfc555b7c7c148b0091696724d7108c44e64d7e
