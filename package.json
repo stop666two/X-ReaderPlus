@@ -27,7 +27,8 @@
     "dev": "vite",
     "dev:go": "cd backend && go run .",
     "build": "vite build",
-    "build:go": "cd backend && go build -ldflags=\"-s -w\" -o ../dist/x-reader.exe .",
+    "build:go": "node scripts/copy-frontend.js && cd backend && go build -ldflags=\"-s -w -H=windowsgui\" -o ../dist/X-ReaderPlus.exe .",
+    "build:go:dev": "cd backend && go build -ldflags=\"-s -w\" -o ../dist/X-ReaderPlus-dev.exe .",
     "build:all": "vite build && npm run build:go",
     "preview": "vite preview",
     "lint": "vue-tsc --noEmit"

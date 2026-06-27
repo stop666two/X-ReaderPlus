@@ -23,6 +23,10 @@
 - [x] 阅读进度记忆与恢复
 - [x] 原始格式导出
 - [x] GitHub Actions 全平台构建
+- [x] 全平台打包 (Win: NSIS Setup / Mac: DMG / Linux: AppImage)
+- [x] 前端嵌入 Go 二进制单文件发布
+- [x] WebView2/WebKit/GTK 原生窗口壳
+- [x] Windows 无边框窗口 + Vue 自绘标题栏 + 最小/最大/关闭控制
 
 ---
 
@@ -43,7 +47,6 @@
 
 ## v0.5.0 🔮 远期规划
 
-- [ ] WebView2/WebKit 原生窗口壳
 - [ ] 系统托盘最小化
 - [ ] 全局快捷键（即使窗口未聚焦）
 - [ ] OPDS 书源支持

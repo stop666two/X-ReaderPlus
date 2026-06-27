@@ -48,7 +48,7 @@ X-ReaderPlus 是一个 **完全脱机** 的桌面多格式电子书阅读器。
 | UI | Vuetify 3 (Material Design 3) | 3.x |
 | 状态 | Pinia | 3.x |
 | HTTP | Fetch API (无框架依赖) | — |
-| 后端 | **Go** | 1.26 |
+| 后端 | **Go** | 1.25 |
 | 数据库 | **SQLite** (modernc.org/sqlite, pure Go) | — |
 | 加密 | Web Crypto API + Go crypto | — |
 | i18n | vue-i18n | 11.x |
@@ -125,9 +125,12 @@ npm run dev
 # Go 后端开发
 cd backend && go run .
 
-# 生产构建
-npm run build        # Vite 前端
-cd backend && go build -ldflags="-s -w" -o dist/x-reader.exe .
+# 生产构建（前端嵌入 Go 二进制，单文件发布）
+npm run build:all     # vite build + 复制前端到 backend/frontend/ + go build
+npm run build:go      # 仅 Go 构建（需先 npm run build）
+
+# 禁用 WebView 调试模式
+$env:XREADER_NO_WEBVIEW="1"; cd backend; go run .
 ```
 
 ---
@@ -137,16 +140,40 @@ cd backend && go build -ldflags="-s -w" -o dist/x-reader.exe .
 ```
 X-ReaderPlus/
 ├── src/                          # Vue 3 前端
-│   ├── views/                    # 页面视图
-│   ├── stores/                   # Pinia
-│   ├── services/                 # 业务逻辑 + api-bridge.ts
-│   ├── components/               # 组件
-│   └── main.ts                   # 入口
+│   ├── views/                    # 页面视图 (11 views)
+│   ├── stores/                   # Pinia 状态管理 (5 stores)
+│   ├── services/                 # 业务逻辑 + api-bridge.ts (16 files)
+│   ├── composables/              # 可复用组合函数
+│   ├── plugins/                  # Vuetify / i18n 插件
+│   ├── locales/                  # 国际化 (zh-CN / en-US)
+│   ├── router/                   # Vue Router
+│   ├── types/                    # TypeScript 类型声明
+│   ├── App.vue                   # 根组件（含自定义标题栏）
+│   ├── main.ts                   # 入口
+│   ├── style.css                 # 全局样式
+│   └── constants.ts              # 常量定义
 ├── backend/                      # Go 后端
-│   ├── main.go
+│   ├── main.go                   # 入口：embed 前端 + HTTP 服务 + API
+│   ├── types.go                  # 共享类型定义
+│   ├── webview_windows.go        # Windows: go-webview2 无边框窗口
+│   ├── webview_darwin.go         # macOS: webview_go Cocoa 原生窗口
+│   ├── webview_linux.go          # Linux: webview_go GTK 原生窗口
+│   ├── webview_other.go          # 其他平台降级模式
+│   ├── frontend/                 # 构建时由 copy-frontend.js 填充（gitignored）
+│   │   └── .gitkeep
 │   ├── db/                       # 数据库初始化 + schema
-│   ├── api/                      # REST handlers
+│   ├── api/                      # REST handlers (17 端点)
 │   └── go.mod / go.sum
+├── scripts/
+│   ├── copy-frontend.js          # 复制 dist/ → backend/frontend/
+│   ├── installer.nsi             # NSIS Windows 安装程序脚本
+│   ├── build-macos.sh            # macOS .app + .dmg 打包
+│   └── build-linux.sh            # Linux AppImage 打包
+├── public/
+│   └── icon.svg
+├── .github/workflows/
+│   ├── build.yml                 # 全平台 CI 构建+打包
+│   └── release.yml               # 自动 Release 发布
 ├── package.json                  # v0.3.0
 ├── vite.config.ts
 └── index.html

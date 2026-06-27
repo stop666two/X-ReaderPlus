@@ -8,6 +8,10 @@ dist/
 backend/x-reader.exe
 backend/*.exe
 
+# Frontend build (copied to backend for embed)
+backend/frontend/*
+!backend/frontend/.gitkeep
+
 # IDE
 .vscode/
 .idea/
