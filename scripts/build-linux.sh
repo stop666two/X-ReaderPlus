@@ -39,8 +39,6 @@ Icon=${APP_NAME}
 Categories=Office;Viewer;
 Terminal=false
 DESKTOP
-cp "${APPDIR}/${APP_NAME}.desktop" "${APPDIR}/"
-
 if [ -f "public/icon.svg" ]; then
   if command -v rsvg-convert &>/dev/null; then
     rsvg-convert -w 256 -h 256 "public/icon.svg" -o "${APPDIR}/${APP_NAME}.png" 2>/dev/null || true
