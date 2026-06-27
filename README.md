@@ -7,7 +7,7 @@
 [![Build](https://github.com/stop666two/X-ReaderPlus/actions/workflows/build.yml/badge.svg)](https://github.com/stop666two/X-ReaderPlus/actions/workflows/build.yml)
 [![Version](https://img.shields.io/badge/version-0.3.0-blue)](https://github.com/stop666two/X-ReaderPlus/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
 [![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vue.js)](https://vuejs.org)
 
 [快速开始](#快速开始) · [架构](#架构) · [文档](#文档) · [捐赠](#捐赠)
@@ -47,20 +47,16 @@ X-ReaderPlus 是一款**完全脱机**的桌面多格式电子书阅读器。不
 
 | 你的电脑 | 下载 |
 |----------|------|
-| 🪟 Windows 64 位（大多数） | `X-ReaderPlus-win-x64` |
-| 🪟 Windows 32 位（老电脑） | `X-ReaderPlus-win-x86` |
-| 🪟 Windows ARM | `X-ReaderPlus-win-arm64` |
-| 🪟 Windows 推荐 → 解压即用 | `X-ReaderPlus-win-portable.zip` |
-| 🍎 Mac Intel（2020 年前） | `X-ReaderPlus-mac-intel` |
-| 🍎 Mac Apple Silicon（M1/M2/M3） | `X-ReaderPlus-mac-apple` |
-| 🐧 Linux x86_64 | `X-ReaderPlus-linux-amd64` |
-| 🐧 Linux ARM64（树莓派） | `X-ReaderPlus-linux-arm64` |
+| 🪟 Windows x64 | `X-ReaderPlus-Setup-x64.exe` (安装程序) |
+| 🪟 Windows x86 | `X-ReaderPlus-win-x86.exe` |
+| 🪟 Windows ARM | `X-ReaderPlus-win-arm64.exe` |
+| 🍎 Mac Intel | `X-ReaderPlus-mac-intel.dmg` |
+| 🍎 Mac Apple Silicon | `X-ReaderPlus-mac-apple.dmg` |
+| 🐧 Linux x86_64 | `X-ReaderPlus-linux-amd64.AppImage` |
+| 🐧 Linux ARM64 | `X-ReaderPlus-linux-arm64.AppImage` |
 
-> **不确定？** Windows 推荐便携版 zip，Mac 去「关于本机→处理器」查看。
-
-**Windows**: Defender 拦截点"更多信息→仍要运行"。不要放系统保护目录。
-**Mac**: `chmod +x` 后运行。首次去「系统设置→隐私→仍要打开」。
-**Linux**: `chmod +x` 后运行。`apt install libgtk-3-0 libwebkit2gtk-4.1-0`。
+> **Windows 推荐**下载 Setup 安装程序，带开始菜单/桌面快捷方式/卸载程序/开机自启选项。
+> **Mac** 打开 dmg 拖入 Applications。**Linux** `chmod +x *.AppImage` 后直接运行。
 
 详情见 [RELEASE_NOTES.md](RELEASE_NOTES.md)。
 
@@ -75,11 +71,11 @@ npm install
 npm run dev
 
 # 终端2: 后端 (http://127.0.0.1:34123)
-cd backend && go run .
+npm run dev:go
 
-# 生产构建
-npm run build
-cd backend && go build -ldflags="-s -w" -o ../dist/x-reader.exe .
+# 生产构建 (单文件 exe，前端嵌入 Go 二进制)
+npm run build:all     # vite build + 复制前端 + go build
+npm run build:go      # 仅 Go 构建 (需先 npm run build)
 ```
 
 详细开发指南见 [CONTRIBUTING.md](CONTRIBUTING.md)。
@@ -108,8 +104,8 @@ Vue 3 (Vite) ──fetch──→ Go (net/http) ──→ SQLite × 3
 | 层 | 技术 |
 |---|------|
 | 前端 | Vue 3.5 + Vuetify 3 + Pinia 3 |
-| 后端 | Go 1.23 + modernc.org/sqlite |
-| 存储 | SQLite × 3 (WAL 模式) |
+| 后端 | Go 1.25 + modernc.org/sqlite |
+| 桌面壳 | WebView2 (Win) / WebKit (Mac) / GTK (Linux) |
 
 ---
 

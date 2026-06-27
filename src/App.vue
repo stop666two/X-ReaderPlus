@@ -162,7 +162,7 @@ const bookshelf = useBookshelfStore()
 const router = useRouter()
 const route = useRoute()
 
-const isElectron = computed(() => typeof window !== 'undefined' && !!window.electronAPI)
+const isElectron = computed(() => typeof window !== 'undefined' && !!window.electronAPI && !(window as any).__xr_native_titlebar)
 const booksLoaded = ref(false)
 const showCommandPalette = ref(false)
 let unsubTheme: (() => void) | null = null

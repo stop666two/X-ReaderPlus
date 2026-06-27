@@ -5,7 +5,7 @@ const withBridge = () => typeof window !== 'undefined' && !!window.electronAPI
 function createTableStub(name: string) {
   const warn = () => {
     if (!withBridge()) {
-      logger.warn(`db.${name}: IndexedDB fallback unavailable; all data operations go through Tauri bridge`)
+      logger.warn(`db.${name}: IndexedDB fallback unavailable; all data operations go through Go API bridge`)
     }
   }
   return {
@@ -33,9 +33,9 @@ export const db = {
 
 export async function initDb(): Promise<void> {
   if (withBridge()) {
-    logger.info('Tauri SQLite database available via bridge')
+    logger.info('Go SQLite database available via API bridge')
   } else {
-    logger.warn('Tauri bridge unavailable; running in browser dev mode')
+    logger.warn('API bridge unavailable; running in browser dev mode')
   }
 }
 
