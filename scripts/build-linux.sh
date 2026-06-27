@@ -55,10 +55,12 @@ fi
 APPIMAGETOOL="appimagetool-${ARCH}.AppImage"
 if [ ! -f "$APPIMAGETOOL" ]; then
   curl -fsSL "https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-${ARCH}.AppImage" -o "$APPIMAGETOOL" || \
-    curl -fsSL "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${ARCH}.AppImage" -o "$APPIMAGETOOL"
+    curl -fsSL "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${ARCH}.AppImage" -o "$APPIMAGETOOL" || \
+    { echo "Failed to download appimagetool"; exit 1; }
   chmod +x "$APPIMAGETOOL"
 fi
 
+export APPIMAGE_EXTRACT_AND_RUN=1
 ARCH="${ARCH}" ./"$APPIMAGETOOL" "${APPDIR}" "${APPIMAGE_OUT}"
 
 rm -rf "${APPDIR}"
