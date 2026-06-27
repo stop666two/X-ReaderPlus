@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, shallowRef, triggerRef, computed } from 'vue'
 import type { Bookmark, Annotation, HighlightColor, ChapterContent } from '@/types'
 import { useSettingsStore } from './settings'
 import { generateId } from '@/services/base64'
@@ -25,7 +25,7 @@ export const useReaderStore = defineStore('reader', () => {
 
   // Lazy chapter content cache
   let _allChapterData: ChapterContent[] | null = null
-  const chapterContents = ref<Map<number, string>>(new Map())
+  const chapterContents = shallowRef<Map<number, string>>(new Map())
 
   const currentChapter = computed(() => {
     const meta = chapters.value[currentChapterIndex.value]
@@ -52,6 +52,7 @@ export const useReaderStore = defineStore('reader', () => {
     if (!_allChapterData || index < 0 || index >= _allChapterData.length) return
     const data = _allChapterData[index]
     chapterContents.value.set(index, data.content)
+    triggerRef(chapterContents)
 
     // Preload adjacent chapters in background, then evict distant ones
     setTimeout(() => {
@@ -69,6 +70,7 @@ export const useReaderStore = defineStore('reader', () => {
           chapterContents.value.delete(i)
         }
       }
+      triggerRef(chapterContents)
     }, 50)
   }
 
@@ -76,6 +78,7 @@ export const useReaderStore = defineStore('reader', () => {
     bookId.value = bid
     scrollPosition.value = {}
     chapterContents.value = new Map()
+    triggerRef(chapterContents)
     _allChapterData = null
 
     if (!window.electronAPI) return
@@ -243,9 +246,9 @@ export const useReaderStore = defineStore('reader', () => {
     }
 
     // Fallback: linear scan using _allChapterData (has full content)
-    const allChapters = _allChapterData || chapters.value
-    for (let ci = 0; ci < allChapters.length; ci++) {
-      const content = allChapters[ci].content
+    if (!_allChapterData) return
+    for (let ci = 0; ci < _allChapterData.length; ci++) {
+      const content = _allChapterData[ci].content
       if (!content) continue
       const stripped = content.replace(/<[^>]+>/g, '').toLowerCase()
       let idx = stripped.indexOf(q)

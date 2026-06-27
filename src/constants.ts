@@ -1,7 +1,7 @@
 import type { ReadingSettings, HighlightColor, BookFormat, ThemeColors, AppSettings, CustomThemes } from '@/types'
 
 export const APP_NAME = 'X-ReaderPlus'
-export const APP_VERSION = '0.2.0'
+export const APP_VERSION = '0.3.0'
 export const DB_VERSION = 6
 export const MAX_FILE_SIZE = 500 * 1024 * 1024
 export const MAX_EPUB_FILES = 10000

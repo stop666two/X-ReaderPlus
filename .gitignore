@@ -1,13 +1,35 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
-dist-electron/
-release/
-*.log
-.DS_Store
-Thumbs.db
-*.local
+
+# Go build output
+backend/x-reader.exe
+backend/*.exe
+
+# IDE
 .vscode/
 .idea/
-推送问题.txt
-问题.txt
-AGENTS.md
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temp
+*.tmp
+*.bak
+
+# Environment
+.env
+.env.local
+
+# Database (local only)
+*.db
+*.db-wal
+*.db-shm

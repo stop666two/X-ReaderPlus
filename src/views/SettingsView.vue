@@ -1425,6 +1425,9 @@
           <p class="text-caption mb-1" style="font-family: monospace; word-break: break-all;">
             0xbB515f953e16f0a7b51f537BB1DAB6fbB6026533
           </p>
+          <v-btn size="x-small" variant="tonal" prepend-icon="mdi-content-copy" @click="copyDonationAddress">
+            复制地址
+          </v-btn>
           <p class="text-caption text-medium-emphasis">
             支持格式：EPUB, TXT, Markdown, HTML, MOBI, AZW3, FB2, DJVU, DOCX, RTF, ODT, PDF, CBR/CBZ/CBT/CB7
           </p>
@@ -1600,7 +1603,7 @@ const api = {
     },
   },
   meta: {
-    toArray: () => window.electronAPI?.meta?.getAll?.() ?? db.meta.toArray(),
+    toArray: () => (window as any).electronAPI?.meta?.getAll?.() ?? db.meta.toArray(),
   },
   ch: {
     toArray: () => window.electronAPI?.chapters?.getAll?.() ?? db.ch.toArray(),
@@ -2133,6 +2136,19 @@ async function loadPageSizes() {
 
 async function savePageSizes() {
   await api.cfg.put(PAGE_SIZES_KEY, JSON.stringify({ ...pageSizes }))
+}
+
+const DONATION_ADDRESS = '0xbB515f953e16f0a7b51f537BB1DAB6fbB6026533'
+async function copyDonationAddress() {
+  try {
+    await navigator.clipboard.writeText(DONATION_ADDRESS)
+  } catch {
+    // Fallback for older browsers
+    const ta = document.createElement('textarea')
+    ta.value = DONATION_ADDRESS; ta.style.position = 'fixed'; ta.style.opacity = '0'
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy')
+    document.body.removeChild(ta)
+  }
 }
 
 async function exportData() {

@@ -94,7 +94,13 @@
       </div>
 
       <!-- Main -->
-      <div class="app-content"><router-view /></div>
+      <div class="app-content">
+        <router-view v-slot="{ Component }">
+          <transition name="page-fade" mode="out-in">
+            <component :is="Component" />
+          </transition>
+        </router-view>
+      </div>
     </div>
 
     <!-- Command palette -->
@@ -156,9 +162,11 @@ const bookshelf = useBookshelfStore()
 const router = useRouter()
 const route = useRoute()
 
-const isElectron = ref(typeof window !== 'undefined' && !!window.electronAPI)
+const isElectron = computed(() => typeof window !== 'undefined' && !!window.electronAPI)
 const booksLoaded = ref(false)
 const showCommandPalette = ref(false)
+let unsubTheme: (() => void) | null = null
+let unsubPalette: (() => void) | null = null
 const commandQuery = ref('')
 const navCollapsed = ref(false)
 const showSidebar = computed(() => route.name !== 'unlock')
@@ -174,7 +182,7 @@ const libItems = computed(() => [
   ...bookshelf.libraries.map(l => ({ text: l.name + (l.id === DEFAULT_LIBRARY_ID ? '' : ` (${l.bookCount})`), value: l.id }))
 ])
 
-const navItems = [
+const navItems = computed(() => [
   { label: t('nav.bookshelf'), icon: 'mdi-bookshelf', to: '/' },
   { label: t('nav.library'), icon: 'mdi-folder-multiple', to: '/libraries' },
   { label: t('nav.notes'), icon: 'mdi-note-edit-outline', to: '/notes' },
@@ -184,7 +192,7 @@ const navItems = [
   { label: t('nav.history'), icon: 'mdi-history', to: '/history' },
   { label: t('nav.trash'), icon: 'mdi-delete-outline', to: '/trash' },
   { label: t('nav.settings'), icon: 'mdi-cog', to: '/settings' },
-]
+])
 
 const commands = [
   { title: t('nav.bookshelf'), subtitle: '返回书架首页', icon: 'mdi-bookshelf', route: '/' },
@@ -266,30 +274,31 @@ async function initSample() {
 }
 
 function handleGlobalKeydown(e: KeyboardEvent) {
-  // In Electron, global shortcuts are handled by the main process via IPC events.
-  // This window-level listener is a fallback for browser dev mode only.
-  // To avoid hardcoded shortcuts that bypass user configuration, we delegate
-  // to the Electron shortcut system when available.
-  if (!isElectron.value) {
-    // Browser dev mode: use configurable shortcuts from settings
-    if (e.ctrlKey && e.key === 'k') { e.preventDefault(); showCommandPalette.value = !showCommandPalette.value }
-    if (e.ctrlKey && e.key === 't') { e.preventDefault(); themeStore.toggle() }
-  }
+  if (e.ctrlKey && e.key === 'k') { e.preventDefault(); showCommandPalette.value = !showCommandPalette.value }
+  if (e.ctrlKey && e.key === 't') { e.preventDefault(); themeStore.toggle() }
 }
 
 onMounted(async () => {
-  await bookshelf.loadAllData()
-  await initSample()
-  booksLoaded.value = true
+  booksLoaded.value = true // Show UI immediately, load data in background
+  bookshelf.loadAllData()
+  initSample()
   if (isElectron.value) {
-    window.electronAPI?.onToggleTheme(() => themeStore.toggle())
-    window.electronAPI?.onCommandPalette(() => showCommandPalette.value = !showCommandPalette.value)
+    try {
+      const themeListener = await window.electronAPI?.onToggleTheme(() => themeStore.toggle())
+      if (themeListener) unsubTheme = themeListener
+    } catch { /* Tauri event listener — fallback to local keydown */ }
+    try {
+      const paletteListener = await window.electronAPI?.onCommandPalette(() => showCommandPalette.value = !showCommandPalette.value)
+      if (paletteListener) unsubPalette = paletteListener
+    } catch { /* Tauri event listener — fallback to local keydown */ }
   }
   window.addEventListener('keydown', handleGlobalKeydown)
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
+  if (typeof unsubTheme === 'function') unsubTheme()
+  if (typeof unsubPalette === 'function') unsubPalette()
 })
 </script>
 
@@ -366,5 +375,16 @@ onUnmounted(() => {
   font-size: 12px; opacity: 0.45;
   margin: 0;
   color: rgb(var(--v-theme-on-surface));
+}
+</style>
+
+<style>
+.page-fade-enter-active,
+.page-fade-leave-active {
+  transition: opacity 0.12s ease;
+}
+.page-fade-enter-from,
+.page-fade-leave-to {
+  opacity: 0;
 }
 </style>

@@ -268,7 +268,7 @@ export default {
     confirmPermanentDeleteMsg: '确定要永久删除选中的 {n} 项吗？此操作不可撤销！',
     confirmRestore: '确认恢复',
     confirmRestoreMsg: '确定要恢复选中的 {n} 本书吗？',
-    electronOnly: 'electronAPI 不可用，回收站操作需要在 Electron 环境下进行'
+    electronOnly: 'Bridge 不可用，回收站操作需要在桌面环境下进行'
   },
   settings: {
     title: '设置',
@@ -379,7 +379,7 @@ export default {
     unknown: '未知'
   },
   errors: {
-    electronUnavailable: 'electronAPI 不可用',
+    electronUnavailable: 'Tauri Bridge 不可用',
     sqliteAvailable: 'SQLite 数据库可用',
     sqliteUnavailable: 'SQLite 不可用，回退到 IndexedDB',
     decryptFailed: '解密失败：密钥不正确或数据已损坏',

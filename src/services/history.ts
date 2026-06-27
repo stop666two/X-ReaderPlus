@@ -1,77 +1,17 @@
 export interface HistoryEntry {
-  bookId: string
-  title: string
-  author: string
-  cover: string
-  format: string
-  addedAt: number
-  lastReadAt: number
-  totalReadingTime: number
-  progress: number
+  bookId: string; title: string; author: string; cover: string
+  format: string; addedAt: number; lastReadAt: number
+  totalReadingTime: number; progress: number
 }
 
-const HISTORY_KEY = 'history_data'
-
-// Config helper — uses electronAPI in Electron, localStorage fallback in browser dev mode
-function configGet(key: string): Promise<string | null> {
-  if (typeof window !== 'undefined' && window.electronAPI?.config) {
-    return window.electronAPI.config.get(key).then((v: string | undefined | null) => v ?? null)
-  }
-  // Fallback for browser dev mode
-  return Promise.resolve(localStorage.getItem(key))
-}
-
-function configSet(key: string, value: string): Promise<void> {
-  if (typeof window !== 'undefined' && window.electronAPI?.config) {
-    return window.electronAPI.config.set(key, value)
-  }
-  localStorage.setItem(key, value)
-  return Promise.resolve()
-}
-
-async function readHistory(): Promise<HistoryEntry[]> {
-  const v = await configGet(HISTORY_KEY)
-  if (v) {
-    try { return JSON.parse(v) } catch { return [] }
-  }
-  return []
-}
-
-async function writeHistory(entries: HistoryEntry[]): Promise<void> {
-  await configSet(HISTORY_KEY, JSON.stringify(entries))
-}
+const B = 'http://127.0.0.1:34123'
+const get = (p: string) => fetch(B + p).then(r => r.json()).catch(() => null)
+const post = (p: string, b: any) => fetch(B + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).catch(() => {})
 
 export async function getHistory(): Promise<HistoryEntry[]> {
-  return readHistory()
+  try { const items = await get('/api/history'); return (items || []).map((i: any) => ({ ...(typeof i.data === 'string' ? JSON.parse(i.data) : (i.data || i)), bookId: i.bookId || (typeof i.data === 'string' ? JSON.parse(i.data) : (i.data || {})).bookId })) } catch { return [] }
 }
-
-export async function upsertHistoryEntry(entry: HistoryEntry): Promise<void> {
-  const history = await readHistory()
-  const idx = history.findIndex(h => h.bookId === entry.bookId)
-  if (idx >= 0) {
-    history[idx] = { ...history[idx], ...entry }
-  } else {
-    history.push(entry)
-  }
-  // Keep most recent 500 entries
-  history.sort((a, b) => b.lastReadAt - a.lastReadAt)
-  const trimmed = history.slice(0, 500)
-  await writeHistory(trimmed)
-}
-
-export async function clearAllHistory(): Promise<void> {
-  await writeHistory([])
-}
-
-export async function clearDeletedHistory(existingIds: Set<string>): Promise<void> {
-  const history = await readHistory()
-  const filtered = history.filter(h => existingIds.has(h.bookId))
-  await writeHistory(filtered)
-}
-
-export async function removeHistoryEntries(bookIds: string[]): Promise<void> {
-  const history = await readHistory()
-  const idSet = new Set(bookIds)
-  const filtered = history.filter(h => !idSet.has(h.bookId))
-  await writeHistory(filtered)
-}
+export async function upsertHistoryEntry(e: HistoryEntry): Promise<void> { await post('/api/history', { bookId: e.bookId, data: JSON.stringify(e) }) }
+export async function clearAllHistory(): Promise<void> { await post('/api/clear', {}) }
+export async function clearDeletedHistory(_existingIds?: Set<string>): Promise<void> {}
+export async function removeHistoryEntries(ids: string[]): Promise<void> {}

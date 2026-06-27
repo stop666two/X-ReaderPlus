@@ -52,7 +52,12 @@ interface MetaAPI {
 }
 
 // Use Dexie (IndexedDB) for metadata — no electronAPI.meta exists in preload
-function getMetaApi(): MetaAPI {
+function getMetaApi(): MetaAPI | null {
+  // In browser mode with bridge, use the bridge's meta proxy (derived from books API)
+  if (typeof window !== 'undefined' && window.electronAPI?.meta) {
+    return window.electronAPI.meta
+  }
+  if (!db) return null
   return {
     toArray: () => db.meta.toArray(),
     put: async (bid: string, data: string) => { await db.meta.put({ bid, data }) },
@@ -66,6 +71,7 @@ function getMetaApi(): MetaAPI {
 export async function syncMetas(books: Book[]): Promise<void> {
   try {
     const api = getMetaApi()
+    if (!api) return // Tauri mode: metadata not needed
     await api.bulkPut(
       books.map(b => ({ bid: b.id, data: JSON.stringify(bookToMeta(b)) }))
     )
@@ -78,6 +84,7 @@ export async function syncMetas(books: Book[]): Promise<void> {
 export async function upsertMeta(book: Book): Promise<void> {
   try {
     const api = getMetaApi()
+    if (!api) return
     await api.put(book.id, JSON.stringify(bookToMeta(book)))
   } catch (e) {
     logger.error('upsertMeta 失败', e)
@@ -88,6 +95,7 @@ export async function upsertMeta(book: Book): Promise<void> {
 export async function deleteMetas(ids: string[]): Promise<void> {
   try {
     const api = getMetaApi()
+    if (!api) return
     await api.bulkDelete(ids)
   } catch (e) {
     logger.error('deleteMetas 失败', e)
@@ -97,7 +105,30 @@ export async function deleteMetas(ids: string[]): Promise<void> {
 /** Get all metadata records */
 export async function getAllMetas(): Promise<BookMeta[]> {
   try {
+    // Prefer bridge metadata load
+    if (typeof window !== 'undefined' && window.electronAPI?.books?.getAll) {
+      const books = await window.electronAPI.books.getAll({ limit: 10000, offset: 0 })
+      return (books || []).map((b: any) => ({
+        bid: b.id,
+        title: b.title || '',
+        author: b.author || '',
+        cover: b.cover || '',
+        format: b.format || '',
+        size: b.size || 0,
+        chapterCount: b.chapterCount || 0,
+        tags: Array.isArray(b.tags) ? b.tags : [],
+        rating: b.rating || 0,
+        contentHash: b.contentHash || '',
+        path: b.path || '',
+        libraryId: b.libraryId || '',
+        addedAt: b.addedAt || 0,
+        lastReadAt: b.lastReadAt || 0,
+        progress: b.progress || 0,
+        wordCount: b.wordCount || 0,
+      }))
+    }
     const api = getMetaApi()
+    if (!api) return []
     const records = await api.toArray()
     return records.map((r: any) => {
       if (typeof r.data === 'string') return JSON.parse(r.data)
@@ -113,6 +144,7 @@ export async function getAllMetas(): Promise<BookMeta[]> {
 export async function getMetaCount(): Promise<number> {
   try {
     const api = getMetaApi()
+    if (!api) return 0
     return await api.count()
   } catch {
     return 0
