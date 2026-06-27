@@ -33,7 +33,7 @@ cat > "${APPDIR}/${APP_NAME}.desktop" << DESKTOP
 [Desktop Entry]
 Type=Application
 Name=${APP_NAME}
-Comment=完全脱机的现代化多格式阅读器
+Comment=Completely offline multi-format ebook reader
 Exec=x-reader-plus
 Icon=${APP_NAME}
 Categories=Office;Viewer;
@@ -41,14 +41,21 @@ Terminal=false
 DESKTOP
 cp "${APPDIR}/${APP_NAME}.desktop" "${APPDIR}/"
 
-if [ -f "public/icon.svg" ] && command -v convert &>/dev/null 2>&1; then
-  convert -background none -resize 256x256 "public/icon.svg" "${APPDIR}/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png" 2>/dev/null || true
-  cp "${APPDIR}/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png" "${APPDIR}/${APP_NAME}.png" 2>/dev/null || true
+if [ -f "public/icon.svg" ]; then
+  if command -v rsvg-convert &>/dev/null; then
+    rsvg-convert -w 256 -h 256 "public/icon.svg" -o "${APPDIR}/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png" 2>/dev/null || true
+  elif command -v convert &>/dev/null; then
+    convert -background none -resize 256x256 "public/icon.svg" "${APPDIR}/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png" 2>/dev/null || true
+  fi
+  if [ -f "${APPDIR}/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png" ]; then
+    cp "${APPDIR}/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png" "${APPDIR}/${APP_NAME}.png" 2>/dev/null || true
+  fi
 fi
 
 APPIMAGETOOL="appimagetool-${ARCH}.AppImage"
 if [ ! -f "$APPIMAGETOOL" ]; then
-  curl -sSL "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${ARCH}.AppImage" -o "$APPIMAGETOOL"
+  curl -fsSL "https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-${ARCH}.AppImage" -o "$APPIMAGETOOL" || \
+    curl -fsSL "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${ARCH}.AppImage" -o "$APPIMAGETOOL"
   chmod +x "$APPIMAGETOOL"
 fi
 
