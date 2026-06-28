@@ -19,10 +19,42 @@ jobs:
           path: release-assets
           merge-multiple: true
 
+      - name: Determine tag from git
+        id: tag
+        run: |
+          git fetch --tags --force
+          SHA="${{ github.event.workflow_run.head_sha }}"
+          # Find tag pointing to this commit
+          TAG=$(git tag --points-at "$SHA" --sort=-creatordate | head -1)
+          if [ -n "$TAG" ]; then
+            echo "version=$TAG" >> "$GITHUB_OUTPUT"
+          else
+            # Fallback to package.json version
+            PKG=$(node -p "require('./package.json').version")
+            echo "version=v$PKG" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract version from package.json
+        id: ver
+        run: |
+          echo "pkg=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.event.workflow_run.head_branch, 'v') && github.event.workflow_run.head_branch || 'latest' }}
-          body_path: RELEASE_NOTES.md
+          tag_name: ${{ steps.tag.outputs.version }}
+          name: X-ReaderPlus v${{ steps.ver.outputs.pkg }}
+          body: |
+            ## X-ReaderPlus v${{ steps.ver.outputs.pkg }}
+
+            完全脱机的桌面多格式电子书阅读器。
+
+            ### 下载
+
+            见下方 Assets，选择对应平台下载。
+
+            ### 更多信息
+
+            详见 [README](https://github.com/${{ github.repository }}#readme) 和 [ROADMAP](https://github.com/${{ github.repository }}/blob/main/ROADMAP.md)。
           files: |
             release-assets/*

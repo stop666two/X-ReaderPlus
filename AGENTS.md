@@ -1,6 +1,6 @@
 # X-ReaderPlus — 开发规范与红线
 
-> 版本 v0.4.0 | Go + Vue 3 + Vuetify 3
+> 版本 v0.3.1 | Go + Vue 3 + Vuetify 3
 > 最后更新: 2026-06-28
 
 ---
