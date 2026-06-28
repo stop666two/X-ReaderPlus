@@ -52,22 +52,40 @@ meta.db      →  书籍、书签、标注、回收站、历史、统计
 
 ---
 
+## ⚠️ 已知问题
+
+### 专注模式
+
+专注模式为 v0.3.0 新增的实验性功能，以下问题将在后续版本中修复：
+
+| 问题 | 影响 | 计划修复 |
+|------|------|----------|
+| 状态不持久化 | 切换页面后自动关闭，需重新点击 🎯 图标开启 | v0.3.1 |
+| 遮罩层滚动偶现偏移 | 快速滚动时暗色遮罩可能未对齐阅读区域 | v0.3.1 |
+| 无键盘快捷键 | 只能通过鼠标点击工具栏图标操作 | v0.4.0 |
+
+### 其他
+
+- NSIS 安装程序（`X-ReaderPlus-Setup-x64.exe`）在某些 Windows 环境中可能无法构建，此产物在 Release 中可能缺失。Windows 用户推荐使用便携版 `X-ReaderPlus-win-x64-portable.zip`。
+- Linux ARM64 为无头模式（纯 CLI），需手动打开浏览器访问 `http://127.0.0.1:34123`。
+
+---
+
 ## 📦 下载
 
 ### 我该下哪个？
 
 | 你的电脑 | 下载这个 |
 |----------|----------|
-| Windows 64 位（大多数电脑） | `X-ReaderPlus-win-x64` |
-| Windows 32 位（老电脑） | `X-ReaderPlus-win-x86` |
-| Windows ARM（Surface Pro X 等） | `X-ReaderPlus-win-arm64` |
-| Windows 不想折腾 → 解压即用 | `X-ReaderPlus-win-portable.zip` |
-| Mac Intel 芯片（2020 年前） | `X-ReaderPlus-mac-intel` |
-| Mac Apple Silicon（M1/M2/M3） | `X-ReaderPlus-mac-apple` |
+| Windows 64 位（大多数电脑） | `X-ReaderPlus-win-x64` 或 `X-ReaderPlus-win-x64-portable.zip` |
+| Windows 32 位（老电脑） | `X-ReaderPlus-win-x86-portable` |
+| Windows ARM（Surface Pro X 等） | `X-ReaderPlus-win-arm64-portable` |
+| Mac Intel 芯片（2020 年前） | `X-ReaderPlus-mac-intel.dmg` |
+| Mac Apple Silicon（M1/M2/M3） | `X-ReaderPlus-mac-apple.dmg` |
 | Linux x86_64 | `X-ReaderPlus-linux-amd64` |
 | Linux ARM64（树莓派等） | `X-ReaderPlus-linux-arm64` |
 
-> **不确定？** Windows 用户一律推荐 `X-ReaderPlus-win-portable.zip`，解压双击即用。Mac 用户去「关于本机」看处理器是 Intel 还是 Apple。
+> **不确定？** Windows 用户一律推荐 `X-ReaderPlus-win-x64-portable.zip`，解压双击即用。Mac 用户去「关于本机」看处理器是 Intel 还是 Apple。
 
 ---
 
@@ -119,3 +137,5 @@ meta.db      →  书籍、书签、标注、回收站、历史、统计
 ---
 
 © 2026 stop666. MIT License.
+
+最后更新: 2026-06-28

@@ -1,7 +1,7 @@
 # X-ReaderPlus — 开发规范与红线
 
 > 版本 v0.3.0 | Go + Vue 3 + Vuetify 3
-> 最后更新: 2026-06-27
+> 最后更新: 2026-06-28
 
 ---
 
@@ -140,9 +140,9 @@ $env:XREADER_NO_WEBVIEW="1"; cd backend; go run .
 ```
 X-ReaderPlus/
 ├── src/                          # Vue 3 前端
-│   ├── views/                    # 页面视图 (11 views)
-│   ├── stores/                   # Pinia 状态管理 (5 stores)
-│   ├── services/                 # 业务逻辑 + api-bridge.ts (16 files)
+│   ├── views/                    # 页面视图 (11 个，专注模式为 ReaderView 内状态)	
+│   ├── stores/                   # Pinia 状态管理 (5 stores)	
+│   ├── services/                 # 业务逻辑 + api-bridge.ts
 │   ├── composables/              # 可复用组合函数
 │   ├── plugins/                  # Vuetify / i18n 插件
 │   ├── locales/                  # 国际化 (zh-CN / en-US)
@@ -157,7 +157,9 @@ X-ReaderPlus/
 │   ├── types.go                  # 共享类型定义
 │   ├── webview_windows.go        # Windows: go-webview2 无边框窗口
 │   ├── webview_darwin.go         # macOS: webview_go Cocoa 原生窗口
+│   ├── webview_darwin_headless.go # macOS: CGO 禁用降级模式
 │   ├── webview_linux.go          # Linux: webview_go GTK 原生窗口
+│   ├── webview_linux_headless.go # Linux: CGO 禁用降级模式
 │   ├── webview_other.go          # 其他平台降级模式
 │   ├── frontend/                 # 构建时由 copy-frontend.js 填充（gitignored）
 │   │   └── .gitkeep

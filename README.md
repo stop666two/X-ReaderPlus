@@ -35,7 +35,7 @@ X-ReaderPlus 是一款**完全脱机**的桌面多格式电子书阅读器。不
 | 🗑️ **回收站** | 删除保护，误删可恢复 |
 | 📊 **阅读统计** | 阅读时间、字数、进度全追踪 |
 | ☁️ **WebDAV 备份** | AES-256-GCM 端到端加密备份，换设备无缝恢复 |
-| 🎯 **专注模式** | 60% 暗色遮罩 + 中心段落加粗，沉浸阅读 |
+| 🎯 **专注模式** | 60% 暗色遮罩 + 中心段落加粗，沉浸阅读（实验性功能，见[已知问题](RELEASE_NOTES.md#已知问题)） |
 
 ---
 
@@ -97,8 +97,8 @@ npm run build:go      # 仅 Go 构建 (需先 npm run build)
 ## 架构
 
 ```
-Vue 3 (Vite) ──fetch──→ Go (net/http) ──→ SQLite × 3
-   :5173                   :34123           settings/content/meta
+开发: Vue 3 (Vite :5173) ──fetch──→ Go (net/http :34123) ──→ SQLite × 3
+发布: Vue 3 静态文件嵌入 Go 二进制 → :34123                     settings/content/meta
 ```
 
 | 层 | 技术 |
@@ -106,6 +106,15 @@ Vue 3 (Vite) ──fetch──→ Go (net/http) ──→ SQLite × 3
 | 前端 | Vue 3.5 + Vuetify 3 + Pinia 3 |
 | 后端 | Go 1.25 + modernc.org/sqlite |
 | 桌面壳 | WebView2 (Win) / WebKit (Mac) / GTK (Linux) |
+
+## 快捷键
+
+| 快捷键 | 功能 |
+|--------|------|
+| `Ctrl+F` | 搜索 |
+| `Ctrl+B` | 书签 |
+| `Esc` | 关闭弹窗/返回 |
+| 点击工具栏 🎯 图标 | 专注模式（实验性） |
 
 ---
 
