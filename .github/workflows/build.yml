@@ -58,12 +58,13 @@ jobs:
               Update-SessionEnvironment -ErrorAction SilentlyContinue
               $env:PATH = "C:\Program Files (x86)\NSIS;$env:PATH"
               try {
-                makensis scripts/installer.nsi 2>$null
+                & makensis scripts/installer.nsi
                 if ($LASTEXITCODE -eq 0) { $nsisOk = $true }
               } catch {}
             }
           }
           "nsis_ok=$nsisOk" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          exit 0
 
       - name: Create portable ZIP (x64)
         if: matrix.arch == 'x64'
