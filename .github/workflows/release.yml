@@ -23,7 +23,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ startsWith(github.event.workflow_run.head_branch, 'v') && github.event.workflow_run.head_branch || 'latest' }}
-          prerelease: ${{ !startsWith(github.event.workflow_run.head_branch, 'v') }}
           body_path: RELEASE_NOTES.md
           files: |
             release-assets/*
