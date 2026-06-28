@@ -13,10 +13,7 @@ async function configGet(key: string): Promise<string | null> {
   if (typeof window !== 'undefined' && window.electronAPI?.config?.get) {
     return window.electronAPI.config.get(key).then((v: string | undefined | null) => v ?? null)
   }
-  // Fallback: import Dexie db lazily
-  const { db } = await import('@/services/db')
-  const rec = await db.cfg.get(key)
-  return rec?.v ?? null
+  return null
 }
 
 export async function getPageSize(key: string): Promise<number> {
@@ -53,8 +50,10 @@ export function usePagination<T>(
   })
 
   const pagedItems = computed(() => {
-    const start = (currentPage.value - 1) * resolvedPageSize.value
-    return items.value.slice(start, start + resolvedPageSize.value)
+    const size = resolvedPageSize.value
+    if (size <= 0) return items.value
+    const start = (currentPage.value - 1) * size
+    return items.value.slice(start, start + size)
   })
 
   const hasNext = computed(() => currentPage.value < totalPages.value)

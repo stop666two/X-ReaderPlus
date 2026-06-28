@@ -47,6 +47,11 @@
               <v-btn v-bind="props" icon="mdi-magnify" size="small" variant="text" :color="reader.showSearch ? 'primary' : ''" @click="toggleSearch" />
             </template>
           </v-tooltip>
+          <v-tooltip v-if="internalNavStack.length > 0" text="返回 (内部链接)" location="bottom">
+            <template #activator="{ props }">
+              <v-btn v-bind="props" icon="mdi-arrow-u-left-top" size="small" variant="text" color="warning" @click="goInternalBack" />
+            </template>
+          </v-tooltip>
           <v-tooltip text="目录" location="bottom">
             <template #activator="{ props }">
               <v-btn v-bind="props" icon="mdi-book-open-variant" size="small" variant="text" :color="reader.showToc ? 'primary' : ''" @click="reader.showToc = !reader.showToc" />
@@ -63,17 +68,27 @@
             </template>
           </v-tooltip>
 
+          <v-tooltip text="滚动阅读" location="bottom">
+            <template #activator="{ props }">
+              <v-btn v-bind="props" icon="mdi-format-list-bulleted" size="small" variant="text" :color="reader.readingMode === 'scroll' ? 'primary' : ''" @click="onReadingModeChange('scroll')" />
+            </template>
+          </v-tooltip>
+          <v-tooltip text="翻页阅读" location="bottom">
+            <template #activator="{ props }">
+              <v-btn v-bind="props" icon="mdi-book-open-page-variant" size="small" variant="text" :color="reader.readingMode === 'pagination' ? 'primary' : ''" @click="onReadingModeChange('pagination')" />
+            </template>
+          </v-tooltip>
           <v-tooltip text="自动滚屏" location="bottom">
             <template #activator="{ props }">
-              <v-btn v-bind="props" :icon="reader.isAutoScrolling ? 'mdi-pause' : 'mdi-play'" size="small" variant="text" :color="reader.isAutoScrolling ? 'primary' : ''" @click="toggleAutoScroll" />
+              <v-btn v-bind="props" icon="mdi-play" size="small" variant="text" :color="reader.readingMode === 'auto' ? 'primary' : ''" @click="onReadingModeChange('auto')" />
             </template>
           </v-tooltip>
 
           <v-divider vertical class="mx-1" />
 
-          <v-tooltip text="专注模式" location="bottom">
+          <v-tooltip text="专注模式 (Ctrl+Shift+F)" location="bottom">
             <template #activator="{ props }">
-              <v-btn v-bind="props" icon="mdi-image-filter-center-focus" size="small" variant="text" :color="focusMode ? 'primary' : ''" @click="focusMode = !focusMode" />
+              <v-btn v-bind="props" icon="mdi-image-filter-center-focus" size="small" variant="text" :color="settings.focusMode ? 'primary' : ''" @click="settings.setFocusMode(!settings.focusMode)" />
             </template>
           </v-tooltip>
           <v-tooltip text="阅读统计" location="bottom">
@@ -132,12 +147,14 @@
     <!-- Reading area -->
     <div
       class="reader-container"
-      :class="{ 'focus-mode': focusMode }"
+      :class="{ 'focus-mode': settings.focusMode, 'paginated': reader.readingMode === 'pagination' }"
       ref="readerContainer"
       @scroll="onScroll"
       @mousemove="resetToolbarTimer"
+      @click="onReaderClick"
     >
-      <div v-if="focusMode" ref="focusOverlay" class="focus-overlay" :style="focusOverlayStyle" />
+      <div v-if="settings.focusMode" class="focus-spotlight" />
+
       <v-progress-linear
         v-if="isChapterLoading"
         indeterminate
@@ -152,9 +169,11 @@
 
         <!-- Content -->
         <div
+          ref="readerContentRef"
           class="reader-content"
           :style="readerStyles"
-          v-html="lazyContent"
+          v-html="sanitizedContent"
+          @click="handleContentClick"
         />
         <div
           ref="lazySentinel"
@@ -173,6 +192,13 @@
           <div v-if="!reader.hasNextChapter" class="chapter-nav-row">
             <span class="text-caption text-medium-emphasis">— 已读完 —</span>
           </div>
+        </div>
+
+        <!-- Pagination bar -->
+        <div v-if="reader.readingMode === 'pagination'" class="pagination-bar">
+          <v-btn icon="mdi-chevron-left" size="small" variant="text" :disabled="reader.currentPage <= 0" @click="reader.prevPage(); scrollToCurrentPage()" />
+          <span class="text-caption mx-2">{{ reader.currentPage + 1 }} / {{ reader.totalPages }}</span>
+          <v-btn icon="mdi-chevron-right" size="small" variant="text" :disabled="reader.currentPage >= reader.totalPages - 1" @click="reader.nextPage(); scrollToCurrentPage()" />
         </div>
       </div>
     </div>
@@ -294,15 +320,15 @@
       </v-toolbar>
       <v-list density="compact" nav>
         <v-list-item
-          v-for="(chapter, idx) in reader.chapters"
+          v-for="(tocItem, idx) in reader.rawToc"
           :key="idx"
-          :title="chapter.title"
-          :active="idx === reader.currentChapterIndex"
-          @click="goToChapterFromToc(idx)"
+          :title="tocItem.label"
+          :active="tocItem.chapterIndex === reader.currentChapterIndex"
+          @click="goToChapterFromToc(tocItem)"
         >
           <template #append>
             <v-icon
-              v-if="readChaptersSet.has(reader.bookId + ':' + idx)"
+              v-if="tocItem.chapterIndex >= 0 && readChaptersSet.has(reader.bookId + ':' + tocItem.chapterIndex)"
               size="16"
               color="green"
             >mdi-check-circle</v-icon>
@@ -487,7 +513,7 @@ import { useThemeStore } from '@/stores/theme'
 import { HIGHLIGHT_COLORS } from '@/constants'
 import { logger } from '@/services/log'
 import { renderPage, releasePdfCache } from '@/services/pdf-renderer'
-import type { Annotation, HighlightColor } from '@/types'
+import type { Annotation, HighlightColor, ReadingMode } from '@/types'
 
 const router = useRouter()
 const route = useRoute()
@@ -498,6 +524,8 @@ const theme = useThemeStore()
 
 const readerRef = ref<HTMLElement | null>(null)
 const readerContainer = ref<HTMLElement | null>(null)
+const readerContentRef = ref<HTMLElement | null>(null)
+const internalNavStack = ref<number[]>([])
 const searchInput = ref('')
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 const sliderValue = ref(0)
@@ -514,13 +542,11 @@ const dictResult = ref<any>(null)
 const dictLoading = ref(false)
 const dictError = ref('')
 const isChapterLoading = ref(false)
-const focusMode = ref(false)
 const showStatsOverlay = ref(false)
 
 const highlightColors = HIGHLIGHT_COLORS
 
 let toolbarTimer: ReturnType<typeof setTimeout> | null = null
-let autoScrollTimer: ReturnType<typeof setInterval> | null = null
 let readingTimeInterval: ReturnType<typeof setInterval> | null = null
 const readingSeconds = ref(0)
 let lastSavedSeconds = 0
@@ -647,7 +673,7 @@ function setupPdfPageObserver() {
         // Chain renders to avoid overwhelming pdfjs
         pdfRenderQueue = pdfRenderQueue.then(async () => {
           try {
-            const dataUrl = await renderPage(bookPath, pageNum)
+            const dataUrl = await renderPage(reader.bookId, bookPath, pageNum)
             if (dataUrl) {
               const img = document.createElement('img')
               img.src = dataUrl
@@ -758,10 +784,34 @@ const lazyContent = computed(() => {
   if (!chapter) return ''
   const html = stripLeadingTitle(chapter.content, chapter.title)
   const segments = splitHtmlIntoSegments(html)
-  totalSegmentCount.value = segments.length
   if (segments.length <= INITIAL_SEGMENT_COUNT) return html
   return segments.slice(0, renderedSegmentCount.value).join('')
 })
+
+const sanitizedContent = computed(() => {
+  const raw = lazyContent.value
+  if (!raw) return ''
+  let count = 0
+  const result = raw
+    .replace(/<a\b([^>]*?)href\s*=\s*"([^"]*)"([^>]*)>/gi, (_, pre, val, post) => {
+      count++; return `<a${pre}data-href="${val}"${post}>`
+    })
+    .replace(/<a\b([^>]*?)href\s*=\s*'([^']*)'([^>]*)>/gi, (_, pre, val, post) => {
+      count++; return `<a${pre}data-href='${val}'${post}>`
+    })
+    .replace(/<a\b([^>]*?)\bhref\s*=\s*([^\s"'>]+)/gi, (_, pre, val) => {
+      count++; return `<a${pre}data-href="${val}"`
+    })
+  if (count > 0) { logger.info(`Rewrote ${count} links in chapter`) }
+  return result
+})
+
+watch(() => reader.currentChapter, (chapter) => {
+  if (!chapter) return
+  const html = stripLeadingTitle(chapter.content, chapter.title)
+  const segments = splitHtmlIntoSegments(html)
+  totalSegmentCount.value = segments.length
+}, { immediate: true })
 
 // ---- Helpers ----
 
@@ -957,6 +1007,40 @@ async function loadBook() {
 
 // ---- Navigation ----
 
+function handleContentClick(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  const anchor = target.closest('a')
+  if (!anchor) return
+  const href = anchor.getAttribute('data-href') || anchor.getAttribute('href')
+  console.log('[link click]', { tag: anchor.tagName, href, dataHref: anchor.getAttribute('data-href'), outerHTML: anchor.outerHTML?.slice(0, 100) })
+  if (!href) return
+  e.preventDefault()
+  e.stopPropagation()
+  if (href.startsWith('#')) {
+    const id = href.slice(1)
+    const escaped = id.replace(/[^a-zA-Z0-9_-]/g, '\\$&')
+    const el = readerContentRef.value?.querySelector(`[id="${escaped}"]`) || document.getElementById(id)
+    if (el) {
+      internalNavStack.value.push(readerContainer.value?.scrollTop || 0)
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      resetToolbarTimer()
+    }
+  } else if (/^https?:\/\//i.test(href)) {
+    if (window.electronAPI?.openExternal) {
+      window.electronAPI.openExternal(href)
+    } else {
+      window.open(href, '_blank')
+    }
+  }
+}
+
+function goInternalBack() {
+  const pos = internalNavStack.value.pop()
+  if (pos !== undefined && readerContainer.value) {
+    readerContainer.value.scrollTop = pos
+  }
+}
+
 async function goBack() {
   isNavigatingBack = true
   saveScrollNow()
@@ -967,7 +1051,7 @@ async function goBack() {
     ? (readerContainer.value?.scrollTop || 0) / scrollHeight
     : 0
   markChapterRead(reader.bookId, reader.currentChapterIndex)
-  stopAutoScrollTimer()
+  reader.stopAutoScroll()
   stopReadingTimer()
 
   // Save progress BEFORE navigating
@@ -991,6 +1075,7 @@ function goNextChapter() {
   saveScrollNow()
   isChapterTransition = true
   isChapterLoading.value = true
+  internalNavStack.value = []
 
   // Mark current chapter as read
   markChapterRead(reader.bookId, reader.currentChapterIndex)
@@ -1008,6 +1093,7 @@ function goPreviousChapter() {
   saveScrollNow()
   isChapterTransition = true
   isChapterLoading.value = true
+  internalNavStack.value = []
   reader.previousChapter()
   sliderValue.value = reader.currentChapterIndex
   persistScrollPositions(reader.bookId)
@@ -1020,15 +1106,17 @@ function onSliderChange(val: number) {
   isChapterTransition = true
   isChapterLoading.value = true
   persistScrollPositions(reader.bookId)
+  internalNavStack.value = []
   reader.navigateToChapter(val)
 }
 
-function goToChapterFromToc(idx: number) {
-  if (idx === reader.currentChapterIndex) {
+function goToChapterFromToc(tocItem: { chapterIndex: number; href?: string }) {
+  const idx = tocItem.chapterIndex
+  if (idx < 0 || idx >= reader.chapters.length) {
     reader.showToc = false
     return
   }
-  // Mark current chapter as read before navigating
+  internalNavStack.value = []
   markChapterRead(reader.bookId, reader.currentChapterIndex)
   saveScrollNow()
   isChapterTransition = true
@@ -1036,6 +1124,19 @@ function goToChapterFromToc(idx: number) {
   persistScrollPositions(reader.bookId)
   reader.navigateToChapter(idx)
   reader.showToc = false
+  // After chapter loads, scroll to fragment if href has one
+  if (tocItem.href) {
+    const fragment = tocItem.href.split('#')[1]
+    if (fragment) {
+      setTimeout(() => {
+        const escaped = fragment.replace(/[^a-zA-Z0-9_-]/g, '\\$&')
+        const el = readerContentRef.value?.querySelector(`[id="${escaped}"]`) || document.getElementById(fragment)
+        if (el) {
+          el.scrollIntoView({ behavior: 'auto', block: 'start' })
+        }
+      }, 300)
+    }
+  }
 }
 
 // ---- Scroll ----
@@ -1062,80 +1163,40 @@ function onScroll() {
     }, SCROLL_DEBOUNCE_MS)
 
     // Update focus mode paragraph
-    if (focusMode.value) {
-      updateFocusParagraph()
+    if (settings.focusMode) {
+      onFocusScroll()
     }
   }
 }
 
-let focusObserver: IntersectionObserver | null = null
-let focusActiveEl: HTMLElement | null = null
-
-function setupFocusObserver() {
-  destroyFocusObserver()
-  if (!readerContainer.value) return
-
-  // Mark paragraph closest to viewport center as active
-  const updateActive = () => {
-    if (!readerContainer.value || !focusMode.value) return
-    const container = readerContainer.value
-    const vpCenter = container.getBoundingClientRect().top + container.clientHeight / 2
-    const paras = container.querySelectorAll<HTMLParagraphElement>('.reader-content p')
-    let best: HTMLParagraphElement | null = null
-    let bestDist = Infinity
-    for (let i = 0; i < paras.length; i++) {
-      const p = paras[i]
-      const rect = p.getBoundingClientRect()
-      const dist = Math.abs(rect.top + rect.height / 2 - vpCenter)
-      if (dist < bestDist) { bestDist = dist; best = p }
-    }
-    for (let i = 0; i < paras.length; i++) paras[i].classList.remove('focus-active')
-    if (best) best.classList.add('focus-active')
-    focusActiveEl = best
-  }
-
-  focusObserver = new IntersectionObserver(() => updateActive(), {
-    root: readerContainer.value,
-    rootMargin: '-20% 0px',
-    threshold: 0.1,
-  })
-  readerContainer.value.querySelectorAll('.reader-content p').forEach(p => focusObserver!.observe(p))
-  updateActive()
-}
-
-function destroyFocusObserver() {
-  if (focusObserver) { focusObserver.disconnect(); focusObserver = null }
-  if (readerContainer.value) {
-    readerContainer.value.querySelectorAll('.reader-content .focus-active').forEach((el: any) => el.classList.remove('focus-active'))
-  }
-  focusActiveEl = null
-}
-
-const focusOverlay = ref<HTMLElement | null>(null)
-const focusOverlayStyle = ref('')
-
-function positionFocusOverlay() {
-  if (!readerContainer.value || !focusMode.value) return
-  const rect = readerContainer.value.getBoundingClientRect()
-  focusOverlayStyle.value = `top:${rect.top}px;left:${rect.left}px;width:${rect.width}px;height:${rect.height}px`
-}
+// ---- Focus mode ----
+let focusScrollTicking = false
 
 function updateFocusParagraph() {
-  if (!focusMode.value || !readerContainer.value) return
+  if (!settings.focusMode || !readerContainer.value) return
   const container = readerContainer.value
   const vpCenter = container.getBoundingClientRect().top + container.clientHeight / 2
-  const paras = container.querySelectorAll<HTMLParagraphElement>('.reader-content p')
-  let best: HTMLParagraphElement | null = null
+  const all = container.querySelectorAll<HTMLElement>('.reader-content p, .reader-content h1, .reader-content h2, .reader-content h3, .reader-content h4, .reader-content blockquote, .reader-content li')
+  let best: HTMLElement | null = null
   let bestDist = Infinity
-  for (let i = 0; i < paras.length; i++) {
-    const p = paras[i]
-    const rect = p.getBoundingClientRect()
+  for (let i = 0; i < all.length; i++) {
+    const el = all[i]
+    const rect = el.getBoundingClientRect()
     const dist = Math.abs(rect.top + rect.height / 2 - vpCenter)
-    if (dist < bestDist) { bestDist = dist; best = p }
+    if (dist < bestDist) { bestDist = dist; best = el }
   }
-  for (let i = 0; i < paras.length; i++) paras[i].classList.remove('focus-active')
+  for (let i = 0; i < all.length; i++) all[i].classList.remove('focus-active')
   if (best) best.classList.add('focus-active')
-  positionFocusOverlay()
+}
+
+function onFocusScroll() {
+  if (!focusScrollTicking) {
+    requestAnimationFrame(() => {
+      updateFocusParagraph()
+      focusScrollTicking = false
+    })
+    focusScrollTicking = true
+  }
 }
 
 // Watch chapter index changes to restore scroll
@@ -1148,7 +1209,7 @@ watch(() => reader.currentChapterIndex, (newIdx) => {
   nextTick(() => {
     applyChapterAnnotations()
     isChapterLoading.value = false
-    if (focusMode.value) { updateFocusParagraph() }
+    if (settings.focusMode) { updateFocusParagraph() }
     if (isPdfBook.value) setupPdfPageObserver()
   })
 })
@@ -1164,12 +1225,9 @@ watch(() => settings.readingSettings.autoSaveInterval, () => {
 })
 
 // Watch for focus mode toggle
-watch(focusMode, (val) => {
+watch(() => settings.focusMode, (val) => {
   if (val) {
-    nextTick(() => {
-      positionFocusOverlay()
-      updateFocusParagraph()
-    })
+    nextTick(() => updateFocusParagraph())
   } else {
     if (readerContainer.value) {
       readerContainer.value.querySelectorAll('.reader-content .focus-active').forEach((el: any) => el.classList.remove('focus-active'))
@@ -1177,9 +1235,7 @@ watch(focusMode, (val) => {
   }
 })
 
-window.addEventListener('resize', positionFocusOverlay)
-
-onUnmounted(() => { window.removeEventListener('resize', positionFocusOverlay) })
+onUnmounted(() => {})
 
 // Watch lazyContent changes to re-attach sentinel observer
 watch(lazyContent, () => {
@@ -1243,6 +1299,9 @@ function handleKeydown(e: KeyboardEvent) {
     if (readerContainer.value) {
       readerContainer.value.scrollTo({ top: readerContainer.value.scrollHeight, behavior: 'smooth' })
     }
+  } else if (e.ctrlKey && e.shiftKey && e.key === 'F') {
+    e.preventDefault()
+    settings.setFocusMode(!settings.focusMode)
   } else if (shortcut === sc.scrollUp) {
     e.preventDefault()
     if (readerContainer.value) {
@@ -1255,14 +1314,28 @@ function handleKeydown(e: KeyboardEvent) {
     }
   } else if (shortcut === sc.pageUp) {
     e.preventDefault()
-    if (readerContainer.value) {
+    if (reader.readingMode === 'pagination') {
+      reader.prevPage()
+      scrollToCurrentPage()
+    } else if (readerContainer.value) {
       readerContainer.value.scrollBy({ top: -readerContainer.value.clientHeight * 0.9, behavior: 'smooth' })
     }
   } else if (shortcut === sc.pageDown) {
     e.preventDefault()
-    if (readerContainer.value) {
+    if (reader.readingMode === 'pagination') {
+      reader.nextPage()
+      scrollToCurrentPage()
+    } else if (readerContainer.value) {
       readerContainer.value.scrollBy({ top: readerContainer.value.clientHeight * 0.9, behavior: 'smooth' })
     }
+  } else if (e.key === 'ArrowLeft' && reader.readingMode === 'pagination') {
+    e.preventDefault()
+    reader.prevPage()
+    scrollToCurrentPage()
+  } else if (e.key === 'ArrowRight' && reader.readingMode === 'pagination') {
+    e.preventDefault()
+    reader.nextPage()
+    scrollToCurrentPage()
   }
 }
 
@@ -1487,39 +1560,56 @@ async function lookupWord(word: string) {
 
 // ---- Auto-scroll ----
 
-function toggleAutoScroll() {
-  reader.isAutoScrolling = !reader.isAutoScrolling
-  if (reader.isAutoScrolling) {
-    startAutoScroll()
-  } else {
-    stopAutoScrollTimer()
-  }
-}
-
-function startAutoScroll() {
-  const speed = settings.autoScrollSpeed || 50
-  const intervalMs = Math.max(10, 110 - speed)
-  autoScrollTimer = setInterval(() => {
+function onReadingModeChange(mode: ReadingMode) {
+  reader.setReadingMode(mode)
+  if (mode === 'pagination') {
     if (readerContainer.value) {
-      readerContainer.value.scrollTop += 1
-      const { scrollTop, scrollHeight, clientHeight } = readerContainer.value
-      if (scrollTop + clientHeight >= scrollHeight - 2) {
-        if (reader.hasNextChapter) {
-          goNextChapter()
-        } else {
-          reader.isAutoScrolling = false
-          stopAutoScrollTimer()
-        }
-      }
+      reader.paginateChapter(sanitizedContent.value, readerContainer.value.clientHeight - 80)
     }
-  }, intervalMs)
+    scrollToCurrentPage()
+  }
+  if (mode === 'auto') {
+    reader.startAutoScroll(readerContainer.value)
+  }
 }
 
-function stopAutoScrollTimer() {
-  if (autoScrollTimer) {
-    clearInterval(autoScrollTimer)
-    autoScrollTimer = null
+function scrollToCurrentPage() {
+  if (!readerContainer.value || reader.pageHeights.length === 0) return
+  let offset = 0
+  for (let i = 0; i < reader.currentPage; i++) {
+    offset += reader.pageHeights[i]
   }
+  readerContainer.value.scrollTo({ top: offset, behavior: 'smooth' })
+}
+
+function onReaderClick(e: MouseEvent) {
+  if (reader.readingMode !== 'pagination') return
+  const target = e.target as HTMLElement
+  if (target.closest('a') || target.closest('button') || target.closest('.v-btn')) return
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const x = e.clientX - rect.left
+  const w = rect.width
+  if (x < w * 0.25) {
+    reader.prevPage()
+    scrollToCurrentPage()
+  } else if (x > w * 0.75) {
+    reader.nextPage()
+    scrollToCurrentPage()
+  }
+}
+
+// Repaginate when chapter content changes
+watch(() => sanitizedContent.value, () => {
+  if (reader.readingMode === 'pagination' && readerContainer.value) {
+    nextTick(() => {
+      reader.paginateChapter(sanitizedContent.value, readerContainer.value!.clientHeight - 80)
+      reader.currentPage = 0
+    })
+  }
+})
+
+function toggleAutoScroll() {
+  reader.toggleAutoScroll(readerContainer.value)
 }
 
 // ---- Bookmarks ----
@@ -1662,6 +1752,7 @@ onMounted(async () => {
   await loadBook()
   document.addEventListener('mouseup', handleSelection)
   document.addEventListener('wheel', onWheel, { passive: false })
+  window.addEventListener('click', handleContentClick, true)
   resetToolbarTimer()
 
   // Focus the reader for keyboard events
@@ -1680,7 +1771,7 @@ onUnmounted(() => {
   // Clean up timers
   if (toolbarTimer) clearTimeout(toolbarTimer)
   if (scrollDebounceTimer) clearTimeout(scrollDebounceTimer)
-  stopAutoScrollTimer()
+  reader.stopAutoScroll()
   stopReadingTimer()
   stopAutoSave()
   removeCustomCSS()
@@ -1694,6 +1785,7 @@ onUnmounted(() => {
   document.removeEventListener('mouseup', handleSelection)
   document.removeEventListener('wheel', onWheel)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
+  window.removeEventListener('click', handleContentClick, true)
   releasePdfCache()
 })
 
@@ -1795,6 +1887,27 @@ onBeforeRouteLeave(async (_to, _from) => {
   background: transparent;
 }
 
+/* ---- Pagination mode ---- */
+.reader-container.paginated {
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+}
+
+.pagination-click-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 30%;
+  z-index: 5;
+  cursor: pointer;
+}
+.pagination-click-left {
+  left: 0;
+}
+.pagination-click-right {
+  right: 0;
+}
+
 .reader-content-wrapper {
   max-width: var(--page-w);
   margin: 0 auto;
@@ -1840,6 +1953,12 @@ onBeforeRouteLeave(async (_to, _from) => {
   word-break: break-word;
   overflow-wrap: break-word;
   color: var(--text-color);
+}
+
+.reader-content :deep(a[data-href]) {
+  color: var(--reader-accent, #1565C0);
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 /* paragraph inside content */
@@ -1957,6 +2076,15 @@ onBeforeRouteLeave(async (_to, _from) => {
 }
 
 /* ---- Bottom controls ---- */
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 0;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 .bottom-controls {
   flex-shrink: 0;
   background: rgb(var(--v-theme-surface));
@@ -2132,20 +2260,43 @@ onBeforeRouteLeave(async (_to, _from) => {
   width: 100%;
 }
 
-/* ---- Focus mode — 60% dark overlay + bold center paragraph ---- */
+/* ---- Focus mode — spotlight dim + bold + shadow on active paragraph ---- */
 .focus-mode {
   position: relative;
 }
-.focus-overlay {
+.focus-spotlight {
   position: fixed;
-  background: rgba(0, 0, 0, 0.6);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
   pointer-events: none;
-  z-index: 5;
+  z-index: 0;
 }
-.focus-mode .reader-content :deep(p.focus-active) {
+.focus-mode .reader-content-wrapper {
   position: relative;
-  z-index: 6;
+  z-index: 1;
+}
+.focus-mode .reader-content :deep(p),
+.focus-mode .reader-content :deep(h1),
+.focus-mode .reader-content :deep(h2),
+.focus-mode .reader-content :deep(h3),
+.focus-mode .reader-content :deep(h4),
+.focus-mode .reader-content :deep(blockquote),
+.focus-mode .reader-content :deep(li) {
+  opacity: 0.22;
+  transition: opacity 0.35s ease, box-shadow 0.35s ease, font-weight 0.35s ease;
+}
+.focus-mode .reader-content :deep(.focus-active) {
+  opacity: 1;
   font-weight: 700 !important;
+  box-shadow:
+    0 0 60px 30px rgba(var(--v-theme-on-surface), 0.08),
+    0 0 120px 60px rgba(var(--v-theme-on-surface), 0.04);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: -8px -12px;
+  position: relative;
+  z-index: 2;
+  background: rgba(var(--v-theme-on-surface), 0.03);
 }
 /* Search highlight */
 :deep(.search-highlight) {

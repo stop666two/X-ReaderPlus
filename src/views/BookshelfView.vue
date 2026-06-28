@@ -505,9 +505,7 @@
               hide-details
               class="mb-3"
             />
-            <div class="d-flex gap-1 mb-3">
-              <v-btn size="x-small" variant="text" prepend-icon="mdi-plus" @click="showNewLibDialog = true; showImportDialog = false">新建书库</v-btn>
-            </div>
+            <div class="d-flex gap-1 mb-3" />
 
             <div
               class="import-drop-zone"
@@ -741,7 +739,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useBookshelfStore } from '@/stores/bookshelf'
 import { usePagination, getPageSize } from '@/composables/usePagination'
@@ -1049,7 +1047,7 @@ async function pickFiles() {
       const input = document.createElement('input')
       input.type = 'file'
       input.multiple = true
-      input.accept = '.epub,.txt,.md,.markdown,.html,.htm,.mobi,.azw,.azw3,.fb2,.djvu,.docx,.rtf,.odt,.pdf,.cbr,.cbz,.cbt,.cb7'
+      input.accept = '.epub,.txt,.md,.markdown,.html,.htm,.fb2,.djvu,.docx,.rtf,.odt,.pdf,.cbr,.cbz,.cbt,.cb7,.chm,.lit,.lrf'
       input.onchange = () => {
         if (input.files) {
           pendingFiles.value = Array.from(input.files).map(f => ({
@@ -1290,10 +1288,13 @@ function getCoverColor(title: string): string {
 // ========== Lifecycle ==========
 onMounted(async () => {
   bookshelfPageSize.value = await getPageSize('bookshelf')
-  // Skip if data already loaded by App.vue's loadAllData()
   if (store.libraries.length > 0) return
   await store.loadLibraries()
   await store.loadBooks()
+})
+
+onUnmounted(() => {
+  if (debounceTimer) clearTimeout(debounceTimer)
 })
 </script>
 
@@ -1492,13 +1493,14 @@ onMounted(async () => {
 .fmt-txt { background: #546E7A; }
 .fmt-markdown,
 .fmt-html { background: #00897B; }
-.fmt-mobi { background: #EF6C00; }
-.fmt-azw3 { background: #F9A825; color: #333; }
 .fmt-fb2 { background: #6A1B9A; }
 .fmt-djvu { background: #4E342E; }
 .fmt-docx { background: #2E7D32; }
 .fmt-rtf { background: #37474F; }
 .fmt-odt { background: #0277BD; }
+.fmt-chm { background: #283593; }
+.fmt-lit { background: #5D4037; }
+.fmt-lrf { background: #1B5E20; }
 .fmt-cbr,
 .fmt-cbz,
 .fmt-cbt,

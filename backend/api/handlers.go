@@ -36,6 +36,7 @@ func Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/settings", handleSettings)
 	mux.HandleFunc("/api/history", handleHistory)
 	mux.HandleFunc("/api/stats", handleStats)
+	mux.HandleFunc("/api/stats/upsert", handleStatsUpsert)
 	mux.HandleFunc("/api/search", handleSearch)
 	mux.HandleFunc("/api/parse", handleParse)
 	mux.HandleFunc("/api/import", handleImport)
@@ -280,6 +281,16 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 		db.Meta.Exec("INSERT INTO reading_history (book_id, data, read_at) VALUES (?, ?, ?)", body.BookId, body.Data, time.Now().UnixMilli())
 		db.Meta.Exec("DELETE FROM reading_history WHERE book_id NOT IN (SELECT book_id FROM reading_history ORDER BY read_at DESC LIMIT 500)")
 		jsonOK(w, map[string]string{"ok": "true"})
+	case "DELETE":
+		ids := r.URL.Query().Get("ids")
+		if ids != "" {
+			for _, id := range strings.Split(ids, ",") {
+				db.Meta.Exec("DELETE FROM reading_history WHERE book_id = ?", strings.TrimSpace(id))
+			}
+		} else {
+			db.Meta.Exec("DELETE FROM reading_history")
+		}
+		jsonOK(w, map[string]string{"ok": "true"})
 	}
 }
 
@@ -297,7 +308,52 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 		var body struct{ Date string `json:"date"`; Data string `json:"data"` }; decode(r, &body)
 		db.Meta.Exec("INSERT OR REPLACE INTO reading_stats (date, data) VALUES (?, ?)", body.Date, body.Data)
 		jsonOK(w, map[string]string{"ok": "true"})
+	case "DELETE":
+		dates := r.URL.Query().Get("dates")
+		if dates != "" {
+			for _, d := range strings.Split(dates, ",") {
+				db.Meta.Exec("DELETE FROM reading_stats WHERE date = ?", strings.TrimSpace(d))
+			}
+		} else {
+			db.Meta.Exec("DELETE FROM reading_stats")
+		}
+		jsonOK(w, map[string]string{"ok": "true"})
 	}
+}
+
+func handleStatsUpsert(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		jsonErr(w, "method not allowed", 405)
+		return
+	}
+	var body struct {
+		Date         string `json:"date"`
+		BooksOpened  int    `json:"booksOpened"`
+		MinutesRead  int    `json:"minutesRead"`
+		PagesRead    int    `json:"pagesRead"`
+	}
+	decode(r, &body)
+	if body.Date == "" {
+		jsonErr(w, "missing date", 400)
+		return
+	}
+	db.Meta.Exec(`INSERT INTO reading_stats (date, data) VALUES (?, '{"date":"","minutesRead":0,"booksOpened":0,"pagesRead":0}') ON CONFLICT(date) DO NOTHING`, body.Date)
+	var existing string
+	db.Meta.QueryRow("SELECT data FROM reading_stats WHERE date = ?", body.Date).Scan(&existing)
+	var s struct {
+		MinutesRead int `json:"minutesRead"`
+		BooksOpened int `json:"booksOpened"`
+		PagesRead   int `json:"pagesRead"`
+	}
+	if existing != "" {
+		json.Unmarshal([]byte(existing), &s)
+	}
+	s.BooksOpened += body.BooksOpened
+	s.MinutesRead += body.MinutesRead
+	s.PagesRead += body.PagesRead
+	updated, _ := json.Marshal(s)
+	db.Meta.Exec("INSERT OR REPLACE INTO reading_stats (date, data) VALUES (?, ?)", body.Date, string(updated))
+	jsonOK(w, map[string]string{"ok": "true"})
 }
 
 // ── Theme / Settings (Settings DB) ──
@@ -415,7 +471,7 @@ func booksGet(page, pageSize int, libID string) ([]Book, int64) {
 	var total int64
 	db.Meta.QueryRow("SELECT COUNT(*) FROM books"+where, args...).Scan(&total)
 	args = append(args, pageSize, (page-1)*pageSize)
-	rows, _ := db.Meta.Query("SELECT * FROM books"+where+" ORDER BY added_at DESC LIMIT ? OFFSET ?", args...)
+	rows, _ := db.Meta.Query("SELECT id,title,author,cover,path,format,size,added_at,last_read_at,progress,chapter_index,chapter_progress,tags,rating,review,word_count,chapter_count,total_reading_time,library_id,content_hash FROM books"+where+" ORDER BY added_at DESC LIMIT ? OFFSET ?", args...)
 	defer rows.Close()
 	var books []Book
 	for rows.Next() {
@@ -430,7 +486,7 @@ func booksGet(page, pageSize int, libID string) ([]Book, int64) {
 }
 func bookByID(id string) (*Book, error) {
 	b := &Book{}; var tagsStr string
-	err := db.Meta.QueryRow("SELECT * FROM books WHERE id = ?", id).Scan(&b.ID, &b.Title, &b.Author, &b.Cover, &b.Path, &b.Format, &b.Size, &b.AddedAt, &b.LastReadAt, &b.Progress, &b.ChapterIndex, &b.ChapterProgress, &tagsStr, &b.Rating, &b.Review, &b.WordCount, &b.ChapterCount, &b.TotalReadingTime, &b.LibraryID, &b.ContentHash)
+	err := db.Meta.QueryRow("SELECT id,title,author,cover,path,format,size,added_at,last_read_at,progress,chapter_index,chapter_progress,tags,rating,review,word_count,chapter_count,total_reading_time,library_id,content_hash FROM books WHERE id = ?", id).Scan(&b.ID, &b.Title, &b.Author, &b.Cover, &b.Path, &b.Format, &b.Size, &b.AddedAt, &b.LastReadAt, &b.Progress, &b.ChapterIndex, &b.ChapterProgress, &tagsStr, &b.Rating, &b.Review, &b.WordCount, &b.ChapterCount, &b.TotalReadingTime, &b.LibraryID, &b.ContentHash)
 	if err != nil { return nil, err }
 	json.Unmarshal([]byte(tagsStr), &b.Tags)
 	if b.Tags == nil { b.Tags = []string{} }
@@ -440,10 +496,26 @@ func booksInsert(b *Book) {
 	tagsJSON, _ := json.Marshal(b.Tags)
 	db.Meta.Exec(`INSERT OR REPLACE INTO books (id,title,author,cover,path,format,size,added_at,last_read_at,progress,chapter_index,chapter_progress,tags,rating,review,word_count,chapter_count,total_reading_time,library_id,content_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, b.ID, b.Title, b.Author, b.Cover, b.Path, b.Format, b.Size, b.AddedAt, b.LastReadAt, b.Progress, b.ChapterIndex, b.ChapterProgress, string(tagsJSON), b.Rating, b.Review, b.WordCount, b.ChapterCount, b.TotalReadingTime, b.LibraryID, b.ContentHash)
 }
+var allowedBookColumns = map[string]bool{
+	"title": true, "author": true, "cover": true, "path": true, "format": true,
+	"size": true, "added_at": true, "last_read_at": true, "progress": true,
+	"chapter_index": true, "chapter_progress": true, "tags": true, "rating": true,
+	"review": true, "word_count": true, "chapter_count": true,
+	"total_reading_time": true, "library_id": true, "content_hash": true,
+}
+
 func bookUpdate(id string, u map[string]any) {
 	for k, v := range u {
 		dbKey := toSnake(k)
-		if dbKey == "tags" { if arr, ok := v.([]any); ok { b, _ := json.Marshal(arr); v = string(b) } }
+		if !allowedBookColumns[dbKey] {
+			continue
+		}
+		if dbKey == "tags" {
+			if arr, ok := v.([]any); ok {
+				b, _ := json.Marshal(arr)
+				v = string(b)
+			}
+		}
 		db.Meta.Exec("UPDATE books SET "+dbKey+" = ? WHERE id = ?", v, id)
 	}
 }

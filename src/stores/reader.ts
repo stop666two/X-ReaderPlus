@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef, triggerRef, computed } from 'vue'
-import type { Bookmark, Annotation, HighlightColor, ChapterContent } from '@/types'
+import type { Bookmark, Annotation, HighlightColor, ChapterContent, TocItem, ReadingMode } from '@/types'
 import { useSettingsStore } from './settings'
 import { generateId } from '@/services/base64'
 import { search as indexSearch, indexExists } from '@/services/search-index'
@@ -9,6 +9,8 @@ export const useReaderStore = defineStore('reader', () => {
   const bookId = ref('')
   /** Chapter metadata (title only — content is lazy-loaded) */
   const chapters = ref<ChapterContent[]>([])
+  /** Table of Contents from EPUB NCX/nav or other format TOC data */
+  const rawToc = ref<TocItem[]>([])
   const currentChapterIndex = ref(0)
   const scrollPosition = ref<Record<number, number>>({})
   const bookmarks = ref<Bookmark[]>([])
@@ -22,6 +24,11 @@ export const useReaderStore = defineStore('reader', () => {
   const showAnnotations = ref(false)
   const isAutoScrolling = ref(false)
   const showToolbar = ref(true)
+  const readingMode = ref<ReadingMode>('scroll')
+  const autoScrollSpeed = ref(50) // px/s
+  const currentPage = ref(0)
+  const totalPages = ref(1)
+  const pageHeights = ref<number[]>([])
 
   // Lazy chapter content cache
   let _allChapterData: ChapterContent[] | null = null
@@ -84,12 +91,25 @@ export const useReaderStore = defineStore('reader', () => {
     if (!window.electronAPI) return
     const data = await window.electronAPI.chapters.get(bid)
     if (data) {
-      const allChapters: ChapterContent[] = JSON.parse(data)
+      const parsed = JSON.parse(data)
+      let allChapters: ChapterContent[]
+      let toc: TocItem[]
+      if (Array.isArray(parsed)) {
+        allChapters = parsed
+        toc = allChapters.map((c, i) => ({ label: c.title, href: '', chapterIndex: i }))
+      } else {
+        allChapters = (parsed as any).chapters || []
+        toc = (parsed as any).rawToc || (() => {
+          const ch = (parsed as any).chapters || []
+          return ch.map((c: ChapterContent, i: number) => ({ label: c.title, href: '', chapterIndex: i }))
+        })()
+      }
       _allChapterData = allChapters
-      // Store only metadata (title), content is lazy-loaded by the view
       chapters.value = allChapters.map(ch => ({ title: ch.title, content: '' }))
+      rawToc.value = toc
     } else {
       chapters.value = []
+      rawToc.value = []
     }
 
     await loadBookmarks()
@@ -272,12 +292,76 @@ export const useReaderStore = defineStore('reader', () => {
     showSearch.value = false
   }
 
+  function setReadingMode(mode: ReadingMode) {
+    readingMode.value = mode
+    if (mode === 'scroll') stopAutoScroll()
+    if (mode === 'pagination') {
+      stopAutoScroll()
+      currentPage.value = 0
+    }
+  }
+
+  /** Paginate chapter content into page-sized segments */
+  function paginateChapter(html: string, containerHeight: number) {
+    const div = document.createElement('div')
+    div.style.cssText = 'position:absolute;visibility:hidden;width:100%'
+    div.innerHTML = html
+    document.body.appendChild(div)
+    const heights: number[] = []
+    let running = 0
+    for (const child of Array.from(div.children)) {
+      const h = (child as HTMLElement).offsetHeight
+      if (running + h > containerHeight && running > 0) {
+        heights.push(running)
+        running = h
+      } else {
+        running += h
+      }
+    }
+    if (running > 0) heights.push(running)
+    document.body.removeChild(div)
+    pageHeights.value = heights
+    totalPages.value = Math.max(1, heights.length)
+    return heights
+  }
+
+  function nextPage() {
+    if (currentPage.value < totalPages.value - 1) currentPage.value++
+  }
+
+  function prevPage() {
+    if (currentPage.value > 0) currentPage.value--
+  }
+
+  let _autoTimer: ReturnType<typeof setInterval> | null = null
+  function toggleAutoScroll(container: HTMLElement | null) {
+    if (isAutoScrolling.value) {
+      stopAutoScroll()
+    } else {
+      startAutoScroll(container)
+    }
+  }
+
+  function startAutoScroll(container: HTMLElement | null) {
+    if (!container) return
+    isAutoScrolling.value = true
+    _autoTimer = setInterval(() => {
+      container.scrollTop += autoScrollSpeed.value / 60
+    }, 16)
+  }
+
+  function stopAutoScroll() {
+    isAutoScrolling.value = false
+    if (_autoTimer) { clearInterval(_autoTimer); _autoTimer = null }
+  }
+
   return {
-    bookId, chapters, currentChapterIndex, scrollPosition,
+    bookId, chapters, rawToc, currentChapterIndex, scrollPosition,
     bookmarks, annotations,
     searchQuery, searchResults, currentSearchIndex,
     showSearch, showToc, showBookmarks, showAnnotations,
     isAutoScrolling, showToolbar,
+    readingMode, autoScrollSpeed, currentPage, totalPages, pageHeights,
     currentChapter, chapterCount,
     hasPreviousChapter, hasNextChapter,
     currentChapterAnnotations, currentChapterBookmarks,
@@ -286,6 +370,8 @@ export const useReaderStore = defineStore('reader', () => {
     loadChapterContent,
     addBookmark, removeBookmark,
     addHighlight, addNote, updateAnnotationNote, deleteAnnotation,
-    performSearch, clearSearch
+    performSearch, clearSearch,
+    setReadingMode, paginateChapter, nextPage, prevPage,
+    toggleAutoScroll, startAutoScroll, stopAutoScroll
   }
 })

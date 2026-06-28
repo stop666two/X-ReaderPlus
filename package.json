@@ -1,6 +1,6 @@
 {
   "name": "x-reader-plus",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "完全脱机的现代化多格式阅读器",
   "author": "stop666",
   "license": "MIT",
@@ -31,7 +31,10 @@
     "build:go:dev": "cd backend && go build -ldflags=\"-s -w\" -o ../dist/X-ReaderPlus-dev.exe .",
     "build:all": "vite build && npm run build:go",
     "preview": "vite preview",
-    "lint": "vue-tsc --noEmit"
+    "lint": "vue-tsc --noEmit && eslint src --quiet",
+    "lint:fix": "eslint src --fix",
+    "format": "prettier --write \"src/**/*.{ts,vue,css}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,vue,css}\""
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
@@ -48,9 +51,14 @@
     "vuetify": "^3.8.4"
   },
   "devDependencies": {
+    "@eslint/js": "^9.0.0",
     "@types/dompurify": "^3.2.0",
     "@vitejs/plugin-vue": "^5.2.4",
+    "eslint": "^9.0.0",
+    "eslint-plugin-vue": "^10.0.0",
+    "prettier": "^3.5.0",
     "typescript": "~5.7.3",
+    "typescript-eslint": "^8.0.0",
     "vite": "^6.3.5",
     "vue-tsc": "^2.2.12"
   }

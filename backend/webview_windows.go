@@ -23,6 +23,9 @@ var (
 
 	_dwmapi  = windows.NewLazySystemDLL("dwmapi.dll")
 	_procDwm = _dwmapi.NewProc("DwmExtendFrameIntoClientArea")
+
+	_shell32        = windows.NewLazySystemDLL("shell32.dll")
+	_procShellExec  = _shell32.NewProc("ShellExecuteW")
 )
 
 const (
@@ -133,6 +136,12 @@ func runWebview(port string, srv *http.Server) {
 		})
 	})
 
+	w.Bind("openExternal", func(url string) {
+		_procShellExec.Call(0, uintptr(unsafe.Pointer(windows.StringToUTF16Ptr("open"))),
+			uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(url))),
+			0, 0, 1) // SW_SHOWNORMAL
+	})
+
 	w.Init(`
 (function() {
 	var retries = 0;
@@ -142,7 +151,7 @@ func runWebview(port string, srv *http.Server) {
 			clearInterval(check);
 			window.electronAPI.minimize = function() { window.minimize && window.minimize(); };
 			window.electronAPI.maximize = function() { window.maximize && window.maximize(); };
-			window.electronAPI.close   = function() { window.close   && window.close(); };
+			window.electronAPI.openExternal = function(url) { window.openExternal && window.openExternal(url); };
 		} else if (retries > 200) {
 			clearInterval(check);
 		}

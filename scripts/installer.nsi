@@ -8,7 +8,7 @@ Unicode true
 !define APP_NAME "X-ReaderPlus"
 !define APP_EXE "X-ReaderPlus-win-x64.exe"
 !define PUBLISHER "stop666"
-!define VERSION "0.3.0"
+!define VERSION "0.3.1"
 !define INSTALL_DIR "$LOCALAPPDATA\Programs\${APP_NAME}"
 
 Name "${APP_NAME} ${VERSION}"

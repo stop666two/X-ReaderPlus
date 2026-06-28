@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, reactive } from 'vue'
-import type { AppSettings, ReadingSettings, ThemeColors, ReadingShortcuts } from '@/types'
+import type { AppSettings, ReadingSettings, ThemeColors, ReadingShortcuts, CustomFont } from '@/types'
 import { logger } from '@/services/log'
 import {
   DEFAULT_READING_SETTINGS,
@@ -18,7 +18,9 @@ export const useSettingsStore = defineStore('settings', () => {
   const autoScrollSpeed = ref(DEFAULT_AUTO_SCROLL_SPEED)
   const themeColors = reactive<ThemeColors>({ ...DEFAULT_THEME_COLORS })
   const readingShortcuts = reactive<ReadingShortcuts>({ ...DEFAULT_READING_SHORTCUTS })
+  const focusMode = ref(false)
   const loaded = ref(false)
+  const customFonts = ref<CustomFont[]>([])
 
   async function load() {
     if (!window.electronAPI) return
@@ -35,6 +37,8 @@ export const useSettingsStore = defineStore('settings', () => {
         if (settings.readingShortcuts) {
           Object.assign(readingShortcuts, settings.readingShortcuts)
         }
+        focusMode.value = settings.focusMode ?? false
+        customFonts.value = settings.customFonts || []
       }
     } catch {
       // Use defaults
@@ -50,7 +54,9 @@ export const useSettingsStore = defineStore('settings', () => {
         toolbarAutoHideDelay: toolbarAutoHideDelay.value,
         autoScrollSpeed: autoScrollSpeed.value,
         themeColors: { ...themeColors },
-        readingShortcuts: { ...readingShortcuts }
+        readingShortcuts: { ...readingShortcuts },
+        focusMode: focusMode.value,
+        customFonts: customFonts.value
       }
       await window.electronAPI.config.set(SETTINGS_KEY, JSON.stringify(settings))
     } catch (e) {
@@ -83,6 +89,11 @@ export const useSettingsStore = defineStore('settings', () => {
     await save()
   }
 
+  async function setFocusMode(val: boolean) {
+    focusMode.value = val
+    await save()
+  }
+
   async function resetReadingSettings() {
     Object.assign(readingSettings, DEFAULT_READING_SETTINGS)
     toolbarAutoHideDelay.value = DEFAULT_TOOLBAR_AUTO_HIDE_DELAY
@@ -101,13 +112,27 @@ export const useSettingsStore = defineStore('settings', () => {
     await save()
   }
 
+  async function addCustomFont(font: CustomFont) {
+    const exists = customFonts.value.find(f => f.family === font.family)
+    if (exists) Object.assign(exists, font)
+    else customFonts.value.push(font)
+    await save()
+  }
+
+  function removeCustomFont(family: string) {
+    customFonts.value = customFonts.value.filter(f => f.family !== family)
+    save()
+  }
+
   return {
     readingSettings,
     toolbarAutoHideDelay,
     autoScrollSpeed,
     themeColors,
     readingShortcuts,
+    focusMode,
     loaded,
+    customFonts,
     load,
     save,
     updateReadingSetting,
@@ -115,8 +140,11 @@ export const useSettingsStore = defineStore('settings', () => {
     setAutoScrollSpeed,
     setThemeColor,
     setAllThemeColors,
+    setFocusMode,
     resetReadingSettings,
     resetReadingShortcuts,
-    resetThemeColors
+    resetThemeColors,
+    addCustomFont,
+    removeCustomFont
   }
 })

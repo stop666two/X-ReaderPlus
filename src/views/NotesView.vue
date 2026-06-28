@@ -488,40 +488,59 @@ function cancelEdit() {
 }
 
 async function saveEdit(ann: Annotation) {
+  const oldNote = ann.note
   ann.note = editingContent.value
   ann.deleted = ann.deleted || false
-  await api.ann.put({ id: ann.id, data: JSON.stringify(ann) })
-  const idx = allAnnotations.value.findIndex(a => a.id === ann.id)
-  if (idx >= 0) allAnnotations.value[idx] = { ...ann }
-  editingId.value = ''
-  editingContent.value = ''
+  try {
+    await api.ann.put({ id: ann.id, data: JSON.stringify(ann) })
+    const idx = allAnnotations.value.findIndex(a => a.id === ann.id)
+    if (idx >= 0) allAnnotations.value[idx] = { ...ann }
+    editingId.value = ''
+    editingContent.value = ''
+  } catch {
+    ann.note = oldNote
+  }
 }
 
 // ---- Soft delete / Trash ----
 
 async function softDeleteAnnotation(ann: Annotation) {
+  const wasDeleted = ann.deleted
   ann.deleted = true
-  await api.ann.put({ id: ann.id, data: JSON.stringify(ann) })
-  const idx = allAnnotations.value.findIndex(a => a.id === ann.id)
-  if (idx >= 0) allAnnotations.value[idx] = { ...ann }
+  try {
+    await api.ann.put({ id: ann.id, data: JSON.stringify(ann) })
+    const idx = allAnnotations.value.findIndex(a => a.id === ann.id)
+    if (idx >= 0) allAnnotations.value[idx] = { ...ann }
+  } catch {
+    ann.deleted = wasDeleted
+  }
 }
 
 async function restoreAnnotation(ann: Annotation) {
+  const wasDeleted = ann.deleted
   ann.deleted = false
-  await api.ann.put({ id: ann.id, data: JSON.stringify(ann) })
-  const idx = allAnnotations.value.findIndex(a => a.id === ann.id)
-  if (idx >= 0) allAnnotations.value[idx] = { ...ann }
+  try {
+    await api.ann.put({ id: ann.id, data: JSON.stringify(ann) })
+    const idx = allAnnotations.value.findIndex(a => a.id === ann.id)
+    if (idx >= 0) allAnnotations.value[idx] = { ...ann }
+  } catch {
+    ann.deleted = wasDeleted
+  }
 }
 
 async function permanentlyDeleteAnnotation(ann: Annotation) {
-  await api.ann.delete(ann.id)
-  allAnnotations.value = allAnnotations.value.filter(a => a.id !== ann.id)
+  try {
+    await api.ann.delete(ann.id)
+    allAnnotations.value = allAnnotations.value.filter(a => a.id !== ann.id)
+  } catch { /* keep in UI if delete failed */ }
 }
 
 async function clearTrash() {
   const ids = deletedAnnotations.value.map(a => a.id)
-  await Promise.all(ids.map(id => api.ann.delete(id)))
-  allAnnotations.value = allAnnotations.value.filter(a => !a.deleted)
+  if (ids.length === 0) return
+  const results = await Promise.allSettled(ids.map(id => api.ann.delete(id)))
+  const failedIds = new Set(ids.filter((_, i) => results[i].status === 'rejected'))
+  allAnnotations.value = allAnnotations.value.filter(a => !a.deleted || failedIds.has(a.id))
   showClearTrashConfirm.value = false
 }
 
