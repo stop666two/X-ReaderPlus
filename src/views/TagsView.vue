@@ -393,7 +393,9 @@ function toggleExpand(tag: string) {
     expandedTag.value = tag
     // Reset book page for this tag
     if (!tagBookPages.value.has(tag)) {
-      tagBookPages.value.set(tag, 1)
+      const m = new Map(tagBookPages.value)
+      m.set(tag, 1)
+      tagBookPages.value = m
     }
   }
 }

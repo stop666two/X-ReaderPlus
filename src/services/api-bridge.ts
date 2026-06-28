@@ -2,10 +2,10 @@
 
 const BASE = 'http://127.0.0.1:34123'
 
-async function api<T = any>(method: string, path: string, body?: any): Promise<T> {
+async function api<T = any>(method: string, path: string, body?: any, rawBody?: string): Promise<T> {
   const h: Record<string, string> = {}
-  if (body !== undefined) { h['Content-Type'] = 'application/json' }
-  const opts: RequestInit = { method, headers: h, body: body !== undefined ? JSON.stringify(body) : undefined }
+  if (body !== undefined || rawBody !== undefined) { h['Content-Type'] = 'application/json' }
+  const opts: RequestInit = { method, headers: h, body: rawBody !== undefined ? rawBody : (body !== undefined ? JSON.stringify(body) : undefined) }
   const res = await fetch(BASE + path, opts)
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }))
@@ -31,7 +31,7 @@ function toSnake(obj: any): any {
   if (typeof obj !== 'object') return obj
   const out: any = {}
   for (const [k, v] of Object.entries(obj)) {
-    out[k.replace(/[A-Z]/g, c => '_' + c.toLowerCase())] = toSnake(v)
+    out[k.replace(/[A-Z]/g, (c, offset) => offset > 0 ? '_' + c.toLowerCase() : c.toLowerCase())] = toSnake(v)
   }
   return out
 }
@@ -125,7 +125,9 @@ async function pickFolder(): Promise<{ canceled: boolean; folderPath: string }> 
           _cachedFiles.push({ name: f.name, data: new ArrayBuffer(0), error: String(e) })
         }
       }
-      finish(false, files.length > 0 ? ((files[0] as any).path || files[0].name) : '')
+      const firstPath = files.length > 0 ? ((files[0] as any).path || files[0].name) : ''
+      const dirPath = firstPath ? firstPath.substring(0, Math.max(firstPath.lastIndexOf('\\'), firstPath.lastIndexOf('/'))) : ''
+      finish(false, dirPath)
     }
 
     window.addEventListener('focus', function onFocus() {
@@ -212,7 +214,11 @@ const apiObj: any = {
     getAll: (opts?: any) => {
       const page = Math.floor((opts?.offset || 0) / (opts?.limit || 30)) + 1
       return api('GET', `/api/books?page=${page}&pageSize=${opts?.limit || 30}`)
-        .then((r: any) => toCamel(Array.isArray(r) ? r[0] : r))
+        .then((r: any) => {
+        const rows = toCamel(Array.isArray(r) ? r[0] : r)
+        const total = Array.isArray(r) ? r[1] : null
+        return total != null ? { rows, total } : rows
+      })
     },
     getById: (id: string) => api('GET', `/api/books/${id}`).then(r => toCamel(r)),
     insert: (book: any) => api('POST', '/api/books', book),
@@ -222,7 +228,7 @@ const apiObj: any = {
   },
   chapters: {
     get: (bookId: string) => api('GET', `/api/chapters/${bookId}`).then(r => JSON.stringify(r ?? [])),
-    set: (bookId: string, data: string) => api('POST', `/api/chapters/${bookId}`, { chapters: JSON.parse(data) }),
+    set: (bookId: string, data: string) => api('POST', `/api/chapters/${bookId}`, undefined, `{"chapters":${data}}`),
     delete: (bookId: string) => api('DELETE', `/api/chapters/${bookId}`),
     getAll: async () => {
       try {

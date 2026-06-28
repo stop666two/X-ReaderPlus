@@ -88,11 +88,11 @@
         </v-list-item>
       </v-list>
 
-      <v-card-text v-if="libraries.length === 0 &amp;&amp; bookshelf.books.length > 0" class="text-center py-8">
+      <v-card-text v-if="libraries.length === 0 && bookshelf.books.length > 0" class="text-center py-8">
         <v-icon size="48" color="grey">mdi-bookshelf</v-icon>
         <p class="text-grey mt-2">暂无书库，点击上方按钮创建</p>
       </v-card-text>
-      <v-card-text v-if="libraries.length === 0 &amp;&amp; bookshelf.books.length === 0" class="text-center py-8">
+      <v-card-text v-if="libraries.length === 0 && bookshelf.books.length === 0" class="text-center py-8">
         <v-progress-circular indeterminate size="24" class="mb-2" />
         <p class="text-grey mt-2">加载中...</p>
       </v-card-text>
@@ -382,7 +382,7 @@ async function doDelete() {
   const targetId = deleteTarget.value.id
   await bookshelf.deleteLibrary(targetId)
   showDeleteDialog.value = false
-  lockedLibs.value.delete(targetId)
+  lockedLibs.value = new Set([...lockedLibs.value].filter(id => id !== targetId))
   deleteTarget.value = null
 }
 
@@ -451,7 +451,7 @@ async function setPrivacy() {
     }
 
     await setLibraryLock(privacyTargetId.value, privacyNewPassword.value)
-    lockedLibs.value.add(privacyTargetId.value)
+    lockedLibs.value = new Set([...lockedLibs.value, privacyTargetId.value])
     privacyLocked.value = true
     privacySuccess.value = '隐私锁设置成功'
     privacyCurrentPassword.value = ''
@@ -468,7 +468,7 @@ async function removePrivacy() {
 
   try {
     await removeLibraryLock(privacyTargetId.value, privacyCurrentPassword.value)
-    lockedLibs.value.delete(privacyTargetId.value)
+    lockedLibs.value = new Set([...lockedLibs.value].filter(id => id !== privacyTargetId.value))
     privacyLocked.value = false
     privacySuccess.value = '隐私锁已移除'
     privacyCurrentPassword.value = ''

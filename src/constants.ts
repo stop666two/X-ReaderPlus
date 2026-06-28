@@ -1,7 +1,7 @@
 import type { ReadingSettings, HighlightColor, BookFormat, ThemeColors, AppSettings, CustomThemes } from '@/types'
 
 export const APP_NAME = 'X-ReaderPlus'
-export const APP_VERSION = '0.3.0'
+export const APP_VERSION = '0.3.1'
 export const DB_VERSION = 6
 export const MAX_FILE_SIZE = 500 * 1024 * 1024
 export const MAX_EPUB_FILES = 10000
@@ -91,21 +91,28 @@ export const HIGHLIGHT_COLORS: { value: HighlightColor; label: string; hex: stri
   { value: 'purple', label: '紫色', hex: '#6A1B9A', bg: 'rgba(106,27,154,0.35)' }
 ]
 
+export const ALLOWED_FORMATS = new Set<BookFormat>([
+  'epub', 'pdf', 'txt', 'fb2', 'djvu', 'chm', 'lit', 'lrf',
+  'docx', 'rtf', 'odt', 'markdown', 'html',
+  'cbz', 'cbr', 'cbt', 'cb7'
+])
+
 export const SUPPORTED_FORMATS: { value: BookFormat; label: string; extensions: string[] }[] = [
   { value: 'epub', label: 'EPUB', extensions: ['.epub'] },
+  { value: 'pdf', label: 'PDF', extensions: ['.pdf'] },
   { value: 'txt', label: 'TXT', extensions: ['.txt'] },
-  { value: 'markdown', label: 'Markdown', extensions: ['.md', '.markdown'] },
-  { value: 'html', label: 'HTML', extensions: ['.html', '.htm'] },
-  { value: 'mobi', label: 'MOBI', extensions: ['.mobi'] },
-  { value: 'azw3', label: 'AZW3', extensions: ['.azw3', '.azw'] },
   { value: 'fb2', label: 'FB2', extensions: ['.fb2'] },
   { value: 'djvu', label: 'DJVU', extensions: ['.djvu'] },
+  { value: 'chm', label: 'CHM', extensions: ['.chm'] },
+  { value: 'lit', label: 'LIT', extensions: ['.lit'] },
+  { value: 'lrf', label: 'LRF', extensions: ['.lrf'] },
   { value: 'docx', label: 'DOCX', extensions: ['.docx'] },
   { value: 'rtf', label: 'RTF', extensions: ['.rtf'] },
   { value: 'odt', label: 'ODT', extensions: ['.odt'] },
-  { value: 'pdf', label: 'PDF', extensions: ['.pdf'] },
-  { value: 'cbr', label: 'CBR', extensions: ['.cbr'] },
+  { value: 'markdown', label: 'Markdown', extensions: ['.md', '.markdown'] },
+  { value: 'html', label: 'HTML', extensions: ['.html', '.htm'] },
   { value: 'cbz', label: 'CBZ', extensions: ['.cbz'] },
+  { value: 'cbr', label: 'CBR', extensions: ['.cbr'] },
   { value: 'cbt', label: 'CBT', extensions: ['.cbt'] },
   { value: 'cb7', label: 'CB7', extensions: ['.cb7'] }
 ]

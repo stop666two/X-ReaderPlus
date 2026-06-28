@@ -349,7 +349,8 @@ export async function search(query: string, bookId?: string): Promise<SearchResu
 
     let chapters: ChapterContent[]
     try {
-      chapters = JSON.parse(chaptersRaw)
+      const parsed = JSON.parse(chaptersRaw)
+      chapters = Array.isArray(parsed) ? parsed : parsed.chapters || []
     } catch {
       continue
     }
@@ -464,9 +465,10 @@ export async function rebuildFullIndex(
 
       let chapters: ChapterContent[]
       try {
-        chapters = JSON.parse(chRecord)
+        const parsed = JSON.parse(chRecord)
+        chapters = Array.isArray(parsed) ? parsed : parsed.chapters || []
       } catch { continue }
-      if (!Array.isArray(chapters) || chapters.length === 0) continue
+      if (!chapters || chapters.length === 0) continue
 
       // Reload index after each book to avoid losing work (we need to re-acquire)
       // For efficiency we build in batches within the same lock

@@ -45,8 +45,8 @@ export function createSampleChapters(): ChapterContent[] {
 <h2>核心特性一览</h2>
 <table border="1" cellpadding="8" cellspacing="0" style="width:100%; border-collapse:collapse;">
 <tr style="background:#f0f0f0;"><th>特性分类</th><th>功能详情</th></tr>
-<tr><td>📚 多格式支持</td><td>EPUB、TXT、Markdown、HTML、MOBI、AZW3、FB2、DJVU、DOCX、RTF、ODT、PDF、CBR/CBZ/CBT/CB7</td></tr>
-<tr><td>📖 强大阅读器</td><td>分章节阅读、多导航模式、可调排版、三主题切换、缩放字号</td></tr>
+<tr><td>📚 多格式支持</td><td>EPUB、PDF、TXT、FB2、DJVU、CHM、LIT、LRF、DOCX、RTF、ODT、Markdown、HTML、CBZ/CBR/CBT/CB7</td></tr>
+<tr><td>📖 强大阅读器</td><td>分章节阅读、三模式阅读(滚动/翻页/自动)、可调排版、三主题切换、自定义字体上传</td></tr>
 <tr><td>✍️ 标注与笔记</td><td>6色高亮标注、行内笔记、多层级书签、全文搜索标注</td></tr>
 <tr><td>🔒 安全保护</td><td>PIN码锁定、SHA-256+PBKDF2(60万次迭代)、AES-256-GCM加密</td></tr>
 <tr><td>📊 阅读统计</td><td>阅读时长追踪、进度热力图、阅读速度分析、阅读日历</td></tr>
@@ -111,7 +111,6 @@ export function createSampleChapters(): ChapterContent[] {
 <h2>支持的文件格式</h2>
 <ul>
 <li><strong>EPUB</strong> (.epub) — 主流电子书格式，支持目录、图片、CSS 样式</li>
-<li><strong>MOBI / AZW3</strong> (.mobi, .azw3) — Kindle 电子书格式</li>
 <li><strong>PDF</strong> (.pdf) — 便携文档格式，保留原始排版</li>
 <li><strong>TXT</strong> (.txt) — 纯文本，自动分章节</li>
 <li><strong>Markdown</strong> (.md) — 结构化文本，支持代码高亮</li>

@@ -160,6 +160,35 @@
               />
             </div>
 
+            <!-- 上传自定义字体 -->
+            <div>
+              <label class="text-caption">自定义字体文件</label>
+              <input
+                ref="fontInputRef"
+                type="file"
+                accept=".ttf,.otf,.woff,.woff2"
+                style="display:none"
+                @change="onFontFileSelected"
+              />
+              <div class="d-flex align-center gap-2">
+                <v-btn size="small" variant="outlined" prepend-icon="mdi-upload" @click="triggerFontUpload">
+                  选择字体
+                </v-btn>
+                <span class="text-caption text-medium-emphasis" v-if="!fontUploadError">支持 .ttf .otf .woff .woff2</span>
+                <span class="text-caption text-error" v-else>{{ fontUploadError }}</span>
+              </div>
+              <div v-if="settings.customFonts.length > 0" class="mt-2">
+                <v-chip
+                  v-for="f in settings.customFonts"
+                  :key="f.family"
+                  size="small"
+                  closable
+                  class="mr-1 mb-1"
+                  @click:close="onRemoveFont(f.family)"
+                >{{ f.name }}</v-chip>
+              </div>
+            </div>
+
             <!-- 文字对齐 -->
             <div>
               <label class="text-caption">文字对齐</label>
@@ -1569,7 +1598,8 @@ import { logger } from '@/services/log'
 import { FONT_FAMILIES, SECURITY_QUESTIONS, APP_VERSION } from '@/constants'
 import { hashPin, generateSalt } from '@/services/crypto'
 import { testConnection, uploadFile, downloadFile, encryptPassword, decryptPassword, listBackups, ensureDirectory } from '@/services/webdav'
-import type { ThemeMode, BackupData, CustomTheme, Annotation } from '@/types'
+import { arrayBufferToBase64 } from '@/services/base64'
+import type { ThemeMode, BackupData, CustomTheme, Annotation, CustomFont } from '@/types'
 
 // ---- API helpers: prefer electronAPI, fall back to Dexie ----
 const api = {
@@ -1704,6 +1734,78 @@ function onCustomFontInput(value: string) {
     settings.updateReadingSetting('fontFamily', FONT_FAMILIES[0].value)
   }
 }
+
+const fontUploadError = ref('')
+const fontInputRef = ref<HTMLInputElement | null>(null)
+
+function triggerFontUpload() {
+  fontInputRef.value?.click()
+}
+
+async function onFontFileSelected(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  fontUploadError.value = ''
+
+  const ext = (file.name.split('.').pop() || '').toLowerCase()
+  const fmtMap: Record<string, CustomFont['format']> = {
+    ttf: 'truetype', otf: 'opentype', woff: 'woff', woff2: 'woff2'
+  }
+  const format = fmtMap[ext]
+  if (!format) {
+    fontUploadError.value = '不支持的字体格式'
+    return
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    fontUploadError.value = '字体文件不能超过 10MB'
+    return
+  }
+
+  try {
+    const buf = await file.arrayBuffer()
+    const base64 = arrayBufferToBase64(buf)
+    const mime = `font/${ext === 'ttf' ? 'truetype' : ext}`
+    const dataUrl = `data:${mime};base64,${base64}`
+    const family = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    const name = file.name.replace(/\.[^.]+$/, '')
+
+    settings.addCustomFont({ name, family, dataUrl, format })
+    settings.updateReadingSetting('fontFamily', `"${family}"`)
+    fontFamilySelected.value = FONT_FAMILIES.find(f => f.value === '__custom__')!
+    isCustomFont.value = true
+    customFontValue.value = `"${family}"`
+
+    // Inject @font-face into document
+    injectFontFace(family, dataUrl, format)
+  } catch {
+    fontUploadError.value = '字体读取失败'
+  }
+  input.value = ''
+}
+
+function onRemoveFont(family: string) {
+  settings.removeCustomFont(family)
+  const style = document.getElementById(`font-${family}`)
+  if (style) style.remove()
+  if (settings.readingSettings.fontFamily.includes(family)) {
+    settings.updateReadingSetting('fontFamily', FONT_FAMILIES[0].value)
+  }
+}
+
+function injectFontFace(family: string, dataUrl: string, format: CustomFont['format']) {
+  const existing = document.getElementById(`font-${family}`)
+  if (existing) existing.remove()
+  const style = document.createElement('style')
+  style.id = `font-${family}`
+  style.textContent = `@font-face{font-family:"${family}";src:url(${dataUrl}) format("${format}");font-display:swap}`
+  document.head.appendChild(style)
+}
+
+// Inject all stored custom fonts on mount
+onMounted(() => {
+  settings.customFonts.forEach(f => injectFontFace(f.family, f.dataUrl, f.format))
+})
 
 // ---- Color pickers ----
 const primaryPicker = ref<HTMLInputElement>()
@@ -2360,8 +2462,8 @@ async function confirmClearAll() {
   clearAllConfirm.value = ''
   if (!window.electronAPI) return
   await window.electronAPI.clearAll()
-  // recreate default library
   await window.electronAPI.libraries.insert('default', JSON.stringify({id:'default', name:'默认书库', path:'', mode:'copy', createdAt:Date.now(), bookCount:0}))
+  await new Promise(r => setTimeout(r, 200))
   window.location.reload()
 }
 

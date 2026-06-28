@@ -1,4 +1,5 @@
 export type ThemeMode = 'light' | 'dark' | 'sepia'
+export type ReadingMode = 'scroll' | 'pagination' | 'auto'
 export type ViewMode = 'grid' | 'list'
 export type SortField = 'addedAt' | 'title' | 'author' | 'libraryName' | 'chapterCount'
 export type SortOrder = 'asc' | 'desc'
@@ -8,9 +9,10 @@ export type ImportMode = 'copy' | 'folder'
 
 export type BookFormat =
   | 'epub' | 'txt' | 'markdown' | 'html'
-  | 'mobi' | 'azw3' | 'fb2' | 'djvu'
+  | 'fb2' | 'djvu'
   | 'docx' | 'rtf' | 'odt' | 'pdf'
   | 'cbr' | 'cbz' | 'cbt' | 'cb7'
+  | 'chm' | 'lit' | 'lrf'
 
 export interface Book {
   id: string
@@ -144,6 +146,15 @@ export interface AppSettings {
   autoScrollSpeed: number
   themeColors: ThemeColors
   readingShortcuts?: ReadingShortcuts
+  focusMode?: boolean
+  customFonts?: CustomFont[]
+}
+
+export interface CustomFont {
+  name: string
+  family: string
+  dataUrl: string
+  format: 'truetype' | 'opentype' | 'woff' | 'woff2'
 }
 
 export interface SecurityQuestion {

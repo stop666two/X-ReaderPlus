@@ -1,7 +1,8 @@
 import type { BookFormat, ParsedBook, ChapterContent, TocItem } from '@/types'
 import { sanitizeEpubContent } from './sanitize'
 import { logger } from './log'
-import { MAX_FILE_SIZE, MAX_EPUB_FILES, AUTHOR_PATTERNS, CHAPTER_PATTERNS } from '@/constants'
+import { arrayBufferToBase64 } from './base64'
+import { MAX_FILE_SIZE, MAX_EPUB_FILES, AUTHOR_PATTERNS, CHAPTER_PATTERNS, ALLOWED_FORMATS, SUPPORTED_FORMATS } from '@/constants'
 
 // ========== Encoding detection ==========
 
@@ -59,12 +60,14 @@ export async function parseBook(filePath: string, fileName: string, fileData: Ar
     case 'txt': return parseTxt(fileData, fileName)
     case 'markdown': return parseMarkdown(fileData, fileName)
     case 'html': return parseHtml(fileData, fileName)
-    case 'mobi': case 'azw3': return parseMobi(fileData, fileName, format)
     case 'fb2': return parseFb2(fileData, fileName)
     case 'djvu': return parseDjvu(fileData, fileName)
     case 'docx': case 'rtf': case 'odt': return parseDocx(fileData, fileName, format)
     case 'pdf': return parsePdf(fileData, fileName)
     case 'cbr': case 'cbz': case 'cbt': case 'cb7': return parseComic(fileData, fileName, format)
+    case 'chm': return parseChm(fileData, fileName)
+    case 'lit': return parseLit(fileData, fileName)
+    case 'lrf': return parseLrf(fileData, fileName)
     default: throw new Error(`不支持的文件格式: ${fileName}`)
   }
 }
@@ -73,13 +76,23 @@ export function detectFormat(fileName: string): BookFormat {
   const ext = fileName.toLowerCase().split('.').pop() || ''
   const map: Record<string, BookFormat> = {
     'epub': 'epub', 'txt': 'txt', 'md': 'markdown', 'markdown': 'markdown',
-    'html': 'html', 'htm': 'html', 'mobi': 'mobi', 'azw': 'azw3', 'azw3': 'azw3',
+    'html': 'html', 'htm': 'html',
     'fb2': 'fb2', 'djvu': 'djvu', 'docx': 'docx', 'rtf': 'rtf', 'odt': 'odt',
-    'pdf': 'pdf', 'cbr': 'cbr', 'cbz': 'cbz', 'cbt': 'cbt', 'cb7': 'cb7'
+    'pdf': 'pdf', 'cbr': 'cbr', 'cbz': 'cbz', 'cbt': 'cbt', 'cb7': 'cb7',
+    'chm': 'chm', 'lit': 'lit', 'lrf': 'lrf'
   }
   const format = map[ext]
   if (!format) throw new Error(`未知文件格式: ${ext}`)
+  // Whitelist gate: reject disabled formats
+  if (!isFormatAllowed(format)) {
+    const label = SUPPORTED_FORMATS.find(f => f.value === format)?.label || format.toUpperCase()
+    throw new Error(`${label} 格式暂不支持，请转换为 EPUB 后导入`)
+  }
   return format
+}
+
+function isFormatAllowed(fmt: BookFormat): boolean {
+  return ALLOWED_FORMATS.has(fmt)
 }
 
 // ========== Smart author detection ==========
@@ -115,7 +128,6 @@ function splitChapters(text: string, fallbackTitle: string): ChapterContent[] {
   const chapters: ChapterContent[] = []
   let currentTitle = ''
   let currentLines: string[] = []
-  let pendingTitle = ''
 
   for (let i = 0; i < paragraphs.length; i++) {
     const line = paragraphs[i]
@@ -201,22 +213,45 @@ async function parseEpub(fileData: ArrayBuffer, fileName: string): Promise<Parse
     if (!spine.includes(m[1])) spine.push(m[1])
   }
 
-  // TOC
+  // TOC: prefer NCX (EPUB2), fall back to EPUB3 nav.xhtml
   const toc: TocItem[] = []
-  let coverBase64 = ''
+  let ncxDir = rootDir
   const ncxItem = Object.values(manifest).find(i => i.mediaType === 'application/x-dtbncx+xml')
   if (ncxItem) {
-    const ncxFile = zip.file(resolvePath(rootDir, ncxItem.href))
+    const ncxPath = resolvePath(rootDir, ncxItem.href)
+    ncxDir = ncxPath.includes('/') ? ncxPath.substring(0, ncxPath.lastIndexOf('/') + 1) : ''
+    const ncxFile = zip.file(ncxPath)
     if (ncxFile) {
       const ncxXml = await ncxFile.async('string')
       const navPoints = ncxXml.match(/<navPoint[^>]*>[\s\S]*?<\/navPoint>/g) || []
       navPoints.forEach((np, idx) => {
         const label = (extractXmlTag(np, 'navLabel') || '').replace(/<[^>]+>/g, '').trim() || `章节 ${idx + 1}`
-        toc.push({ label, href: extractXmlTag(np, 'content') || '', chapterIndex: idx })
+        toc.push({ label, href: extractXmlTag(np, 'content') || '', chapterIndex: -1 })
       })
     }
   }
+
+  // EPUB3 nav.xhtml fallback
+  if (toc.length === 0) {
+    const navItem = Object.values(manifest).find(i =>
+      i.href.endsWith('nav.xhtml') || i.href.endsWith('nav.html') ||
+      ((i as any).properties && (i as any).properties.includes('nav'))
+    )
+    if (navItem) {
+      const navFile = zip.file(resolvePath(rootDir, navItem.href))
+      if (navFile) {
+        const navHtml = await navFile.async('string')
+        const links = navHtml.match(/<a\b[^>]*href\s*=\s*["']([^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi) || []
+        links.forEach((a, idx) => {
+          const hrefMatch = a.match(/href\s*=\s*["']([^"']*)["']/) || []
+          const text = (a.match(/>([\s\S]*?)<\/a>/i) || [])[1]?.replace(/<[^>]+>/g, '').trim() || ''
+          toc.push({ label: text || `章节 ${idx + 1}`, href: hrefMatch[1] || '', chapterIndex: -1 })
+        })
+      }
+    }
+  }
   // Cover
+  let coverBase64 = ''
   // Primary: find <meta name="cover" content="cover-id"/> in the OPF metadata
   const coverMetaMatch = opfXml.match(/<meta[^>]*name\s*=\s*["']cover["'][^>]*content\s*=\s*["']([^"']+)["'][^>]*\/?>/i)
     || opfXml.match(/<meta[^>]*content\s*=\s*["']([^"']+)["'][^>]*name\s*=\s*["']cover["'][^>]*\/?>/i)
@@ -245,7 +280,7 @@ async function parseEpub(fileData: ArrayBuffer, fileName: string): Promise<Parse
       const COVER_MAX_SIZE = 5 * 1024 * 1024
       const d = await cf.async('arraybuffer')
       if (d.byteLength <= COVER_MAX_SIZE) {
-        coverBase64 = arrayToDataUrl(d, manifest[coverId].mediaType)
+        coverBase64 = dataUrl(d, manifest[coverId].mediaType)
       } else {
         logger.warn(`封面图片过大 (${(d.byteLength / 1024 / 1024).toFixed(1)}MB)，跳过`)
       }
@@ -265,9 +300,95 @@ async function parseEpub(fileData: ArrayBuffer, fileName: string): Promise<Parse
     // Embed images as data URIs
     const chapterDir = chapterPath.includes('/') ? chapterPath.substring(0, chapterPath.lastIndexOf('/') + 1) : ''
     body = await embedImages(body, chapterDir, rootDir, zip)
-    let chTitle = toc[i]?.label || ''
-    if (!chTitle) { const h = body.match(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i); chTitle = h ? h[1].replace(/<[^>]+>/g, '').trim() : `第 ${i + 1} 章` }
+    let chTitle = toc.find(t => t.chapterIndex === chapters.length)?.label || ''
+    if (!chTitle) {
+      const h = body.match(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i)
+      if (h) {
+        chTitle = h[1].replace(/<[^>]+>/g, '').trim()
+      }
+    }
+    if (!chTitle) {
+      const inlinePatterns = [
+        /第[零一二三四五六七八九十百千0-9]+[章节节卷部回篇集輯]\s*[：:]?\s*(.+)?/,
+        /第[零一二三四五六七八九十百千0-9]+[卷部回篇]?\s+[^\s<>]{2,30}/,
+        /^Chapter\s+\d+/i, /^Part\s+\d+/i, /^Section\s+\d+/i,
+        /(序言|前言|楔子|引子|番外|后记|尾声|附录)/,
+        /(Prologue|Epilogue|Foreword|Preface|Introduction|Appendix)/i,
+      ]
+      for (const p of inlinePatterns) {
+        const m = body.match(p)
+        if (m) { chTitle = m[0].replace(/<[^>]+>/g, '').trim(); break }
+      }
+      if (!chTitle) chTitle = `第 ${i + 1} 章`
+    }
     chapters.push({ title: chTitle, content: body })
+  }
+
+  // Resolve TOC items against actual chapter indices
+  const chapterHrefToIndex: Record<string, number> = {}
+  for (let ci = 0; ci < chapters.length; ci++) {
+    // Re-derive the manifest href for this chapter
+    const chSpineIdx = spine.findIndex(sid => {
+      const item = manifest[sid]
+      if (!item) return false
+      const p = resolvePath(rootDir, item.href)
+      return zip.file(p) !== null
+    })
+    // Use the manifest href for matching
+    let actualIdx = 0
+    for (let si = 0; si < spine.length; si++) {
+      const item = manifest[spine[si]]
+      if (!item) continue
+      const cp = resolvePath(rootDir, item.href)
+      const f = zip.file(cp)
+      if (!f) continue
+      if (actualIdx === ci) {
+        const resolved = normalizeTextRef(rootDir, item.href)
+        chapterHrefToIndex[resolved] = ci
+        break
+      }
+      actualIdx++
+    }
+  }
+
+  for (const ti of toc) {
+    if (!ti.href || ti.chapterIndex >= 0) continue
+    const baseHref = ti.href.split('#')[0]
+    // Resolve relative to NCX directory (for EPUB2) or OPF root (for EPUB3)
+    const refDir = ncxItem ? ncxDir : rootDir
+    const resolved = normalizeTextRef(refDir, baseHref)
+    if (chapterHrefToIndex[resolved] !== undefined) {
+      ti.chapterIndex = chapterHrefToIndex[resolved]
+    }
+    if (ti.chapterIndex < 0) {
+      for (const [rhref, cidx] of Object.entries(chapterHrefToIndex)) {
+        if (rhref.endsWith('/' + baseHref) || rhref.endsWith(baseHref)) {
+          ti.chapterIndex = cidx
+          break
+        }
+      }
+    }
+  }
+
+  // Assign sequential fallback indices and fix chapter titles
+  let seqIdx = 0
+  const usedIndices = new Set<number>()
+  for (const ti of toc) {
+    if (ti.chapterIndex < 0) {
+      while (usedIndices.has(seqIdx)) seqIdx++
+      ti.chapterIndex = seqIdx
+    }
+    usedIndices.add(ti.chapterIndex)
+  }
+
+  // Apply TOC titles to chapters
+  for (const ti of toc) {
+    if (ti.chapterIndex >= 0 && ti.chapterIndex < chapters.length) {
+      const ch = chapters[ti.chapterIndex]
+      if (ch && (ch.title.startsWith('第 ') || ch.title.startsWith('Chapter ') || !ch.title)) {
+        ch.title = ti.label
+      }
+    }
   }
 
   const wordCount = chapters.reduce((s, c) => s + countWords(c.content), 0)
@@ -351,115 +472,6 @@ async function parseHtml(fileData: ArrayBuffer, fileName: string): Promise<Parse
   return { metadata: { title, author, cover: '', format: 'html' }, chapters, rawToc: chapters.map((c, i) => ({ label: c.title, href: '', chapterIndex: i })), rawContent: text.slice(0, 10000) }
 }
 
-// ========== MOBI/AZW3 ==========
-
-async function parseMobi(fileData: ArrayBuffer, fileName: string, format: 'mobi' | 'azw3'): Promise<ParsedBook> {
-  const data = new Uint8Array(fileData)
-  const title = fileName.replace(/\.(mobi|azw3?)$/i, '')
-  let author = '未知作者'
-  let text = ''
-
-  try {
-    // --- Extract metadata from PalmDOC header ---
-    const titleOff = getU32(data, 84), titleLen = getU32(data, 88)
-    const authorOff = getU32(data, 92), authorLen = getU32(data, 96)
-    if (titleOff > 0 && titleLen > 0) {
-      const t = decodeTextSegment(data, titleOff, titleLen)
-      if (t) { /* title already set from fileName */ }
-    }
-    if (authorOff > 0 && authorLen > 0) {
-      const a = decodeTextSegment(data, authorOff, authorLen)
-      if (a) author = a
-    }
-
-    // --- Method 1: Locate MOBI header, then text records ---
-    const mobiOff = findBytes(data, 'MOBI')
-    if (mobiOff >= 0) {
-      const headerLen = getU32(data, mobiOff + 4)
-      // First text record starts at mobiOff + 16 + headerLen
-      const textStart = mobiOff + 16 + headerLen
-
-      // Method 1a: Try to find HTML content by searching for <html...>...</html>
-      const htmlStart = findBytes(data, '<html', textStart)
-      if (htmlStart >= 0 && htmlStart < textStart + 50000) {
-        const htmlEnd = findBytes(data, '</html>', htmlStart)
-        if (htmlEnd >= 0) {
-          text = decodeTextSegment(data, htmlStart, htmlEnd + 7 - htmlStart)
-        } else {
-          // Method 1b: No closing html tag — take from htmlStart to end of file
-          text = decodeTextSegment(data, htmlStart, data.length - htmlStart)
-        }
-      }
-
-      // Method 1c: Fallback — try searching for <body...> if <html> not found
-      if (!text) {
-        const bodyStart = findBytes(data, '<body', textStart)
-        if (bodyStart >= 0 && bodyStart < textStart + 100000) {
-          const bodyEnd = findBytes(data, '</body>', bodyStart)
-          if (bodyEnd >= 0) {
-            text = decodeTextSegment(data, bodyStart, bodyEnd + 7 - bodyStart)
-          }
-        }
-      }
-
-      // Method 1d: Plain text extraction from raw records (skip HTML search)
-      if (!text) {
-        const rawText = decodeTextSegment(data, textStart, Math.min(500000, data.length - textStart))
-        if (rawText.length > 100) {
-          // Check if text is a meaningful string (not binary garbage)
-          const printable = rawText.replace(/[\x00-\x1f\x7f-\x9f]/g, '')
-          if (printable.length > rawText.length * 0.3) {
-            text = rawText
-          }
-        }
-      }
-    }
-
-    // --- Method 2: If MOBI header not found, search whole file for content ---
-    if (!text) {
-      const fh = findBytes(data, '<html')
-      if (fh >= 0) {
-        const fe = findBytes(data, '</html>', fh)
-        text = fe >= 0 ? decodeTextSegment(data, fh, fe + 7 - fh) : decodeTextSegment(data, fh, data.length - fh)
-      }
-    }
-
-    // --- Method 3: Try decoding as UTF-8/GBK text after skipping binary header ---
-    if (!text) {
-      const candidates = [0, 100, 200, 500]
-      for (const skip of candidates) {
-        if (skip >= data.length) continue
-        const raw = decodeTextBest(data.slice(skip))
-        const sig = raw.slice(0, 200).toLowerCase()
-        if (sig.includes('<html') || sig.includes('<body') || sig.includes('<p') || sig.includes('<div')) {
-          text = raw
-          break
-        }
-        // Keep the best candidate even if no HTML tags (plain text MOBI)
-        if (raw.length > (text || '').length && raw.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').length > raw.length * 0.5) {
-          text = raw
-        }
-      }
-    }
-  } catch { /* EPUB 解析失败 */ }
-
-  if (!text) {
-    text = '<p>无法解析 MOBI/AZW3 文本内容，文件已保留。</p>'
-    logger.warn(`MOBI/AZW3 文本提取失败: ${fileName}`)
-  }
-
-  const cleaned = sanitizeEpubContent(text)
-  const chapters = splitHtmlChapters(cleaned, title)
-  const wordCount = chapters.reduce((s, c) => s + countWords(c.content), 0)
-
-  return {
-    metadata: { title, author, cover: '', format },
-    chapters,
-    rawToc: chapters.map((c, i) => ({ label: c.title, href: '', chapterIndex: i })),
-    rawContent: text.slice(0, 10000)
-  }
-}
-
 // ========== FB2 ==========
 
 async function parseFb2(fileData: ArrayBuffer, fileName: string): Promise<ParsedBook> {
@@ -500,7 +512,7 @@ async function parseFb2(fileData: ArrayBuffer, fileName: string): Promise<Parsed
     if (hm) {
       const escapedId = hm[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       const bm = xml.match(new RegExp(`<binary[^>]*id=["']${escapedId}["'][^>]*content-type=["']([^"']+)["'][^>]*>([^<]*)</binary>`, 'i'))
-      if (bm) coverBase64 = arrayToDataUrl(base64ToBytes(bm[2].trim()).buffer, bm[1])
+      if (bm) coverBase64 = dataUrl(base64ToBytes(bm[2].trim()).buffer, bm[1])
     }
   }
 
@@ -593,81 +605,319 @@ async function parsePdf(fileData: ArrayBuffer, fileName: string): Promise<Parsed
   const title = fileName.replace(/\.pdf$/i, '')
   const chapters: ChapterContent[] = []
   let rawText = ''
+  let errorDetail = ''
 
-  // Large file warning
   if (fileData.byteLength > PDF_LARGE_FILE_BYTES) {
     logger.warn(`大 PDF 文件 (${(fileData.byteLength / 1024 / 1024).toFixed(1)}MB): ${fileName}，渲染可能较慢`)
   }
 
+  // Try raw binary text extraction as fallback
+  const rawBinary = new Uint8Array(fileData)
+  const rawBinaryText = decodeTextBest(rawBinary.slice(0, Math.min(rawBinary.length, 2000000)))
+  const hasRawText = rawBinaryText.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').length > 100
+  let author = '未知作者'
+
   try {
     const pdfjsLib = await import('pdfjs-dist')
     if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = ''
+      pdfjsLib.GlobalWorkerOptions.workerSrc = '' // main-thread (parsing already offloaded via parse-worker.ts)
     }
     const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(fileData) }).promise
     const totalPages = Math.min(pdf.numPages, PDF_MAX_PAGES)
     const truncated = pdf.numPages > PDF_MAX_PAGES
 
     const pageTexts: string[] = []
-    const scale = typeof window !== 'undefined' && window.devicePixelRatio ? Math.min(window.devicePixelRatio, 2) : 1.5
+    let hasAnyText = false
 
     for (let i = 1; i <= totalPages; i++) {
       const page = await pdf.getPage(i)
-      // Extract text for search/metadata
       const tc = await page.getTextContent()
       const pt = tc.items.map((x: any) => x.str || '').join(' ').trim()
-      if (pt) pageTexts.push(pt)
+      if (pt) { pageTexts.push(pt); hasAnyText = true } else { pageTexts.push('') }
     }
 
     rawText = pageTexts.join('\n')
-    const author = detectAuthor(rawText, title, 'pdf')
+    author = detectAuthor(rawText || rawBinaryText, title, 'pdf')
 
-    // Build chapter HTML with pdf-page markers (batch pages into ~20 chapters)
-    const batchSize = Math.max(1, Math.ceil(totalPages / 20))
-    const pageStartIndices = batchArray(
-      Array.from({ length: totalPages }, (_, i) => i + 1),
-      batchSize
-    )
+    if (hasAnyText) {
+      // Normal text-based PDF: batch pages into chapters with text data
+      const batchSize = Math.max(1, Math.ceil(totalPages / 20))
+      const pageStartIndices = batchArray(
+        Array.from({ length: totalPages }, (_, i) => i + 1),
+        batchSize
+      )
+      pageStartIndices.forEach((pageNums, batchIdx) => {
+        const parts: string[] = []
+        for (const pageNum of pageNums) {
+          const textIdx = pageNum - 1
+          const pageText = pageTexts[textIdx] || ''
+          const escapedText = escapeHtml(pageText).replace(/"/g, '&quot;')
+          parts.push(
+            `<div class="pdf-page" data-page="${pageNum}" data-text="${escapedText}">` +
+            `<div class="pdf-page-img-container" data-page="${pageNum}">` +
+            `<div class="pdf-page-placeholder">第 ${pageNum} 页</div>` +
+            `</div></div>`
+          )
+        }
+        chapters.push({ title: `第 ${batchIdx + 1} 部分`, content: parts.join('\n') })
+      })
+    } else {
+      // Scanned/image PDF — no text layer. Build image-only chapters.
+      const batchSize = Math.max(1, Math.ceil(totalPages / 10))
+      const pageStartIndices = batchArray(
+        Array.from({ length: totalPages }, (_, i) => i + 1),
+        batchSize
+      )
+      pageStartIndices.forEach((pageNums, batchIdx) => {
+        const parts: string[] = []
+        parts.push(`<p class="pdf-scanned-notice">📷 此 PDF 为扫描版（无文本层），以下为图片页面。</p>`)
+        for (const pageNum of pageNums) {
+          parts.push(
+            `<div class="pdf-page" data-page="${pageNum}" data-text="">` +
+            `<div class="pdf-page-img-container" data-page="${pageNum}">` +
+            `<div class="pdf-page-placeholder">第 ${pageNum} 页（点击加载图片）</div>` +
+            `</div></div>`
+          )
+        }
+        chapters.push({ title: `第 ${batchIdx + 1} 部分（扫描版）`, content: parts.join('\n') })
+      })
+    }
 
-    pageStartIndices.forEach((pageNums, batchIdx) => {
-      const parts: string[] = []
-      for (const pageNum of pageNums) {
-        const textIdx = pageNum - 1
-        const pageText = pageTexts[textIdx] || ''
-        const escapedText = escapeHtml(pageText).replace(/"/g, '&quot;')
-        parts.push(
-          `<div class="pdf-page" data-page="${pageNum}" data-text="${escapedText}">` +
-          `<div class="pdf-page-img-container" data-page="${pageNum}">` +
-          `<div class="pdf-page-placeholder">第 ${pageNum} 页</div>` +
-          `</div></div>`
-        )
-      }
-      chapters.push({ title: `第 ${batchIdx + 1} 部分`, content: parts.join('\n') })
-    })
-
-    // Truncation notice
     if (truncated) {
       chapters.push({
         title: '⚠️ 截断提示',
         content: `<div class="comic-truncation-notice"><p>⚠️ 本书共 ${pdf.numPages} 页，超过 ${PDF_MAX_PAGES} 页限制。仅渲染前 ${PDF_MAX_PAGES} 页，剩余 ${pdf.numPages - PDF_MAX_PAGES} 页未显示。</p></div>`
       })
     }
-  } catch (e) {
+  } catch (e: any) {
+    errorDetail = e?.message || String(e)
     logger.error(`PDF 解析失败: ${fileName}`, e)
+
+    // Try raw binary fallback
+    if (hasRawText) {
+      const cleaned = sanitizeEpubContent(rawBinaryText)
+      const rawChapters = splitHtmlChapters(cleaned, title)
+      if (rawChapters.length > 0) {
+        rawText = rawBinaryText
+        rawChapters.forEach(c => chapters.push(c))
+      }
+    }
   }
 
   if (chapters.length === 0) {
+    const msg = errorDetail.includes('password') || errorDetail.includes('encrypt')
+      ? '此 PDF 已加密或受密码保护，无法解析。'
+      : errorDetail
+        ? `PDF 解析失败：${errorDetail.slice(0, 200)}`
+        : '该 PDF 可能是扫描版图片 PDF，或包含加密/受限的文本层。'
     chapters.push({
       title,
-      content: `<p>无法提取 "${fileName}" 的文本内容。该 PDF 可能是扫描版图片 PDF，或包含加密/受限的文本层。文件已保留，可尝试在其他阅读器中打开。</p>`
+      content: `<p>无法提取 "${fileName}" 的文本内容。${msg}文件已保留，可尝试在其他阅读器中打开。</p>`
     })
   }
   const wordCount = chapters.reduce((s, c) => s + countWords(c.content), 0)
   return {
-    metadata: { title, author: '未知作者', cover: '', format: 'pdf' },
+    metadata: { title, author, cover: '', format: 'pdf' },
     chapters,
     rawToc: chapters.map((c, i) => ({ label: c.title, href: '', chapterIndex: i })),
     rawContent: rawText.slice(0, 10000)
+  }
+}
+
+// ========== CHM (Compiled HTML Help) ==========
+
+async function parseChm(fileData: ArrayBuffer, fileName: string): Promise<ParsedBook> {
+  const data = new Uint8Array(fileData)
+  const title = fileName.replace(/\.chm$/i, '')
+  let text = ''
+
+  try {
+    // ITSF header: "ITSF" at offset 0, version at 4, header length at 8
+    if (data.length < 40) throw new Error('File too small')
+    const magic = String.fromCharCode(...data.slice(0, 4))
+    if (magic !== 'ITSF') {
+      // Fallback: try raw HTML extraction
+      text = decodeTextBest(data)
+      if (!text.includes('<html') && !text.includes('<body')) {
+        return { metadata: { title, author: '未知作者', cover: '', format: 'chm' }, chapters: [{ title, content: '<p>无法解析此 CHM 文件，文件格式可能已损坏。</p>' }], rawToc: [] }
+      }
+    } else {
+      // Extract HTML content by scanning for HTML blocks
+      const htmlStarts: number[] = []
+      for (let i = 0; i < data.length - 6; i++) {
+        if (data[i] === 0x3C && data[i+1] === 0x68 && data[i+2] === 0x74 && data[i+3] === 0x6D && data[i+4] === 0x6C) {
+          htmlStarts.push(i)
+        }
+      }
+      if (htmlStarts.length > 0) {
+        const parts: string[] = []
+        for (const start of htmlStarts) {
+          const end = findBytes(data, '</html>', start)
+          if (end >= 0) {
+            parts.push(decodeTextSegment(data, start, end + 7 - start))
+          } else {
+            parts.push(decodeTextSegment(data, start, Math.min(500000, data.length - start)))
+          }
+        }
+        text = parts.join('\n')
+      }
+      if (!text) {
+        // Try raw text extraction after skipping ITSF header
+        const skip = getU32(data, 8)
+        text = decodeTextBest(data.slice(skip))
+      }
+    }
+  } catch { /* fall through */ }
+
+  if (!text || text.length < 50) {
+    // Last resort: search for HTML tags in raw bytes
+    text = decodeTextBest(data)
+  }
+
+  const cleaned = sanitizeEpubContent(text)
+  const chapters = splitHtmlChapters(cleaned, title)
+  const wordCount = chapters.reduce((s, c) => s + countWords(c.content), 0)
+
+  return {
+    metadata: { title, author: '未知作者', cover: '', format: 'chm' },
+    chapters: chapters.length > 0 ? chapters : [{ title, content: cleaned || '<p>无法解析 CHM 文本内容，文件已保留。</p>' }],
+    rawToc: chapters.map((c, i) => ({ label: c.title, href: '', chapterIndex: i })),
+    rawContent: text.slice(0, 10000)
+  }
+}
+
+// ========== LIT (Microsoft Reader) ==========
+
+async function parseLit(fileData: ArrayBuffer, fileName: string): Promise<ParsedBook> {
+  const data = new Uint8Array(fileData)
+  const title = fileName.replace(/\.lit$/i, '')
+  let text = ''
+  let author = '未知作者'
+
+  try {
+    // LIT files are OLE2 compound documents containing HTML content
+    // Search for HTML content blocks within the binary
+    const htmlStarts: number[] = []
+    for (let i = 0; i < data.length - 6; i++) {
+      if (data[i] === 0x3C && data[i+1] === 0x68 && data[i+2] === 0x74 && data[i+3] === 0x6D && data[i+4] === 0x6C) {
+        htmlStarts.push(i)
+      }
+    }
+
+    if (htmlStarts.length > 0) {
+      const parts: string[] = []
+      for (const start of htmlStarts) {
+        const end = findBytes(data, '</html>', start)
+        if (end >= 0) {
+          parts.push(decodeTextSegment(data, start, end + 7 - start))
+        } else {
+          // Try </body> as fallback
+          const bodyEnd = findBytes(data, '</body>', start)
+          if (bodyEnd >= 0) {
+            parts.push(decodeTextSegment(data, start, bodyEnd + 7 - start))
+          } else {
+            parts.push(decodeTextSegment(data, start, Math.min(500000, data.length - start)))
+          }
+        }
+      }
+      text = parts.join('\n')
+    }
+
+    if (!text) {
+      // Try decoding as plain text after skipping headers
+      text = decodeTextBest(data.slice(100))
+    }
+
+    // Try to find author from metadata
+    const authorMatch = text.match(/<meta[^>]*name=["']author["'][^>]*content=["']([^"']*)["']/i)
+      || text.match(/<meta[^>]*content=["']([^"']*)["'][^>]*name=["']author["']/i)
+      || text.match(/Author[：:]\s*(.+)/i)
+    if (authorMatch) author = authorMatch[1].trim()
+  } catch { /* fall through */ }
+
+  if (!text || text.length < 50) {
+    text = decodeTextBest(data)
+  }
+
+  const cleaned = sanitizeEpubContent(text)
+  const chapters = splitHtmlChapters(cleaned, title)
+  const wordCount = chapters.reduce((s, c) => s + countWords(c.content), 0)
+
+  return {
+    metadata: { title, author, cover: '', format: 'lit' },
+    chapters: chapters.length > 0 ? chapters : [{ title, content: cleaned || '<p>无法解析 LIT 文本内容，文件已保留。</p>' }],
+    rawToc: chapters.map((c, i) => ({ label: c.title, href: '', chapterIndex: i })),
+    rawContent: text.slice(0, 10000)
+  }
+}
+
+// ========== LRF (Sony BBeB) ==========
+
+async function parseLrf(fileData: ArrayBuffer, fileName: string): Promise<ParsedBook> {
+  const data = new Uint8Array(fileData)
+  const title = fileName.replace(/\.lrf$/i, '')
+  let author = '未知作者'
+  let text = ''
+
+  try {
+    const raw = decodeTextBest(data)
+    if (raw.length > 0) {
+      // LRF/BBeB is XML-based. Extract from XML tags.
+      // Try to find title and author
+      const titleMatch = raw.match(/<dc:title[^>]*>([^<]*)<\/dc:title>/i)
+        || raw.match(/<title[^>]*>([^<]*)<\/title>/i)
+      if (titleMatch) { /* keep fileName title */ }
+
+      const authorMatch = raw.match(/<dc:creator[^>]*>([^<]*)<\/dc:creator>/i)
+        || raw.match(/<creator[^>]*>([^<]*)<\/creator>/i)
+        || raw.match(/Author[：:]\s*(.+)/i)
+      if (authorMatch) author = authorMatch[1].trim()
+
+      // Extract text content from XML tags
+      // Remove XML declaration and processing instructions
+      const content = raw.replace(/<\?[^>]*\?>/g, '')
+        .replace(/<dc:[^>]*\/>/g, '')
+        .replace(/<metadata[^>]*>[\s\S]*?<\/metadata>/gi, '')
+
+      // Wrap text blocks in <p> tags
+      const textBlocks = content.match(/<TextBlock[^>]*>([\s\S]*?)<\/TextBlock>/gi)
+      if (textBlocks && textBlocks.length > 0) {
+        text = textBlocks.map(b => b.replace(/<TextBlock[^>]*>|<\/TextBlock>/gi, '').trim())
+          .filter(Boolean)
+          .map(t => `<p>${t.replace(/<[^>]+>/g, (m) => escapeHtml(m))}</p>`)
+          .join('\n')
+      }
+
+      if (!text) {
+        // Fallback: strip all XML tags and keep text content
+        const stripped = content.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, '\n').trim()
+        if (stripped.length > 50) {
+          text = stripped.split('\n').map(l => l.trim()).filter(Boolean).map(l => `<p>${escapeHtml(l)}</p>`).join('\n')
+        }
+      }
+
+      if (!text) {
+        text = raw.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, '\n').trim()
+        if (text.length > 50) {
+          text = `<p>${escapeHtml(text)}</p>`
+        }
+      }
+    }
+  } catch { /* fall through */ }
+
+  if (!text || text.length < 50) {
+    text = decodeTextBest(data)
+  }
+
+  const cleaned = sanitizeEpubContent(text)
+  const chapters = splitHtmlChapters(cleaned, title)
+  const wordCount = chapters.reduce((s, c) => s + countWords(c.content), 0)
+
+  return {
+    metadata: { title, author, cover: '', format: 'lrf' },
+    chapters: chapters.length > 0 ? chapters : [{ title, content: cleaned || '<p>无法解析 LRF 文本内容，文件已保留。</p>' }],
+    rawToc: chapters.map((c, i) => ({ label: c.title, href: '', chapterIndex: i })),
+    rawContent: text.slice(0, 10000)
   }
 }
 
@@ -774,7 +1024,7 @@ async function parseComic(fileData: ArrayBuffer, fileName: string, format: 'cbr'
       }
       const ext = (imgPath.split('.').pop() || 'jpg').toLowerCase()
       const mime = mimeMap[ext] || 'image/jpeg'
-      const dataUri = arrayToDataUrl(data, mime)
+      const dataUri = dataUrl(data, mime)
       chapters.push({
         title: `第 ${i + 1} 页`,
         content: `<div class="comic-page"><img src="${dataUri}" alt="第 ${i + 1} 页" /></div>`
@@ -809,6 +1059,7 @@ async function parseComic(fileData: ArrayBuffer, fileName: string, format: 'cbr'
 function parseTarComic(fileData: ArrayBuffer, title: string): ParsedBook {
   const data = new Uint8Array(fileData)
   const MAX_COMIC_IMAGES = 200
+  const MAX_COMIC_IMAGE_SIZE = 10 * 1024 * 1024
   const imgExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']
   const mimeMap: Record<string, string> = {
     jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
@@ -826,7 +1077,7 @@ function parseTarComic(fileData: ArrayBuffer, title: string): ParsedBook {
       }
 
       // Read filename (offset 0-99, null-terminated)
-      let filename = readCString(data, offset, 100)
+      const filename = readCString(data, offset, 100)
 
       // Read file size (offset 124-135, octal string)
       const sizeStr = readCString(data, offset + 124, 12)
@@ -846,6 +1097,7 @@ function parseTarComic(fileData: ArrayBuffer, title: string): ParsedBook {
       // Filter by image extension
       const ext = (filename.split('.').pop() || '').toLowerCase()
       if (imgExts.includes(ext)) {
+        if (fileSize > MAX_COMIC_IMAGE_SIZE) { continue }
         const dataStart = offset + 512
         const dataEnd = Math.min(dataStart + fileSize, data.length)
         if (dataStart <= data.length) {
@@ -886,7 +1138,7 @@ function parseTarComic(fileData: ArrayBuffer, title: string): ParsedBook {
     const entry = entriesToLoad[i]
     const ext = (entry.name.split('.').pop() || 'jpg').toLowerCase()
     const mime = mimeMap[ext] || 'image/jpeg'
-    const dataUri = arrayToDataUrl(entry.data.buffer, mime)
+    const dataUri = dataUrl(entry.data.buffer, mime)
     chapters.push({
       title: `第 ${i + 1} 页`,
       content: `<div class="comic-page"><img src="${dataUri}" alt="第 ${i + 1} 页" /></div>`
@@ -953,6 +1205,11 @@ function resolvePath(base: string, rel: string): string {
   return normalizePath(combined)
 }
 
+/** Normalize an EPUB text reference (from NCX content src or manifest href) for matching */
+function normalizeTextRef(base: string, href: string): string {
+  return normalizePath(base + href.split('#')[0].replace(/^\//, ''))
+}
+
 // ========== MIME maps ==========
 
 const IMAGE_MIME_MAP: Record<string, string> = {
@@ -985,9 +1242,11 @@ async function embedImages(html: string, chapterDir: string, rootDir: string, zi
 
     try {
       const data = await imgFile.async('arraybuffer')
+      const MAX_IMG = 2 * 1024 * 1024
+      if (data.byteLength > MAX_IMG) return src
       const ext = (imgPath.split('.').pop() || 'jpg').toLowerCase()
       const mime = IMAGE_MIME_MAP[ext] || 'image/jpeg'
-      return arrayToDataUrl(data, mime)
+      return dataUrl(data, mime)
     } catch {
       return '' // read error
     }
@@ -1105,10 +1364,8 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
 }
 
-function arrayToDataUrl(buf: ArrayBuffer, mime: string): string {
-  const b = new Uint8Array(buf); let s = ''
-  for (let i=0; i<b.byteLength; i++) s += String.fromCharCode(b[i])
-  return `data:${mime};base64,${btoa(s)}`
+function dataUrl(buf: ArrayBuffer, mime: string): string {
+  return `data:${mime};base64,${arrayBufferToBase64(buf)}`
 }
 
 function base64ToBytes(b64: string): Uint8Array {
@@ -1121,7 +1378,7 @@ function decodeTextSegment(d: Uint8Array, off: number, len: number): string {
   const effectiveLen = Math.min(len, d.length - off)
   if (effectiveLen <= 0) return ''
 
-  // Trim trailing null bytes (common in MOBI headers)
+  // Trim trailing null bytes (common in binary document formats)
   let end = off + effectiveLen
   while (end > off && d[end - 1] === 0) end--
   if (end <= off) return ''
@@ -1271,10 +1528,13 @@ export function workerParse(
   fileName: string,
   fileData: ArrayBuffer,
   fileSize: number,
-  onProgress?: (message: string) => void
+  onProgress?: (message: string) => void,
+  timeoutMs: number = 30000
 ): Promise<ParsedBook> {
   return new Promise((resolve, reject) => {
+    const tid = setTimeout(() => reject(new Error(`解析超时: ${fileName}`)), timeoutMs)
     worker.onmessage = (e: MessageEvent) => {
+      clearTimeout(tid)
       const { type, data, error, message } = e.data || {}
       switch (type) {
         case 'result':
@@ -1289,9 +1549,9 @@ export function workerParse(
       }
     }
     worker.onerror = (e: ErrorEvent) => {
+      clearTimeout(tid)
       reject(new Error(e.message || 'Worker error'))
     }
-    // Transfer the ArrayBuffer to avoid copying large files
     worker.postMessage({ filePath, fileName, fileData, fileSize }, [fileData])
   })
 }

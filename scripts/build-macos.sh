@@ -34,9 +34,9 @@ cat > "${BUNDLE}/Contents/Info.plist" << 'PLIST'
 	<key>CFBundleIdentifier</key>
 	<string>com.stop666.x-reader-plus</string>
 	<key>CFBundleVersion</key>
-	<string>0.3.0</string>
+	<string>0.3.1</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.3.0</string>
+	<string>0.3.1</string>
 	<key>CFBundleExecutable</key>
 	<string>X-ReaderPlus</string>
 	<key>CFBundlePackageType</key>
@@ -53,19 +53,20 @@ cat > "${BUNDLE}/Contents/Info.plist" << 'PLIST'
 </plist>
 PLIST
 
-if [ -f "public/icon.svg" ]; then
+ICON_SRC="$(dirname "$0")/../public/icon.svg"
+if [ -f "${ICON_SRC}" ]; then
   ICONSET="${BUNDLE}/Contents/Resources/icon.iconset"
   mkdir -p "${ICONSET}"
 
   for size in 16 32 64 128 256 512; do
     if command -v rsvg-convert &>/dev/null; then
-      rsvg-convert -w $size -h $size "public/icon.svg" -o "${ICONSET}/icon_${size}x${size}.png" 2>/dev/null || true
-      rsvg-convert -w $((size*2)) -h $((size*2)) "public/icon.svg" -o "${ICONSET}/icon_${size}x${size}@2x.png" 2>/dev/null || true
+      rsvg-convert -w $size -h $size "${ICON_SRC}" -o "${ICONSET}/icon_${size}x${size}.png" 2>/dev/null || true
+      rsvg-convert -w $((size*2)) -h $((size*2)) "${ICON_SRC}" -o "${ICONSET}/icon_${size}x${size}@2x.png" 2>/dev/null || true
     elif command -v convert &>/dev/null; then
-      convert -background none -resize ${size}x${size} "public/icon.svg" "${ICONSET}/icon_${size}x${size}.png" 2>/dev/null || true
-      convert -background none -resize $((size*2))x$((size*2)) "public/icon.svg" "${ICONSET}/icon_${size}x${size}@2x.png" 2>/dev/null || true
+      convert -background none -resize ${size}x${size} "${ICON_SRC}" "${ICONSET}/icon_${size}x${size}.png" 2>/dev/null || true
+      convert -background none -resize $((size*2))x$((size*2)) "${ICON_SRC}" "${ICONSET}/icon_${size}x${size}@2x.png" 2>/dev/null || true
     elif command -v sips &>/dev/null && command -v qlmanage &>/dev/null; then
-      qlmanage -t -s $size -o "${ICONSET}" "public/icon.svg" 2>/dev/null || true
+      qlmanage -t -s $size -o "${ICONSET}" "${ICON_SRC}" 2>/dev/null || true
     fi
   done
 

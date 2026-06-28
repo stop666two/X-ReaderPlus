@@ -177,11 +177,9 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
         totalBookCount.value = 0
         return
       }
-      const rows = result as any[]
-      let totalCount = 0
-      try { totalCount = await db().books.count() } catch { /* count is best-effort */ }
-      totalBookCount.value = totalCount
-      books.value = mapBookRows(rows)
+      const rows = (result as any).rows || result
+      totalBookCount.value = (result as any).total ?? rows.length
+      books.value = mapBookRows(Array.isArray(rows) ? rows : [])
     } else {
       // Load all books in batches for filtering / tag extraction
       const BATCH_SIZE = 100
@@ -194,8 +192,8 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
         const offset = (p - 1) * BATCH_SIZE
         if (offset >= totalCount && totalCount > 0) break
         const result = await db().books.getAll({ limit: BATCH_SIZE, offset })
-        const rows = result as any[]
-        if (!rows || rows.length === 0) break
+        const rows = (Array.isArray(result) ? result : (result as any)?.rows) || []
+        if (rows.length === 0) break
         allRows.push(...rows)
         if (rows.length < BATCH_SIZE) break
         p++
@@ -271,7 +269,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
       let totalBytes = 0
       const LARGE_FILE_THRESHOLD = 50 * 1024 * 1024 // 50 MB
       let hasLargeFile = false
-      let largeFiles: Array<{ name: string; sizeMB: string }> = []
+      const largeFiles: Array<{ name: string; sizeMB: string }> = []
 
       if (window.electronAPI && window.electronAPI.fileStats) {
         try {
@@ -391,6 +389,13 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
           try {
             // Offload heavy parsing to Worker thread — keeps UI responsive
             const parsed = await workerParse(worker, filePaths[i] || r.name, r.name, data, dataSize, workerProgress)
+
+            const chapterJson = JSON.stringify({ chapters: parsed.chapters, rawToc: parsed.rawToc })
+            const jsonMB = chapterJson.length / (1024 * 1024)
+            if (jsonMB > 5) {
+              logger.warn(`章节内容较大 (${jsonMB.toFixed(1)}MB)，请耐心等待`)
+            }
+
             // Auto-detect tags from parsed content
             const fullText = parsed.chapters.map((c: any) => c.content.replace(/<[^>]+>/g, ' ')).join('\n')
             const autoTags = detectTags(fullText)
@@ -417,7 +422,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
               contentHash
             }
             await db().books.insert(book)
-            await db().chapters.set(book.id, JSON.stringify(parsed.chapters))
+            await db().chapters.set(book.id, chapterJson)
             // Save original file for export
             if (db().rawFile && data) {
               db().rawFile.save(book.id, r.name, data).catch(() => {})
@@ -435,7 +440,18 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
               progress: book.progress
             }).catch(() => { /* best-effort: stats update is non-critical */ })
             importedCount++
-          } catch (e) { logger.error(`导入失败: ${r.name}`, e) }
+          } catch (e) {
+            logger.error(`导入失败: ${r.name}`, e)
+            const errMsg = e instanceof Error ? e.message : String(e)
+            importProgress.value = {
+              current: i + 1,
+              total: results.length,
+              message: `导入失败: ${r.name} — ${errMsg}`,
+              bytesProcessed,
+              bytesTotal: totalBytes,
+              skippedDuplicates
+            }
+          }
 
           // Yield to the main thread to keep UI responsive during batch imports
           await new Promise(r => setTimeout(r, 0))
@@ -558,10 +574,10 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     try {
       // Use book's chapter_count field instead of loading full chapter data
       const book = await db().books.getById(bookId)
-      if (book && typeof book.chapter_count === 'number') return book.chapter_count
+      if (book && typeof book.chapterCount === 'number') return book.chapterCount
       // Fallback: count chapters without loading full content
       const row = await db().chapters.get(bookId)
-      if (row) { const c = JSON.parse(row); return Array.isArray(c) ? c.length : 0 }
+      if (row) { const c = JSON.parse(row); return Array.isArray(c) ? c.length : (c.chapters?.length || 0) }
     } catch (e) {
       logger.error('获取章节数失败', e)
     }
@@ -570,7 +586,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
 
   function toggleSelect(id: string) {
     const s = new Set(selectedIds.value)
-    s.has(id) ? s.delete(id) : s.add(id)
+    if (s.has(id)) { s.delete(id) } else { s.add(id) }
     selectedIds.value = s
   }
   function selectAll() { selectedIds.value = new Set(filteredBooks.value.map(b => b.id)) }

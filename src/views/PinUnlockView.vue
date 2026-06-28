@@ -89,6 +89,7 @@ async function checkLockStatus() {
 }
 
 function startLockCountdown(remainingMs: number) {
+  if (lockTimer) clearInterval(lockTimer)
   lockTimer = setInterval(() => {
     lockSeconds.value--
     if (lockSeconds.value <= 0) {

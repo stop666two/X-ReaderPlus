@@ -1,6 +1,6 @@
 # X-ReaderPlus 编译后无法运行 — 诊断报告（已修复）
 
-> 日期: 2026-06-27 | 版本: v0.3.0
+> 日期: 2026-06-28 | 版本: v0.3.1
 
 ---
 
@@ -61,7 +61,8 @@ $env:XREADER_NO_WEBVIEW="1"  # 禁用窗口调试模式
 | Windows x64 | `X-ReaderPlus-Setup-x64.exe` (NSIS 安装程序) |
 | Windows x86/arm64 | `X-ReaderPlus-win-{arch}.exe` |
 | macOS Intel/Apple | `X-ReaderPlus-mac-{intel/apple}.dmg` |
-| Linux amd64/arm64 | `X-ReaderPlus-linux-{arch}.AppImage` |
+| Linux amd64 | `X-ReaderPlus-linux-x86_64.AppImage` |
+| Linux arm64 | `X-ReaderPlus-linux-arm64` (无头模式，需手动打开浏览器访问 `localhost:34123`) |
 
 ## 修改的文件
 
