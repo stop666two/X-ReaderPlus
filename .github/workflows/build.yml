@@ -163,15 +163,18 @@ jobs:
             cp build/dist/X-ReaderPlus ../dist/X-ReaderPlus-linux-amd64
           fi
 
-      - name: Build with Wails (arm64 headless)
+      - name: Build with Wails (arm64 - native)
         if: matrix.arch == 'arm64'
+        runs-on: ubuntu-24.04-arm
         working-directory: backend
         env:
           GOARCH: arm64
-          CGO_ENABLED: 0
+          CGO_ENABLED: 1
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libgtk-3-dev libwebkit2gtk-4.0-dev pkg-config librsvg2-bin
           mkdir -p build/bin ../dist 2>/dev/null
-          wails build -tags headless
+          wails build
           if [ -f build/bin/X-ReaderPlus ]; then
             cp build/bin/X-ReaderPlus ../dist/X-ReaderPlus-linux-arm64
           elif [ -f build/dist/X-ReaderPlus ]; then
