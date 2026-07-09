@@ -103,17 +103,25 @@ jobs:
           export PATH="$(go env GOPATH)/bin:$PATH"
           mkdir -p build/bin ../dist 2>/dev/null
           wails build
-          # Wails Package:true creates .app in build/bin/
-          if [ -d build/bin/X-ReaderPlus.app ]; then
-            cp -R build/bin/X-ReaderPlus.app ../dist/X-ReaderPlus.app 2>/dev/null || true
-            hdiutil create -volname X-ReaderPlus -srcfolder ../dist/X-ReaderPlus.app -ov -format UDZO ../dist/X-ReaderPlus-mac-${{ matrix.arch == 'amd64' && 'intel' || 'apple' }}.dmg
-          elif [ -f build/bin/X-ReaderPlus ]; then
-            # Fallback: raw binary, create wrapper
-            mkdir -p ../dist/X-ReaderPlus.app/Contents/MacOS
-            cp build/bin/X-ReaderPlus ../dist/X-ReaderPlus.app/Contents/MacOS/X-ReaderPlus
-            cp build/appicon.png ../dist/X-ReaderPlus.app/Contents/Resources/icon.icns 2>/dev/null || true
-            hdiutil create -volname X-ReaderPlus -srcfolder ../dist/X-ReaderPlus.app -ov -format UDZO ../dist/X-ReaderPlus-mac-${{ matrix.arch == 'amd64' && 'intel' || 'apple' }}.dmg
+
+      - name: Package .dmg
+        run: |
+          # Find binary: check common Wails output locations
+          BIN=""
+          for p in backend/build/bin/X-ReaderPlus backend/build/dist/X-ReaderPlus; do
+            if [ -f "$p" ]; then BIN="$p"; break; fi
+          done
+          if [ -z "$BIN" ]; then
+            # Try find as last resort
+            BIN=$(find backend/build -name "X-ReaderPlus*" -type f 2>/dev/null | head -1)
           fi
+          if [ -z "$BIN" ]; then
+            echo "::error::Binary not found after wails build"
+            ls -la backend/build/ 2>/dev/null || true
+            exit 1
+          fi
+          echo "Binary found: $BIN"
+          bash scripts/build-macos.sh "$BIN" "${{ matrix.arch == 'amd64' && 'intel' || 'apple' }}"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -126,7 +134,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [amd64, arm64]
+        arch: [amd64]
     steps:
       - uses: actions/checkout@v4
 
@@ -156,8 +164,7 @@ jobs:
       - name: Copy frontend for embed
         run: node scripts/copy-frontend.js
 
-      - name: Build with Wails (amd64)
-        if: matrix.arch == 'amd64'
+      - name: Build with Wails
         working-directory: backend
         env:
           GOARCH: amd64
@@ -172,23 +179,7 @@ jobs:
             cp build/dist/X-ReaderPlus ../dist/X-ReaderPlus-linux-amd64
           fi
 
-      - name: Build with Wails (arm64)
-        if: matrix.arch == 'arm64'
-        working-directory: backend
-        env:
-          GOARCH: arm64
-          CGO_ENABLED: 0
-        run: |
-          export PATH="$(go env GOPATH)/bin:$PATH"
-          mkdir -p build/bin ../dist 2>/dev/null
-          wails build
-          if [ -f build/bin/X-ReaderPlus ]; then
-            cp build/bin/X-ReaderPlus ../dist/X-ReaderPlus-linux-arm64
-          elif [ -f build/dist/X-ReaderPlus ]; then
-            cp build/dist/X-ReaderPlus ../dist/X-ReaderPlus-linux-arm64
-          fi
-
-      - name: Package AppImage (amd64)
+      - name: Package AppImage
         if: matrix.arch == 'amd64'
         id: appimage
         run: |
@@ -199,7 +190,7 @@ jobs:
             echo "appimage_ok=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Upload binary (amd64)
+      - name: Upload binary
         if: matrix.arch == 'amd64'
         uses: actions/upload-artifact@v4
         with:
@@ -207,21 +198,13 @@ jobs:
           if-no-files-found: error
           path: dist/X-ReaderPlus-linux-amd64
 
-      - name: Upload AppImage (amd64)
+      - name: Upload AppImage
         if: matrix.arch == 'amd64' && steps.appimage.outputs.appimage_ok == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: X-ReaderPlus-linux-appimage
           if-no-files-found: error
           path: dist/X-ReaderPlus-linux-x86_64.AppImage
-
-      - name: Upload binary (arm64)
-        if: matrix.arch == 'arm64'
-        uses: actions/upload-artifact@v4
-        with:
-          name: X-ReaderPlus-linux-arm64
-          if-no-files-found: error
-          path: dist/X-ReaderPlus-linux-arm64
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -240,7 +223,6 @@ jobs:
           for d in artifacts/X-ReaderPlus-win-*; do cp "$d"/*.exe release/windows/ 2>/dev/null || true; done
           for d in artifacts/X-ReaderPlus-mac-*; do cp "$d"/*.dmg release/macos/ 2>/dev/null || true; done
           cp artifacts/X-ReaderPlus-linux-amd64/* release/linux/ 2>/dev/null || true
-          cp artifacts/X-ReaderPlus-linux-arm64/* release/linux/ 2>/dev/null || true
           cp artifacts/X-ReaderPlus-linux-appimage/*.AppImage release/linux/ 2>/dev/null || true
       - name: Generate release body
         run: |
