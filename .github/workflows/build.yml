@@ -226,15 +226,7 @@ jobs:
           cp artifacts/X-ReaderPlus-linux-appimage/*.AppImage release/linux/ 2>/dev/null || true
       - name: Generate release body
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          node -e "
-            const fs = require('fs');
-            const md = fs.readFileSync('CHANGELOG.md', 'utf8');
-            // Match from '## v{VERSION}' to the next '## v' or end of file
-            const re = new RegExp('## v' + VERSION.replace(/\./g,'\\.') + '[\\s\\S]*?(?=\\n## v|\\n*$)', 'm');
-            const m = md.match(re);
-            fs.writeFileSync('release_body.md', m ? m[0] : 'See CHANGELOG.md for details.');
-          "
+          cp CHANGELOG.md release_body.md
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
