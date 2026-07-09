@@ -7,6 +7,10 @@ on:
   pull_request:
     branches: [main, master]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -218,3 +222,40 @@ jobs:
           name: X-ReaderPlus-linux-arm64
           if-no-files-found: error
           path: dist/X-ReaderPlus-linux-arm64
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: false
+      - name: Organize
+        run: |
+          mkdir -p release/windows release/macos release/linux
+          for d in artifacts/X-ReaderPlus-win-*; do cp "$d"/*.exe release/windows/ 2>/dev/null || true; done
+          for d in artifacts/X-ReaderPlus-mac-*; do cp "$d"/*.dmg release/macos/ 2>/dev/null || true; done
+          cp artifacts/X-ReaderPlus-linux-amd64/* release/linux/ 2>/dev/null || true
+          cp artifacts/X-ReaderPlus-linux-arm64/* release/linux/ 2>/dev/null || true
+          cp artifacts/X-ReaderPlus-linux-appimage/*.AppImage release/linux/ 2>/dev/null || true
+      - name: Generate release body
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          node -e "
+            const fs = require('fs');
+            const md = fs.readFileSync('CHANGELOG.md', 'utf8');
+            const s = md.split(/^## /m).find(s => s.startsWith('v${VERSION}'));
+            fs.writeFileSync('release_body.md', '## ' + (s || 'X-ReaderPlus v${VERSION}\\n\\nSee CHANGELOG.md for details.'));
+          "
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: X-ReaderPlus ${{ github.ref_name }}
+          body_path: release_body.md
+          files: release/**/*
+          draft: false
+          prerelease: false
