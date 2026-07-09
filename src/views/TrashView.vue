@@ -202,6 +202,7 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import type { TrashItem } from '@/types'
 import { useBookshelfStore } from '@/stores/bookshelf'
+import { logger } from '@/services/log'
 import { batchProcess } from '@/stores/bookshelf'
 import { usePagination, getPageSize } from '@/composables/usePagination'
 import dayjs from 'dayjs'
@@ -280,17 +281,21 @@ async function loadTrash() {
 // ---- Restore ----
 
 async function restoreItem(id: string) {
-  const api = getApi()
-  const record = await api.trash.get(id)
-  if (record) {
-    const item: TrashItem = typeof record.data === 'string' ? JSON.parse(record.data) : record
-    const book = item.book
-    await api.books.insert({...book})
-    await api.trash.delete(id)
-    selectedTrashIds.value.delete(id)
-    selectedTrashIds.value = new Set(selectedTrashIds.value)
-    await loadTrash()
-    await bookshelf.loadBooks()
+  try {
+    const api = getApi()
+    const record = await api.trash.get(id)
+    if (record) {
+      const item: TrashItem = typeof record.data === 'string' ? JSON.parse(record.data) : record
+      const book = item.book
+      await api.books.insert({...book})
+      await api.trash.delete(id)
+      selectedTrashIds.value.delete(id)
+      selectedTrashIds.value = new Set(selectedTrashIds.value)
+      await loadTrash()
+      await bookshelf.loadBooks()
+    }
+  } catch (e: any) {
+    logger.error('恢复失败', e)
   }
 }
 

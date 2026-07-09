@@ -551,15 +551,17 @@ async function parseDjvu(fileData: ArrayBuffer, fileName: string): Promise<Parse
 
   // Fallback: try raw text extraction from visible ASCII
   if (pageTexts.length === 0) {
-    let raw = ''
-    for (let i = 0; i < Math.min(data.length, 1000000); i++) {
+    const chars: string[] = []
+    const max = Math.min(data.length, 1000000)
+    for (let i = 0; i < max; i++) {
       const b = data[i]
       if ((b >= 32 && b < 127) || b === 10 || b === 13 || (b >= 192)) {
-        raw += String.fromCharCode(b)
+        chars.push(String.fromCharCode(b))
       } else if (b === 0 || (b < 32 && b !== 10 && b !== 13)) {
-        raw += ' '
+        chars.push(' ')
       }
     }
+    let raw = chars.join('')
     const collapsed = raw.replace(/\s{3,}/g, '\n').trim()
     if (collapsed.length > 50) pageTexts.push(collapsed)
   }
@@ -790,7 +792,7 @@ async function parseChm(fileData: ArrayBuffer, fileName: string): Promise<Parsed
 
 async function parseLit(fileData: ArrayBuffer, fileName: string): Promise<ParsedBook> {
   const data = new Uint8Array(fileData)
-  const title = fileName.replace(/\.lit$/i, '')
+  let title = fileName.replace(/\.lit$/i, '')
   let text = ''
   let author = '未知作者'
 
@@ -855,7 +857,7 @@ async function parseLit(fileData: ArrayBuffer, fileName: string): Promise<Parsed
 
 async function parseLrf(fileData: ArrayBuffer, fileName: string): Promise<ParsedBook> {
   const data = new Uint8Array(fileData)
-  const title = fileName.replace(/\.lrf$/i, '')
+  let title = fileName.replace(/\.lrf$/i, '')
   let author = '未知作者'
   let text = ''
 
@@ -866,7 +868,7 @@ async function parseLrf(fileData: ArrayBuffer, fileName: string): Promise<Parsed
       // Try to find title and author
       const titleMatch = raw.match(/<dc:title[^>]*>([^<]*)<\/dc:title>/i)
         || raw.match(/<title[^>]*>([^<]*)<\/title>/i)
-      if (titleMatch) { /* keep fileName title */ }
+      if (titleMatch) { title = titleMatch[1].trim() }
 
       const authorMatch = raw.match(/<dc:creator[^>]*>([^<]*)<\/dc:creator>/i)
         || raw.match(/<creator[^>]*>([^<]*)<\/creator>/i)
@@ -1097,7 +1099,10 @@ function parseTarComic(fileData: ArrayBuffer, title: string): ParsedBook {
       // Filter by image extension
       const ext = (filename.split('.').pop() || '').toLowerCase()
       if (imgExts.includes(ext)) {
-        if (fileSize > MAX_COMIC_IMAGE_SIZE) { continue }
+        if (fileSize > MAX_COMIC_IMAGE_SIZE) {
+          offset += 512 + Math.ceil(fileSize / 512) * 512
+          continue
+        }
         const dataStart = offset + 512
         const dataEnd = Math.min(dataStart + fileSize, data.length)
         if (dataStart <= data.length) {
@@ -1442,8 +1447,8 @@ async function decompressZlib(chunk: Uint8Array): Promise<Uint8Array> {
     for (const p of parts) { result.set(p, offset); offset += p.length }
     return result
   } catch {
-    // If decompression fails, return the original chunk as fallback
-    return chunk
+    // If decompression fails, return empty — caller handles gracefully
+    return new Uint8Array(0)
   }
 }
 

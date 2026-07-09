@@ -63,29 +63,20 @@ const router = createRouter({
   ]
 })
 
-let pinChecked = false
-
 router.beforeEach(async (to) => {
-  // Skip PIN check for unlock page
   if (to.name === 'unlock') return true
-
-  if (!pinChecked) {
-    const locked = await isPinRequired()
-    if (locked) {
-      const remaining = await getLockRemaining()
-      if (remaining > 0) {
-        return { name: 'unlock', query: { locked: 'true' } }
-      }
-      return { name: 'unlock' }
+  const locked = await isPinRequired()
+  if (locked) {
+    const remaining = await getLockRemaining()
+    if (remaining > 0) {
+      return { name: 'unlock', query: { locked: 'true' } }
     }
-    pinChecked = true
+    return { name: 'unlock' }
   }
-
   return true
 })
 
-export function resetPinCheck() {
-  pinChecked = false
-}
+/** @deprecated No longer needed — PIN is checked on every navigation */
+export function resetPinCheck() {}
 
 export default router

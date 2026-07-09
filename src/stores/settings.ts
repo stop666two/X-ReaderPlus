@@ -119,9 +119,9 @@ export const useSettingsStore = defineStore('settings', () => {
     await save()
   }
 
-  function removeCustomFont(family: string) {
+  async function removeCustomFont(family: string) {
     customFonts.value = customFonts.value.filter(f => f.family !== family)
-    save()
+    await save()
   }
 
   return {

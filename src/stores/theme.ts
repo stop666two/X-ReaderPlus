@@ -49,7 +49,8 @@ export const useThemeStore = defineStore('theme', () => {
 
   function applyTheme(theme: ThemeMode) {
     document.documentElement.setAttribute('data-theme', theme)
-    document.documentElement.className = `theme-${theme}`
+    document.documentElement.classList.remove('theme-light', 'theme-dark', 'theme-sepia')
+    document.documentElement.classList.add('theme-' + theme)
 
     // Inject CSS custom properties for reader area
     // Components use var(--reader-*) instead of checking theme directly

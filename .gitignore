@@ -3,10 +3,12 @@ node_modules/
 
 # Build output
 dist/
+backend/build/
 
-# Go build output
-backend/x-reader.exe
-backend/*.exe
+# Runtime data (created by the app at startup)
+*.db
+*.db-wal
+*.db-shm
 
 # Frontend build (copied to backend for embed)
 backend/frontend/*
@@ -35,8 +37,3 @@ githublogs/
 # Environment
 .env
 .env.local
-
-# Database (local only)
-*.db
-*.db-wal
-*.db-shm

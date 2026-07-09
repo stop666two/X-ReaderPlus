@@ -45,6 +45,17 @@
           </v-btn>
         </template>
       </v-tooltip>
+      <v-btn
+        variant="outlined"
+        color="warning"
+        size="small"
+        :loading="cleaningOrphans"
+        class="ml-2"
+        @click="cleanupOrphans"
+      >
+        <v-icon start size="18">mdi-delete-restore</v-icon>
+        清理失效数据
+      </v-btn>
     </v-toolbar>
 
     <!-- Tabs -->
@@ -328,11 +339,14 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+    <v-snackbar v-model="showSnackbar" :timeout="3000">
+      {{ snackbarText }}
+    </v-snackbar>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { db } from '@/services/db'
 import { useBookshelfStore } from '@/stores/bookshelf'
@@ -361,6 +375,9 @@ const activeTab = ref('active')
 const editingId = ref('')
 const editingContent = ref('')
 const showClearTrashConfirm = ref(false)
+const cleaningOrphans = ref(false)
+const snackbarText = ref('')
+const showSnackbar = ref(false)
 const selectedIds = ref<Set<string>>(new Set())
 const notesPageSize = ref(20)
 
@@ -438,9 +455,35 @@ function getColorLabel(color: HighlightColor): string {
   return HIGHLIGHT_COLORS.find(c => c.value === color)?.label || '黄色'
 }
 
+const BOOK_TITLE_CACHE_KEY = 'notes_book_titles'
+let bookTitleCache = loadTitleCache()
+
+function loadTitleCache(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(BOOK_TITLE_CACHE_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch { return {} }
+}
+
+function saveTitleCache() {
+  try { localStorage.setItem(BOOK_TITLE_CACHE_KEY, JSON.stringify(bookTitleCache)) } catch {}
+}
+
+// Sync from bookshelf store
+watch(() => bookshelf.books.length, () => {
+  for (const b of bookshelf.books) {
+    if (b.title) bookTitleCache[b.id] = b.title
+  }
+  saveTitleCache()
+}, { immediate: true })
+
 function getBookTitle(bookId: string): string {
   const b = bookshelf.books.find(b => b.id === bookId)
-  return b ? b.title : '已删除'
+  if (b?.title) {
+    bookTitleCache[bookId] = b.title
+    return b.title
+  }
+  return bookTitleCache[bookId] || '已删除'
 }
 
 const bookExists = (bookId: string) => bookshelf.books.some(b => b.id === bookId)
@@ -579,30 +622,56 @@ function invertSelection() {
   selectedIds.value = inverted
 }
 
+const batchProgress = ref(0)
+const batchTotal = ref(0)
+const isBatchOp = ref(false)
+
 async function batchDelete() {
-  for (const id of selectedIds.value) {
+  const ids = [...selectedIds.value]
+  batchTotal.value = ids.length
+  batchProgress.value = 0
+  isBatchOp.value = true
+  let errors = 0
+  for (const id of ids) {
     const ann = allAnnotations.value.find(a => a.id === id)
     if (ann) {
-      ann.deleted = true
-      await api.ann.put({ id: ann.id, data: JSON.stringify(ann) })
-      const idx = allAnnotations.value.findIndex(a => a.id === ann.id)
-      if (idx >= 0) allAnnotations.value[idx] = { ...ann }
+      try {
+        ann.deleted = true
+        await api.ann.put({ id: ann.id, data: JSON.stringify(ann) })
+        const idx = allAnnotations.value.findIndex(a => a.id === ann.id)
+        if (idx >= 0) allAnnotations.value[idx] = { ...ann }
+      } catch { errors++ }
     }
+    batchProgress.value++
   }
   clearSelection()
+  isBatchOp.value = false
+  snackbarText.value = errors > 0 ? `已删除 ${batchProgress.value - errors} 条，${errors} 条失败` : `已删除 ${batchProgress.value} 条`
+  showSnackbar.value = true
 }
 
 async function batchRestore() {
-  for (const id of selectedIds.value) {
+  const ids = [...selectedIds.value]
+  batchTotal.value = ids.length
+  batchProgress.value = 0
+  isBatchOp.value = true
+  let errors = 0
+  for (const id of ids) {
     const ann = allAnnotations.value.find(a => a.id === id)
     if (ann) {
-      ann.deleted = false
-      await api.ann.put({ id: ann.id, data: JSON.stringify(ann) })
-      const idx = allAnnotations.value.findIndex(a => a.id === ann.id)
-      if (idx >= 0) allAnnotations.value[idx] = { ...ann }
+      try {
+        ann.deleted = false
+        await api.ann.put({ id: ann.id, data: JSON.stringify(ann) })
+        const idx = allAnnotations.value.findIndex(a => a.id === ann.id)
+        if (idx >= 0) allAnnotations.value[idx] = { ...ann }
+      } catch { errors++ }
     }
+    batchProgress.value++
   }
   clearSelection()
+  isBatchOp.value = false
+  snackbarText.value = errors > 0 ? `已恢复 ${batchProgress.value - errors} 条，${errors} 条失败` : `已恢复 ${batchProgress.value} 条`
+  showSnackbar.value = true
 }
 
 async function batchPermanentDelete() {
@@ -613,6 +682,20 @@ async function batchPermanentDelete() {
 }
 
 // ---- Lifecycle ----
+
+async function cleanupOrphans() {
+  cleaningOrphans.value = true
+  try {
+    const result = await window.electronAPI.cleanupOrphans()
+    snackbarText.value = `清理完成: ${result.annotations || 0} 条标注, ${result.bookmarks || 0} 条书签, ${result.history || 0} 条历史`
+    showSnackbar.value = true
+  } catch (e: any) {
+    snackbarText.value = '清理失败: ' + (e.message || '未知错误')
+    showSnackbar.value = true
+  } finally {
+    cleaningOrphans.value = false
+  }
+}
 
 onMounted(async () => {
   await bookshelf.loadBooks()

@@ -144,6 +144,19 @@
       </div>
     </v-slide-y-transition>
 
+    <!-- Integrity warning -->
+    <v-alert
+      v-if="reader.contentIntegrity === false"
+      density="compact"
+      type="warning"
+      variant="tonal"
+      class="ma-2"
+      closable
+      @click:close="reader.contentIntegrity = null"
+    >
+      文件完整性校验失败！内容可能已被篡改。
+    </v-alert>
+
     <!-- Reading area -->
     <div
       class="reader-container"
@@ -402,6 +415,7 @@
           :key="ann.id"
           :title="ann.text"
           :subtitle="ann.note || '无笔记'"
+          @click="scrollToAnnotation(ann)"
         >
           <template #prepend>
             <div
@@ -556,13 +570,6 @@ let isNavigatingBack = false
 const readingProgress = ref(0)
 let autoSaveTimer: ReturnType<typeof setInterval> | null = null
 let customCssStyleEl: HTMLStyleElement | null = null
-
-const formattedReadingTime = computed(() => {
-  const h = Math.floor(readingSeconds.value / 3600)
-  const m = Math.floor((readingSeconds.value % 3600) / 60)
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m`
-})
 
 const currentBook = computed(() => bookshelf.books.find(b => b.id === reader.bookId))
 
@@ -788,11 +795,30 @@ const lazyContent = computed(() => {
   return segments.slice(0, renderedSegmentCount.value).join('')
 })
 
+const _sanitizedContent = ref('')
+
+// DOMPurify — static import so it's available synchronously
+import DOMPurify from 'dompurify'
+
 const sanitizedContent = computed(() => {
   const raw = lazyContent.value
   if (!raw) return ''
+  let result = raw
+  // First pass: sanitize with DOMPurify
+  result = DOMPurify.sanitize(result, {
+    ALLOWED_TAGS: [
+      'h1','h2','h3','h4','h5','h6','p','br','hr','b','i','em','strong',
+      'u','s','mark','small','sub','sup','ul','ol','li',
+      'blockquote','pre','code','a','img','span','div',
+      'table','thead','tbody','tr','th','td','figure','figcaption'
+    ],
+    ALLOWED_ATTR: ['href','src','alt','title','class','id','width','height','style'],
+    ALLOW_DATA_ATTR: false,
+    ADD_URI_SAFE_ATTR: ['src']
+  })
+  // Second pass: rewrite links for safe in-app navigation
   let count = 0
-  const result = raw
+  result = result
     .replace(/<a\b([^>]*?)href\s*=\s*"([^"]*)"([^>]*)>/gi, (_, pre, val, post) => {
       count++; return `<a${pre}data-href="${val}"${post}>`
     })
@@ -906,6 +932,21 @@ async function persistScrollPositions(bookId: string) {
 }
 
 const readChaptersSet = computed(() => bookshelf.readChapters)
+
+function scrollToAnnotation(ann: Annotation) {
+  // If not in same chapter, navigate first
+  if (ann.chapterIndex !== reader.currentChapterIndex) {
+    reader.navigateToChapter(ann.chapterIndex)
+    // After chapter loads, scroll to annotation text
+    const unwatch = watch(() => reader.currentChapter, () => {
+      nextTick(() => { highlightAnnotationInDom(ann.text); reader.showAnnotations = false })
+      unwatch()
+    }, { once: true })
+  } else {
+    highlightAnnotationInDom(ann.text)
+    reader.showAnnotations = false
+  }
+}
 
 function highlightAnnotationInDom(text: string) {
   if (!readerContainer.value) return
@@ -1146,58 +1187,107 @@ const SCROLL_DEBOUNCE_MS = 500
 
 function onScroll() {
   if (isChapterTransition) return
-  if (readerContainer.value) {
-    reader.saveScrollPosition(reader.currentChapterIndex, readerContainer.value.scrollTop)
+  if (!readerContainer.value) return
 
-    // Save reading progress — debounced to avoid flooding DB on every scroll event
-    const scrollHeight = readerContainer.value.scrollHeight - readerContainer.value.clientHeight
-    const progress = scrollHeight > 0 ? readerContainer.value.scrollTop / scrollHeight : 0
+  const st = readerContainer.value.scrollTop
+  const sh = readerContainer.value.scrollHeight
+  const ch = readerContainer.value.clientHeight
+
+  if (scrollDebounceTimer) clearTimeout(scrollDebounceTimer)
+  scrollDebounceTimer = setTimeout(() => {
+    reader.saveScrollPosition(reader.currentChapterIndex, st)
+    const scrollRange = sh - ch
+    const progress = scrollRange > 0 ? Math.min(1, Math.max(0, st / scrollRange)) : 0
     readingProgress.value = Math.round(progress * 100)
-
-    if (scrollDebounceTimer) clearTimeout(scrollDebounceTimer)
-    scrollDebounceTimer = setTimeout(() => {
-      bookshelf.updateBookProgress(reader.bookId, reader.currentChapterIndex, progress)
-      if (progress >= 0.8) {
-        markChapterRead(reader.bookId, reader.currentChapterIndex)
-      }
-    }, SCROLL_DEBOUNCE_MS)
-
-    // Update focus mode paragraph
-    if (settings.focusMode) {
-      onFocusScroll()
+    bookshelf.updateBookProgress(reader.bookId, reader.currentChapterIndex, progress)
+    if (progress >= 0.8) {
+      markChapterRead(reader.bookId, reader.currentChapterIndex)
     }
-  }
+  }, SCROLL_DEBOUNCE_MS)
 }
 
 // ---- Focus mode ----
-let focusScrollTicking = false
 
-function updateFocusParagraph() {
-  if (!settings.focusMode || !readerContainer.value) return
+let _focusParagraphs: HTMLElement[] = []
+let _focusIndex = 0
+let _focusLoopId: number | null = null
+
+function getFocusableParagraphs(): HTMLElement[] {
+  const contentEl = readerContainer.value?.querySelector<HTMLElement>('.reader-content')
+  if (!contentEl) return []
+  return Array.from(contentEl.querySelectorAll<HTMLElement>(
+    'p, h1, h2, h3, h4, h5, h6, blockquote, li, div, td, th, pre, section'
+  )).filter(el => el.textContent?.trim() && el.offsetHeight > 0)
+}
+
+function centerFocusParagraph(index: number) {
+  if (!readerContainer.value) return
+  const all = getFocusableParagraphs()
+  if (all.length === 0) return
+  const idx = Math.max(0, Math.min(index, all.length - 1))
+  const el = all[idx]
   const container = readerContainer.value
-  const vpCenter = container.getBoundingClientRect().top + container.clientHeight / 2
-  const all = container.querySelectorAll<HTMLElement>('.reader-content p, .reader-content h1, .reader-content h2, .reader-content h3, .reader-content h4, .reader-content blockquote, .reader-content li')
-  let best: HTMLElement | null = null
-  let bestDist = Infinity
-  for (let i = 0; i < all.length; i++) {
-    const el = all[i]
-    const rect = el.getBoundingClientRect()
-    const dist = Math.abs(rect.top + rect.height / 2 - vpCenter)
-    if (dist < bestDist) { bestDist = dist; best = el }
-  }
-  for (let i = 0; i < all.length; i++) all[i].classList.remove('focus-active')
-  if (best) best.classList.add('focus-active')
+  const targetTop = el.offsetTop - container.clientHeight / 2 + el.offsetHeight / 2
+  container.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' })
+  // Update highlight
+  container.querySelectorAll('.focus-active').forEach(e => e.classList.remove('focus-active'))
+  el.classList.add('focus-active')
+  _focusIndex = idx
+  _focusParagraphs = all
 }
 
-function onFocusScroll() {
-  if (!focusScrollTicking) {
-    requestAnimationFrame(() => {
-      updateFocusParagraph()
-      focusScrollTicking = false
-    })
-    focusScrollTicking = true
+function onFocusWheel(e: WheelEvent) {
+  e.preventDefault()
+  const delta = e.deltaY > 0 ? 1 : -1
+  centerFocusParagraph(_focusIndex + delta)
+}
+
+function onFocusKeydown(e: KeyboardEvent) {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+    e.preventDefault(); centerFocusParagraph(_focusIndex + 1)
+  } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+    e.preventDefault(); centerFocusParagraph(_focusIndex - 1)
+  } else if (e.key === 'PageDown') {
+    e.preventDefault(); centerFocusParagraph(_focusIndex + 5)
+  } else if (e.key === 'PageUp') {
+    e.preventDefault(); centerFocusParagraph(_focusIndex - 5)
+  } else if (e.key === 'Home') {
+    e.preventDefault(); centerFocusParagraph(0)
+  } else if (e.key === 'End') {
+    e.preventDefault(); centerFocusParagraph(9999)
   }
 }
+
+watch(() => settings.focusMode, (val) => {
+  const container = readerContainer.value
+  const wrapper = container?.querySelector<HTMLElement>('.reader-content-wrapper')
+  if (!container) return
+  if (val) {
+    // Add padding to allow centering first/last paragraphs
+    const pad = Math.floor(container.clientHeight / 2)
+    if (wrapper) { wrapper.style.paddingTop = pad + 'px'; wrapper.style.paddingBottom = pad + 'px' }
+    // Enable focus mode: use paragraph navigation
+    _focusParagraphs = getFocusableParagraphs()
+    const vpCenter = container.getBoundingClientRect().top + container.clientHeight / 2
+    let bestIdx = 0
+    let bestDist = Infinity
+    for (let i = 0; i < _focusParagraphs.length; i++) {
+      const rect = _focusParagraphs[i].getBoundingClientRect()
+      const dist = Math.abs(rect.top + rect.height / 2 - vpCenter)
+      if (dist < bestDist) { bestDist = dist; bestIdx = i }
+    }
+    centerFocusParagraph(bestIdx)
+    container.addEventListener('wheel', onFocusWheel, { passive: false })
+    document.addEventListener('keydown', onFocusKeydown)
+  } else {
+    container.removeEventListener('wheel', onFocusWheel)
+    document.removeEventListener('keydown', onFocusKeydown)
+    if (wrapper) { wrapper.style.paddingTop = ''; wrapper.style.paddingBottom = '' }
+    container.querySelectorAll('.focus-active').forEach(el => el.classList.remove('focus-active'))
+    _focusParagraphs = []
+    _focusIndex = 0
+  }
+})
 
 // Watch chapter index changes to restore scroll
 watch(() => reader.currentChapterIndex, (newIdx) => {
@@ -1209,7 +1299,7 @@ watch(() => reader.currentChapterIndex, (newIdx) => {
   nextTick(() => {
     applyChapterAnnotations()
     isChapterLoading.value = false
-    if (settings.focusMode) { updateFocusParagraph() }
+    if (settings.focusMode) { centerFocusParagraph(_focusIndex) }
     if (isPdfBook.value) setupPdfPageObserver()
   })
 })
@@ -1225,32 +1315,39 @@ watch(() => settings.readingSettings.autoSaveInterval, () => {
 })
 
 // Watch for focus mode toggle
-watch(() => settings.focusMode, (val) => {
-  if (val) {
-    nextTick(() => updateFocusParagraph())
-  } else {
-    if (readerContainer.value) {
-      readerContainer.value.querySelectorAll('.reader-content .focus-active').forEach((el: any) => el.classList.remove('focus-active'))
-    }
+onUnmounted(() => {
+  if (_focusLoopId !== null) cancelAnimationFrame(_focusLoopId)
+  if (readerContainer.value) {
+    readerContainer.value.removeEventListener('wheel', onFocusWheel)
+    document.removeEventListener('keydown', onFocusKeydown)
   }
 })
 
-onUnmounted(() => {})
+// Track whether this is a chapter transition or lazy load
+let _isChapterChange = true
 
-// Watch lazyContent changes to re-attach sentinel observer
+// Chapter changes: save old position, reset scroll, set flag
+watch(() => reader.currentChapter, () => {
+  _isChapterChange = true
+  isChapterTransition = true
+  if (readerContainer.value) readerContainer.value.scrollTop = 0
+})
+
+// Lazy content loads: restore saved position on chapter changes, just re-attach on lazy loads
 watch(lazyContent, () => {
-  nextTick(() => {
+  const wasChapterChange = _isChapterChange
+  _isChapterChange = false
+  const restoreScroll = () => {
     setupLazySentinel()
     if (isPdfBook.value) setupPdfPageObserver()
-    // Restore scroll position after content renders
-    const key = `${reader.bookId}:${reader.currentChapterIndex}`
-    if (!readChaptersSet.value.has(key)) {
-      if (readerContainer.value) readerContainer.value.scrollTop = 0
-    } else {
+    if (wasChapterChange) {
       const saved = reader.getScrollPosition(reader.currentChapterIndex)
-      if (readerContainer.value && saved > 0) readerContainer.value.scrollTop = saved
+      if (readerContainer.value && saved > 0 && readerContainer.value.scrollHeight > 0) {
+        readerContainer.value.scrollTop = Math.min(saved, readerContainer.value.scrollHeight - readerContainer.value.clientHeight)
+      }
     }
-  })
+  }
+  requestAnimationFrame(() => requestAnimationFrame(restoreScroll))
 })
 
 // ---- Keyboard ----
@@ -1539,17 +1636,45 @@ function dismissSelection() {
   window.getSelection()?.removeAllRanges()
 }
 
+const DICT_CACHE_KEY = 'dict_cache'
+
+function getDictCache(): Record<string, any> {
+  try { return JSON.parse(localStorage.getItem(DICT_CACHE_KEY) || '{}') } catch { return {} }
+}
+
+function setDictCache(word: string, data: any) {
+  const cache = getDictCache()
+  cache[word.toLowerCase()] = { data, cachedAt: Date.now() }
+  // Keep max 200 entries
+  const keys = Object.keys(cache)
+  if (keys.length > 200) {
+    const sorted = keys.sort((a, b) => cache[a].cachedAt - cache[b].cachedAt)
+    delete cache[sorted[0]]
+  }
+  try { localStorage.setItem(DICT_CACHE_KEY, JSON.stringify(cache)) } catch {}
+}
+
 async function lookupWord(word: string) {
   dictWord.value = word
   showDictResult.value = true
   dictLoading.value = true
   dictError.value = ''
 
+  // Check local cache first
+  const cache = getDictCache()
+  const cached = cache[word.toLowerCase()]
+  if (cached) {
+    dictResult.value = cached.data
+    dictLoading.value = false
+    return
+  }
+
   try {
     const response = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`)
     if (!response.ok) throw new Error('未找到释义')
     const data = await response.json()
     dictResult.value = data[0]
+    setDictCache(word, data[0])
   } catch (e: any) {
     dictError.value = '查询失败: ' + (e.message || '网络错误')
     dictResult.value = null
@@ -1642,13 +1767,15 @@ async function saveEditAnnotation() {
 function resetToolbarTimer() {
   reader.showToolbar = true
   if (toolbarTimer) clearTimeout(toolbarTimer)
-  const delay = (settings.toolbarAutoHideDelay || 4) * 1000
-  if (delay > 0) {
+  const delay = settings.toolbarAutoHideDelay || 4
+  // In focus mode, show toolbar briefly then hide quickly
+  const actualDelay = settings.focusMode ? Math.min(delay, 2) : delay
+  if (actualDelay > 0) {
     toolbarTimer = setTimeout(() => {
       if (!reader.showSearch) {
         reader.showToolbar = false
       }
-    }, delay)
+    }, actualDelay * 1000)
   }
 }
 
@@ -1669,12 +1796,10 @@ function handleVisibilityChange() {
 
 function startReadingTimer() {
   if (document.hidden) return
-  readingSeconds.value = 0
-  lastSavedSeconds = 0
   if (readingTimeInterval) clearInterval(readingTimeInterval)
   readingTimeInterval = setInterval(() => {
     readingSeconds.value++
-    if (readingSeconds.value % 30 === 0) {
+    if (readingSeconds.value % 30 === 0 && readingSeconds.value > lastSavedSeconds) {
       bookshelf.updateBookReadingTime(reader.bookId, readingSeconds.value - lastSavedSeconds)
       lastSavedSeconds = readingSeconds.value
     }
@@ -1799,6 +1924,11 @@ onBeforeRouteLeave(async (_to, _from) => {
     const progress = scrollHeight > 0
       ? (readerContainer.value?.scrollTop || 0) / scrollHeight
       : 0
+    // Save reading time before leaving
+    if (readingSeconds.value > lastSavedSeconds) {
+      bookshelf.updateBookReadingTime(reader.bookId, readingSeconds.value - lastSavedSeconds)
+      readingSeconds.value = 0; lastSavedSeconds = 0
+    }
     await Promise.allSettled([
       bookshelf.updateBookProgress(reader.bookId, reader.currentChapterIndex, progress),
       persistScrollPositions(reader.bookId),

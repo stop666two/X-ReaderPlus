@@ -2,9 +2,17 @@ type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
 const LOG_PREFIX = '[X-ReaderPlus]'
 
+function safeStringify(data: any): string {
+  try {
+    return JSON.stringify(data)
+  } catch {
+    try { return String(data) } catch { return '[unserializable]' }
+  }
+}
+
 function formatMessage(level: LogLevel, message: string, data?: any): string {
   const timestamp = new Date().toISOString()
-  const dataStr = data !== undefined ? ' ' + JSON.stringify(data) : ''
+  const dataStr = data !== undefined ? ' ' + safeStringify(data) : ''
   return `${LOG_PREFIX} [${level.toUpperCase()}] ${timestamp} ${message}${dataStr}`
 }
 

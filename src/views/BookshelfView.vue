@@ -122,6 +122,14 @@
       <span class="text-caption text-medium-emphasis">正在加载...</span>
     </div>
 
+    <!-- ========== Export Progress ========== -->
+    <div v-if="exportingBook" class="export-progress-bar pa-2 border-b">
+      <div class="d-flex align-center px-2">
+        <v-progress-circular indeterminate size="16" class="mr-2" />
+        <span class="text-caption">{{ exportLabel }}</span>
+      </div>
+    </div>
+
     <!-- ========== Import History Panel ========== -->
     <div v-if="showImportHistory && importHistory.length > 0" class="import-history-panel border-b">
       <div class="d-flex align-center px-3 py-1">
@@ -735,6 +743,11 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- ========== Snackbar ========== -->
+    <v-snackbar v-model="showSnackbar" :color="snackbarColor" location="bottom" timeout="3000">
+      {{ snackbarText }}
+    </v-snackbar>
   </div>
 </template>
 
@@ -746,6 +759,7 @@ import { usePagination, getPageSize } from '@/composables/usePagination'
 import dayjs from 'dayjs'
 import { logger } from '@/services/log'
 import { DEFAULT_LIBRARY_ID } from '@/constants'
+import { sha256, blobToArrayBuffer } from '@/services/integrity'
 import type { Book, ImportMode, SortField, SortOrder } from '@/types'
 
 // ========== Stores & Router ==========
@@ -765,6 +779,21 @@ interface ImportHistoryEntry {
 
 // ========== Local State ==========
 const isDragOver = ref(false)
+
+// Export progress
+const exportingBook = ref(false)
+const exportLabel = ref('')
+
+// Snackbar
+const showSnackbar = ref(false)
+const snackbarText = ref('')
+const snackbarColor = ref('success')
+
+function snack(msg: string, color: string = 'success') {
+  snackbarText.value = msg
+  snackbarColor.value = color
+  showSnackbar.value = true
+}
 
 // Track cover images that failed to load so we show fallback instead of broken image
 const failedCovers = ref(new Set<string>())
@@ -886,7 +915,7 @@ function selectAllCurrentPage() {
   const currentIds = pagedItems.value.map(b => b.id)
   for (const id of currentIds) cross.add(id)
   crossPageSelectedIds.value = cross
-  store.selectedIds = new Set(currentIds)
+  store.selectedIds = new Set(cross) // Show all selected items across pages
 }
 
 /** Clear current-page books from both store.selectedIds and cross-page set */
@@ -1003,32 +1032,88 @@ async function deleteContextBook() {
 }
 
 async function exportSingleBook(book: Book) {
+  exportingBook.value = true
+  exportLabel.value = `正在导出《${book.title}》...`
   try {
-    // Try downloading original file first
+    exportLabel.value = '正在下载文件...'
     const rawUrl = `http://127.0.0.1:34123/api/raw/${book.id}`
     const res = await fetch(rawUrl)
     if (res.ok) {
+      const contentLength = res.headers.get('Content-Length')
+      const total = contentLength ? parseInt(contentLength, 10) : 0
+
+      exportLabel.value = total ? `正在读取 (${(total / 1024 / 1024).toFixed(1)}MB)...` : '正在读取...'
       const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
+      exportLabel.value = '正在校验完整性...'
+      const data = await blobToArrayBuffer(blob)
+      const hash = await sha256(data)
+
       const ext = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1]
-      a.download = ext || `${book.title.replace(/[\\/:*?"<>|]/g, '_')}.${book.format}`
-      a.click()
-      URL.revokeObjectURL(url)
+      const fileName = ext || `${book.title.replace(/[\\/:*?"<>|]/g, '_')}.${book.format}`
+
+      if (book.contentHash && hash !== book.contentHash) {
+        const msg = `文件完整性校验失败！\n\n预期 SHA-256: ${book.contentHash}\n实际 SHA-256: ${hash}\n\n文件可能已被篡改，是否仍要导出？`
+        if (window.electronAPI?.showMessageBox) {
+          const { response } = await window.electronAPI.showMessageBox({ type: 'warning', title: '完整性校验失败', message: msg, buttons: ['取消导出', '仍要导出'], defaultId: 0, cancelId: 0 })
+          if (response !== 1) { exportingBook.value = false; return }
+        } else if (!confirm(msg)) { exportingBook.value = false; return }
+      }
+
+      exportLabel.value = '正在保存文件...'
+      if (window.electronAPI?.saveFile) {
+        await window.electronAPI.saveFile({ defaultPath: fileName, data, type: 'application/octet-stream' })
+      } else {
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = fileName; a.click(); URL.revokeObjectURL(url)
+      }
+      snack(`《${book.title}》导出成功`)
+      exportingBook.value = false
       return
     }
-  } catch {}
-  // Fallback: export JSON metadata
+  } catch (e: any) {
+    exportLabel.value = '原始文件不可用，尝试重建...'
+  }
+  // Fallback: try to reconstruct from chapters
   try {
+    exportLabel.value = '正在重建章节内容...'
     const chapters = book.chapterCount > 0 ? await window.electronAPI?.chapters.get(book.id) : null
-    const json = JSON.stringify({ book, chapters: chapters ? JSON.parse(chapters) : [] }, null, 2)
-    const blob = new Blob([json], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url; a.download = `${book.title.replace(/[\\/:*?"<>|]/g, '_')}.json`
-    a.click(); URL.revokeObjectURL(url)
-  } catch {}
+    const parsed = chapters ? JSON.parse(chapters) : []
+    const chs = Array.isArray(parsed) ? parsed : parsed.chapters || []
+
+    let ext: string = book.format || 'txt'
+    let content: string
+    let mime = 'text/plain'
+
+    if (['txt', 'md', 'markdown', 'html', 'xml'].includes(book.format)) {
+      content = chs.map((c: any) => c.content).join('\n\n')
+    } else {
+      content = JSON.stringify({ book, chapters: chs }, null, 2)
+      ext = 'json'
+      mime = 'application/json'
+    }
+
+    const fileName = `${book.title.replace(/[\\/:*?"<>|]/g, '_')}.${ext}`
+
+    exportLabel.value = '正在保存...'
+    if (window.electronAPI?.saveFile) {
+      const encoder = new TextEncoder()
+      const bytes = encoder.encode(content)
+      let bin = ''
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+      await window.electronAPI.saveFile({ defaultPath: fileName, data: bin, type: mime })
+    } else {
+      const blob2 = new Blob([content], { type: mime })
+      const url2 = URL.createObjectURL(blob2)
+      const a2 = document.createElement('a')
+      a2.href = url2; a2.download = fileName; a2.click(); URL.revokeObjectURL(url2)
+    }
+    snack(`《${book.title}》导出成功`)
+  } catch (e: any) {
+    snack(`导出失败: ${e.message || '未知错误'}`, 'error')
+  } finally {
+    exportingBook.value = false
+  }
 }
 
 // ========== Import ==========
@@ -1260,7 +1345,7 @@ function createHistoryEntry(name: string, status: ImportHistoryEntry['status']):
   }
   const s = statusMap[status]
   return {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: `${Date.now()}-${crypto.randomUUID?.()?.slice(0,8) || Math.random().toString(36).slice(2, 10)}`,
     name,
     status,
     timestamp: Date.now(),

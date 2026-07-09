@@ -1,7 +1,8 @@
-const B = 'http://127.0.0.1:34123'
-const get = (p: string) => fetch(B + p).then(r => r.json()).catch(() => null)
-const post = (p: string, b: any) => fetch(B + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).catch(() => {})
-const del = (p: string) => fetch(B + p, { method: 'DELETE' }).catch(() => {})
+import { BASE } from './api-bridge'
+
+const get = (p: string) => fetch(BASE + p).then(r => r.json()).catch(() => null)
+const post = (p: string, b: any) => fetch(BASE + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).catch(() => {})
+const del = (p: string) => fetch(BASE + p, { method: 'DELETE' }).catch(() => {})
 
 export interface StatsEntry { bookId: string; title: string; author: string; cover: string; format: string; addedAt: number; lastReadAt: number; totalReadingTime: number; progress: number }
 export interface DailyStat { date: string; minutesRead: number; booksOpened: number; pagesRead: number }

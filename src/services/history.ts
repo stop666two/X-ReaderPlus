@@ -1,18 +1,19 @@
+import { BASE } from './api-bridge'
+
 export interface HistoryEntry {
   bookId: string; title: string; author: string; cover: string
   format: string; addedAt: number; lastReadAt: number
   totalReadingTime: number; progress: number
 }
 
-const B = 'http://127.0.0.1:34123'
-const get = (p: string) => fetch(B + p).then(r => r.json()).catch(() => null)
-const del = (p: string) => fetch(B + p, { method: 'DELETE' }).catch(() => {})
+const get = (p: string) => fetch(BASE + p).then(r => r.json()).catch(() => null)
+const del = (p: string) => fetch(BASE + p, { method: 'DELETE' }).catch(() => {})
 
 export async function getHistory(): Promise<HistoryEntry[]> {
   try { const items = await get('/api/history'); return (items || []).map((i: any) => ({ ...(typeof i.data === 'string' ? JSON.parse(i.data) : (i.data || i)), bookId: i.bookId || (typeof i.data === 'string' ? JSON.parse(i.data) : (i.data || {})).bookId })) } catch { return [] }
 }
 export async function upsertHistoryEntry(e: HistoryEntry): Promise<void> {
-  await fetch(B + '/api/history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookId: e.bookId, data: JSON.stringify(e) }) }).catch(() => {})
+  await fetch(BASE + '/api/history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookId: e.bookId, data: JSON.stringify(e) }) }).catch(() => {})
 }
 export async function clearAllHistory(): Promise<void> { await del('/api/history') }
 export async function clearDeletedHistory(existingIds?: Set<string>): Promise<void> {

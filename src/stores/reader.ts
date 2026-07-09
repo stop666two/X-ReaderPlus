@@ -1,9 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef, triggerRef, computed } from 'vue'
-import type { Bookmark, Annotation, HighlightColor, ChapterContent, TocItem, ReadingMode } from '@/types'
+import type { Bookmark, Annotation, HighlightColor, ChapterContent, TocItem, ReadingMode, Book } from '@/types'
 import { useSettingsStore } from './settings'
+import { useBookshelfStore } from './bookshelf'
+import { BASE } from '@/services/api-bridge'
 import { generateId } from '@/services/base64'
 import { search as indexSearch, indexExists } from '@/services/search-index'
+import { sha256 } from '@/services/integrity'
 
 export const useReaderStore = defineStore('reader', () => {
   const bookId = ref('')
@@ -29,6 +32,9 @@ export const useReaderStore = defineStore('reader', () => {
   const currentPage = ref(0)
   const totalPages = ref(1)
   const pageHeights = ref<number[]>([])
+
+  // Content integrity: null = unchecked, true = ok, false = tampered, 'unavailable' = no raw file
+  const contentIntegrity = ref<boolean | 'unavailable' | null>(null)
 
   // Lazy chapter content cache
   let _allChapterData: ChapterContent[] | null = null
@@ -81,42 +87,62 @@ export const useReaderStore = defineStore('reader', () => {
     }, 50)
   }
 
-  async function loadBook(bid: string) {
-    bookId.value = bid
-    scrollPosition.value = {}
-    chapterContents.value = new Map()
-    triggerRef(chapterContents)
-    _allChapterData = null
+async function loadBook(bid: string) {
+  bookId.value = bid
+  scrollPosition.value = {}
+  chapterContents.value = new Map()
+  triggerRef(chapterContents)
+  _allChapterData = null
+  contentIntegrity.value = null
 
-    if (!window.electronAPI) return
-    const data = await window.electronAPI.chapters.get(bid)
-    if (data) {
-      const parsed = JSON.parse(data)
-      let allChapters: ChapterContent[]
-      let toc: TocItem[]
-      if (Array.isArray(parsed)) {
-        allChapters = parsed
-        toc = allChapters.map((c, i) => ({ label: c.title, href: '', chapterIndex: i }))
-      } else {
-        allChapters = (parsed as any).chapters || []
-        toc = (parsed as any).rawToc || (() => {
-          const ch = (parsed as any).chapters || []
-          return ch.map((c: ChapterContent, i: number) => ({ label: c.title, href: '', chapterIndex: i }))
-        })()
-      }
-      _allChapterData = allChapters
-      chapters.value = allChapters.map(ch => ({ title: ch.title, content: '' }))
-      rawToc.value = toc
+  if (!window.electronAPI) return
+  const data = await window.electronAPI.chapters.get(bid)
+  if (data) {
+    const parsed = JSON.parse(data)
+    let allChapters: ChapterContent[]
+    let toc: TocItem[]
+    if (Array.isArray(parsed)) {
+      allChapters = parsed
+      toc = allChapters.map((c, i) => ({ label: c.title, href: '', chapterIndex: i }))
     } else {
-      chapters.value = []
-      rawToc.value = []
+      allChapters = (parsed as any).chapters || []
+      toc = (parsed as any).rawToc || (() => {
+        const ch = (parsed as any).chapters || []
+        return ch.map((c: ChapterContent, i: number) => ({ label: c.title, href: '', chapterIndex: i }))
+      })()
     }
+    _allChapterData = allChapters
+    chapters.value = allChapters.map(ch => ({ title: ch.title, content: '' }))
+    rawToc.value = toc
 
-    await loadBookmarks()
-    await loadAnnotations()
+    // Verify content integrity against original file hash
+    const book = useBookshelfStore().books.find(b => b.id === bid)
+    if (book?.contentHash) {
+      try {
+        const rawRes = await fetch(`${BASE}/api/raw/${bid}`)
+        if (rawRes.ok) {
+          const rawData = await rawRes.arrayBuffer()
+          const rawHash = await sha256(rawData)
+          contentIntegrity.value = rawHash === book.contentHash
+        } else {
+          contentIntegrity.value = 'unavailable'
+        }
+      } catch {
+        contentIntegrity.value = 'unavailable'
+      }
+    } else {
+      contentIntegrity.value = 'unavailable'
+    }
+  } else {
+    chapters.value = []
+    rawToc.value = []
   }
 
-  async function loadBookmarks() {
+  try { await loadBookmarks() } catch { bookmarks.value = [] }
+  try { await loadAnnotations() } catch { annotations.value = [] }
+}
+
+async function loadBookmarks() {
     if (!window.electronAPI) return
     const records = await window.electronAPI.bookmarks.getByBook(bookId.value)
     bookmarks.value = records.map((r: any) => {
@@ -307,22 +333,25 @@ export const useReaderStore = defineStore('reader', () => {
     div.style.cssText = 'position:absolute;visibility:hidden;width:100%'
     div.innerHTML = html
     document.body.appendChild(div)
-    const heights: number[] = []
-    let running = 0
-    for (const child of Array.from(div.children)) {
-      const h = (child as HTMLElement).offsetHeight
-      if (running + h > containerHeight && running > 0) {
-        heights.push(running)
-        running = h
-      } else {
-        running += h
+    try {
+      const heights: number[] = []
+      let running = 0
+      for (const child of Array.from(div.children)) {
+        const h = (child as HTMLElement).offsetHeight
+        if (running + h > containerHeight && running > 0) {
+          heights.push(running)
+          running = h
+        } else {
+          running += h
+        }
       }
+      if (running > 0) heights.push(running)
+      pageHeights.value = heights
+      totalPages.value = Math.max(1, heights.length)
+      return heights
+    } finally {
+      if (div.parentNode) div.parentNode.removeChild(div)
     }
-    if (running > 0) heights.push(running)
-    document.body.removeChild(div)
-    pageHeights.value = heights
-    totalPages.value = Math.max(1, heights.length)
-    return heights
   }
 
   function nextPage() {
@@ -343,7 +372,7 @@ export const useReaderStore = defineStore('reader', () => {
   }
 
   function startAutoScroll(container: HTMLElement | null) {
-    if (!container) return
+    if (!container || _autoTimer) return
     isAutoScrolling.value = true
     _autoTimer = setInterval(() => {
       container.scrollTop += autoScrollSpeed.value / 60
@@ -360,7 +389,7 @@ export const useReaderStore = defineStore('reader', () => {
     bookmarks, annotations,
     searchQuery, searchResults, currentSearchIndex,
     showSearch, showToc, showBookmarks, showAnnotations,
-    isAutoScrolling, showToolbar,
+    isAutoScrolling, showToolbar, contentIntegrity,
     readingMode, autoScrollSpeed, currentPage, totalPages, pageHeights,
     currentChapter, chapterCount,
     hasPreviousChapter, hasNextChapter,

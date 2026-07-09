@@ -1,27 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#1E88E5"/>
-      <stop offset="100%" stop-color="#1565C0"/>
+      <stop offset="0%" stop-color="#1976D2"/>
+      <stop offset="100%" stop-color="#0D47A1"/>
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="96" fill="url(#bg)"/>
-  <g transform="translate(70,60)" fill="none" stroke="#fff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
-    <!-- Left page -->
-    <path d="M0,40 L0,360 Q90,340 185,360 L185,40 Q90,20 0,40Z" fill="#fff" fill-opacity="0.95"/>
-    <!-- Right page -->
-    <path d="M185,40 L185,360 Q280,340 370,360 L370,40 Q280,20 185,40Z" fill="#fff" fill-opacity="0.85"/>
-    <!-- Spine line -->
-    <line x1="185" y1="40" x2="185" y2="360" stroke="#1565C0" stroke-width="6"/>
-    <!-- Text lines left -->
-    <line x1="40" y1="100" x2="160" y2="100" stroke="#1565C0" stroke-width="6" opacity="0.3"/>
-    <line x1="40" y1="140" x2="140" y2="140" stroke="#1565C0" stroke-width="6" opacity="0.2"/>
-    <line x1="40" y1="180" x2="150" y2="180" stroke="#1565C0" stroke-width="6" opacity="0.3"/>
-    <!-- Text lines right -->
-    <line x1="210" y1="100" x2="340" y2="100" stroke="#1565C0" stroke-width="6" opacity="0.2"/>
-    <line x1="210" y1="140" x2="320" y2="140" stroke="#1565C0" stroke-width="6" opacity="0.3"/>
-    <line x1="210" y1="180" x2="340" y2="180" stroke="#1565C0" stroke-width="6" opacity="0.2"/>
+  <!-- Book spine -->
+  <rect x="96" y="80" width="320" height="352" rx="8" fill="#FFF" opacity="0.95"/>
+  <rect x="116" y="80" width="24" height="352" rx="4" fill="#1565C0"/>
+  <!-- Text lines on page -->
+  <rect x="160" y="120" width="200" height="8" rx="4" fill="#333" opacity="0.7"/>
+  <rect x="160" y="148" width="220" height="8" rx="4" fill="#333" opacity="0.5"/>
+  <rect x="160" y="176" width="180" height="8" rx="4" fill="#333" opacity="0.5"/>
+  <rect x="160" y="204" width="200" height="8" rx="4" fill="#333" opacity="0.5"/>
+  <rect x="160" y="232" width="160" height="8" rx="4" fill="#333" opacity="0.5"/>
+  <!-- X letter mark -->
+  <g transform="translate(370, 360)" opacity="0.9">
+    <rect x="0" y="0" width="48" height="52" rx="8" fill="#E53935" transform="rotate(12)"/>
+    <text x="10" y="38" font-family="Arial Black,sans-serif" font-size="32" font-weight="900" fill="#FFF">X</text>
   </g>
-  <!-- Red bookmark -->
-  <polygon points="248,56 248,160 220,136 192,160 192,56" fill="#FF5252"/>
+  <!-- Reading glow accent -->
+  <circle cx="420" cy="100" r="40" fill="#42A5F5" opacity="0.3"/>
+  <circle cx="420" cy="100" r="20" fill="#42A5F5" opacity="0.5"/>
 </svg>

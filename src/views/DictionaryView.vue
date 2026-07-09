@@ -1076,9 +1076,16 @@ function lookupZhToEn(word: string): { translations: Array<{ word: string; pos?:
   return { translations, entries }
 }
 
+let _dictAbort: AbortController | null = null
+
 // ---- Main lookup ----
 async function lookupOnline() {
   if (!dictQuery.value.trim()) return
+  // Cancel previous in-flight request
+  if (_dictAbort) _dictAbort.abort()
+  _dictAbort = new AbortController()
+  const { signal } = _dictAbort
+
   dictLoading.value = true
   dictError.value = ''
   dictResult.value = null
@@ -1108,7 +1115,8 @@ async function lookupOnline() {
     } else {
       // ---- English → Chinese (dictionaryapi.dev + built-in hints) ----
       const response = await fetch(
-        `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`
+        `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`,
+        { signal }
       )
 
       if (!response.ok) {

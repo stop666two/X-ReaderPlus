@@ -30,6 +30,7 @@ export interface WorkerResult {
 export interface WorkerError {
   type: 'error'
   error: string
+  stack?: string
 }
 
 export type WorkerResponse = WorkerProgress | WorkerResult | WorkerError
@@ -41,6 +42,6 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
     const result = await parseBook(filePath, fileName, fileData, fileSize)
     self.postMessage({ type: 'result', data: result } satisfies WorkerResult)
   } catch (err: any) {
-    self.postMessage({ type: 'error', error: err?.message || String(err) } satisfies WorkerError)
+    self.postMessage({ type: 'error', error: err?.message || String(err), stack: err?.stack || '' } satisfies WorkerError)
   }
 }

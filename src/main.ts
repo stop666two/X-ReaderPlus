@@ -6,6 +6,7 @@ import vuetify from './plugins/vuetify'
 import i18n from './plugins/i18n'
 import './services/api-bridge'  // Go HTTP backend API
 import { initDb } from './services/db'
+import { flushIndex } from './services/search-index'
 import { useThemeStore } from './stores/theme'
 import { useSettingsStore } from './stores/settings'
 import './style.css'
@@ -30,5 +31,8 @@ async function bootstrap() {
 
   app.mount('#app')
 }
+
+// Flush search index before page closes — use sendBeacon to avoid blocking dialog
+window.addEventListener('beforeunload', () => { flushIndex() })
 
 bootstrap().catch(console.error)

@@ -63,6 +63,7 @@ export interface Bookmark {
 export interface Annotation {
   id: string
   bookId: string
+  bookTitle?: string
   type: AnnotationType
   color: HighlightColor
   chapterIndex: number

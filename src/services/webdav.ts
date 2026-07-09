@@ -1,9 +1,12 @@
 // WebDAV backup — opt-in feature. All data AES-256-GCM encrypted.
-// Key derived from user password via PBKDF2, never stored.
+// Key derived from user password via PBKDF2, persisted as exported raw key in config.
 import { arrayBufferToBase64, base64ToArrayBuffer } from './base64'
 
+const WEBDAV_KEY_CONFIG = 'webdav_encryption_key'
+const WEBDAV_SALT_CONFIG = 'webdav_salt'
+const ENC_MAGIC = new Uint8Array([0x58, 0x52, 0x50, 0x45, 0x4e, 0x43, 0x30, 0x30]) // "XRPENC00"
+
 let _cryptoKey: CryptoKey | null = null
-let _passwordHash = ''
 
 async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
   const enc = new TextEncoder()
@@ -12,22 +15,56 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
     { name: 'PBKDF2', salt, iterations: 600000, hash: 'SHA-256' },
     keyMaterial,
     { name: 'AES-GCM', length: 256 },
-    false,
+    true, // extractable — needed for persistence
     ['encrypt', 'decrypt']
   )
+}
+
+// Persist the raw exported key so it survives page refresh
+async function persistKey(key: CryptoKey): Promise<void> {
+  const raw = await crypto.subtle.exportKey('raw', key)
+  await configSet(WEBDAV_KEY_CONFIG, arrayBufferToBase64(raw))
+}
+
+async function loadPersistedKey(): Promise<CryptoKey | null> {
+  const raw = await configGet(WEBDAV_KEY_CONFIG)
+  if (!raw) return null
+  try {
+    const keyBuffer = base64ToArrayBuffer(raw)
+    return await crypto.subtle.importKey('raw', keyBuffer, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+  } catch {
+    await configDelete(WEBDAV_KEY_CONFIG)
+    return null
+  }
 }
 
 export async function setEncryptionPassword(password: string): Promise<void> {
   const salt = crypto.getRandomValues(new Uint8Array(32))
   _cryptoKey = await deriveKey(password, salt)
-  _passwordHash = arrayBufferToBase64(salt)
-  // Store salt only (not the key itself)
-  await configSet('webdav_salt', _passwordHash)
+  await persistKey(_cryptoKey)
+  await configSet(WEBDAV_SALT_CONFIG, arrayBufferToBase64(salt))
+}
+
+export async function hasEncryptionKey(): Promise<boolean> {
+  if (_cryptoKey) return true
+  const key = await loadPersistedKey()
+  if (key) {
+    _cryptoKey = key
+    return true
+  }
+  return false
+}
+
+export async function clearEncryptionKey(): Promise<void> {
+  _cryptoKey = null
+  await configDelete(WEBDAV_KEY_CONFIG)
+  await configDelete(WEBDAV_SALT_CONFIG)
 }
 
 async function getCryptoKey(): Promise<CryptoKey | null> {
   if (_cryptoKey) return _cryptoKey
-  return null
+  _cryptoKey = await loadPersistedKey()
+  return _cryptoKey
 }
 
 // Config helpers
@@ -42,6 +79,13 @@ function configSet(key: string, value: string): Promise<void> {
     return window.electronAPI.config.set(key, value)
   }
   localStorage.setItem(key, value)
+  return Promise.resolve()
+}
+function configDelete(key: string): Promise<void> {
+  if (typeof window !== 'undefined' && window.electronAPI?.config) {
+    return window.electronAPI.config.delete(key)
+  }
+  localStorage.removeItem(key)
   return Promise.resolve()
 }
 
@@ -61,6 +105,7 @@ export async function decryptPassword(iv: string, ciphertext: string): Promise<s
   return new TextDecoder().decode(plaintext)
 }
 
+// Encrypted payload format: [8-byte magic][12-byte IV][ciphertext]
 async function encryptData(data: ArrayBuffer): Promise<{ iv: Uint8Array; encrypted: ArrayBuffer }> {
   const key = await getCryptoKey()
   if (!key) throw new Error('Encryption password not set')
@@ -69,10 +114,21 @@ async function encryptData(data: ArrayBuffer): Promise<{ iv: Uint8Array; encrypt
   return { iv, encrypted }
 }
 
-async function decryptData(iv: Uint8Array, data: ArrayBuffer): Promise<ArrayBuffer> {
-  const key = await getCryptoKey()
-  if (!key) throw new Error('Encryption password not set')
-  return crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data)
+function isEncrypted(data: ArrayBuffer): boolean {
+  if (data.byteLength < ENC_MAGIC.length + 1) return false
+  const header = new Uint8Array(data.slice(0, ENC_MAGIC.length))
+  return header.every((b, i) => b === ENC_MAGIC[i])
+}
+
+function stripMagic(data: ArrayBuffer): ArrayBuffer {
+  return data.slice(ENC_MAGIC.length)
+}
+
+function prependMagic(data: ArrayBuffer): ArrayBuffer {
+  const combined = new Uint8Array(ENC_MAGIC.length + data.byteLength)
+  combined.set(ENC_MAGIC, 0)
+  combined.set(new Uint8Array(data), ENC_MAGIC.length)
+  return combined.buffer
 }
 
 function encryptFileName(name: string): string {
@@ -158,15 +214,18 @@ export async function listDirectory(url: string, username: string, password: str
 }
 
 export async function uploadFile(url: string, username: string, password: string, fileName: string, data: ArrayBuffer): Promise<void> {
-  // Encrypt filename and data before upload
-  const encName = _cryptoKey ? encryptFileName(fileName) : encodeURIComponent(fileName)
+  const key = await getCryptoKey()
+  const hasKey = key !== null
+  const encName = hasKey ? encryptFileName(fileName) : encodeURIComponent(fileName)
   let uploadData: ArrayBuffer
-  if (_cryptoKey) {
+  if (hasKey) {
     const { iv, encrypted } = await encryptData(data)
-    const combined = new Uint8Array(iv.length + encrypted.byteLength)
-    combined.set(iv, 0)
-    combined.set(new Uint8Array(encrypted), iv.length)
-    uploadData = combined.buffer
+    // Format: [8-byte magic][12-byte IV][ciphertext]
+    const payload = new Uint8Array(ENC_MAGIC.length + iv.length + encrypted.byteLength)
+    payload.set(ENC_MAGIC, 0)
+    payload.set(iv, ENC_MAGIC.length)
+    payload.set(new Uint8Array(encrypted), ENC_MAGIC.length + iv.length)
+    uploadData = payload.buffer
   } else {
     uploadData = data
   }
@@ -176,16 +235,18 @@ export async function uploadFile(url: string, username: string, password: string
 }
 
 export async function downloadFile(url: string, username: string, password: string, fileName: string): Promise<ArrayBuffer> {
-  const encName = _cryptoKey ? encryptFileName(fileName) : encodeURIComponent(fileName)
+  const key = await getCryptoKey()
+  const hasKey = key !== null
+  const encName = hasKey ? encryptFileName(fileName) : encodeURIComponent(fileName)
   const fileUrl = buildUrl(url, encName)
   const resp = await fetch(fileUrl, { method: 'GET', headers: { Authorization: basicAuthHeader(username, password) } })
   if (!resp.ok) throw new Error(`Download failed (${resp.status})`)
   const data = await resp.arrayBuffer()
-  if (_cryptoKey && data.byteLength > 12) {
-    // First 12 bytes are IV, rest is ciphertext
-    const iv = new Uint8Array(data.slice(0, 12))
-    const ct = data.slice(12)
-    return decryptData(iv, ct)
+  if (hasKey && isEncrypted(data)) {
+    const stripped = stripMagic(data)
+    const iv = new Uint8Array(stripped.slice(0, 12))
+    const ct = stripped.slice(12)
+    return crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct)
   }
   return data
 }

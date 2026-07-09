@@ -496,8 +496,8 @@ function onCoverError(e: Event) {
 }
 
 // ── Lifecycle ──
-onMounted(() => {
-  bookshelf.loadBooks()
+onMounted(async () => {
+  await bookshelf.loadBooks()
 })
 </script>
 

@@ -24,8 +24,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
       - run: npm ci
 
@@ -35,74 +38,27 @@ jobs:
       - name: Copy frontend for embed
         run: node scripts/copy-frontend.js
 
-      - name: Build Go backend
+      - name: Build with Wails
+        shell: cmd
         working-directory: backend
         env:
           GOARCH: ${{ matrix.arch == 'x64' && 'amd64' || matrix.arch == 'x86' && '386' || matrix.arch }}
-          GOPROXY: direct
-          GONOSUMCHECK: '*'
-          GONOSUMDB: '*'
+          CGO_ENABLED: 1
         run: |
-          go mod download
-          go build -ldflags="-s -w -H=windowsgui" -o "../dist/X-ReaderPlus-win-${{ matrix.arch }}.exe" .
+          wails build
+          if not exist ..\dist mkdir ..\dist
+          if exist build\bin\X-ReaderPlus.exe (
+            copy /y build\bin\X-ReaderPlus.exe ..\dist\X-ReaderPlus-win-${{ matrix.arch }}.exe >nul
+          ) else (
+            copy /y build\dist\X-ReaderPlus.exe ..\dist\X-ReaderPlus-win-${{ matrix.arch }}.exe >nul
+          )
 
-      - name: Build NSIS installer (x64)
-        if: matrix.arch == 'x64'
-        id: nsis
-        run: |
-          $nsisOk = $false
-          if (Get-Command choco -ErrorAction SilentlyContinue) {
-            choco install nsis -y --no-progress 2>$null
-            if ($LASTEXITCODE -eq 0) {
-              Import-Module "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1" -ErrorAction SilentlyContinue
-              Update-SessionEnvironment -ErrorAction SilentlyContinue
-              $env:PATH = "C:\Program Files (x86)\NSIS;$env:PATH"
-              try {
-                & makensis scripts/installer.nsi
-                if ($LASTEXITCODE -eq 0) { $nsisOk = $true }
-              } catch {}
-            }
-          }
-          "nsis_ok=$nsisOk" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          exit 0
-
-      - name: Create portable ZIP (x64)
-        if: matrix.arch == 'x64'
-        run: |
-          Copy-Item -Force README.md dist\
-          Compress-Archive -Force -Path dist\X-ReaderPlus-win-x64.exe,dist\README.md -DestinationPath dist\X-ReaderPlus-win-x64-portable.zip
-
-      - name: Upload binary + portable ZIP (x64)
-        if: matrix.arch == 'x64'
+      - name: Upload portable exe
         uses: actions/upload-artifact@v4
         with:
-          name: X-ReaderPlus-win-x64
+          name: X-ReaderPlus-win-${{ matrix.arch }}
           if-no-files-found: error
-          path: |
-            dist/X-ReaderPlus-win-x64.exe
-            dist/X-ReaderPlus-win-x64-portable.zip
-
-      - name: Upload NSIS installer (x64)
-        if: matrix.arch == 'x64' && steps.nsis.outputs.nsis_ok == 'True'
-        uses: actions/upload-artifact@v4
-        with:
-          name: X-ReaderPlus-win-x64-setup
-          if-no-files-found: error
-          path: dist/X-ReaderPlus-Setup-x64.exe
-
-      - name: Create portable ZIP (x86/arm64)
-        if: matrix.arch != 'x64'
-        run: |
-          Copy-Item -Force README.md dist\
-          Compress-Archive -Force -Path dist\* -DestinationPath dist\X-ReaderPlus-win-${{ matrix.arch }}-portable.zip
-
-      - name: Upload portable ZIP (x86/arm64)
-        if: matrix.arch != 'x64'
-        uses: actions/upload-artifact@v4
-        with:
-          name: X-ReaderPlus-win-${{ matrix.arch }}-portable
-          if-no-files-found: error
-          path: dist/X-ReaderPlus-win-${{ matrix.arch }}-portable.zip
+          path: dist/X-ReaderPlus-win-${{ matrix.arch }}.exe
 
   build-macos:
     runs-on: macos-latest
@@ -120,8 +76,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
       - run: npm ci
 
@@ -131,31 +90,19 @@ jobs:
       - name: Copy frontend for embed
         run: node scripts/copy-frontend.js
 
-      - name: Build Go backend (arm64 native)
-        if: matrix.arch == 'arm64'
+      - name: Build with Wails
         working-directory: backend
         env:
-          GOARCH: arm64
+          GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: 1
-          GOPROXY: direct
-          GONOSUMCHECK: '*'
-          GONOSUMDB: '*'
         run: |
-          go mod download
-          go build -ldflags="-s -w" -o "../dist/X-ReaderPlus-mac-arm64" .
-
-      - name: Build Go backend (amd64 headless)
-        if: matrix.arch == 'amd64'
-        working-directory: backend
-        env:
-          GOARCH: amd64
-          CGO_ENABLED: 0
-          GOPROXY: direct
-          GONOSUMCHECK: '*'
-          GONOSUMDB: '*'
-        run: |
-          go mod download
-          go build -ldflags="-s -w" -o "../dist/X-ReaderPlus-mac-amd64" .
+          mkdir -p build/bin ../dist 2>/dev/null
+          wails build
+          if [ -f build/bin/X-ReaderPlus ]; then
+            cp build/bin/X-ReaderPlus ../dist/X-ReaderPlus-mac-${{ matrix.arch }}
+          elif [ -f build/dist/X-ReaderPlus ]; then
+            cp build/dist/X-ReaderPlus ../dist/X-ReaderPlus-mac-${{ matrix.arch }}
+          fi
 
       - name: Package .app + .dmg
         run: bash scripts/build-macos.sh "dist/X-ReaderPlus-mac-${{ matrix.arch }}" "${{ matrix.arch == 'amd64' && 'intel' || 'apple' }}"
@@ -182,12 +129,15 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
       - run: npm ci
 
-      - name: Install build dependencies
+      - name: Install GTK/WebKit dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq libgtk-3-dev libwebkit2gtk-4.0-dev pkg-config librsvg2-bin
@@ -198,31 +148,35 @@ jobs:
       - name: Copy frontend for embed
         run: node scripts/copy-frontend.js
 
-      - name: Build Go backend (amd64)
+      - name: Build with Wails (amd64)
         if: matrix.arch == 'amd64'
         working-directory: backend
         env:
           GOARCH: amd64
           CGO_ENABLED: 1
-          GOPROXY: direct
-          GONOSUMCHECK: '*'
-          GONOSUMDB: '*'
         run: |
-          go mod download
-          go build -ldflags="-s -w" -o "../dist/X-ReaderPlus-linux-amd64" .
+          mkdir -p build/bin ../dist 2>/dev/null
+          wails build
+          if [ -f build/bin/X-ReaderPlus ]; then
+            cp build/bin/X-ReaderPlus ../dist/X-ReaderPlus-linux-amd64
+          elif [ -f build/dist/X-ReaderPlus ]; then
+            cp build/dist/X-ReaderPlus ../dist/X-ReaderPlus-linux-amd64
+          fi
 
-      - name: Build Go backend (arm64 headless)
+      - name: Build with Wails (arm64 headless)
         if: matrix.arch == 'arm64'
         working-directory: backend
         env:
           GOARCH: arm64
           CGO_ENABLED: 0
-          GOPROXY: direct
-          GONOSUMCHECK: '*'
-          GONOSUMDB: '*'
         run: |
-          go mod download
-          go build -ldflags="-s -w" -o "../dist/X-ReaderPlus-linux-arm64" .
+          mkdir -p build/bin ../dist 2>/dev/null
+          wails build -tags headless
+          if [ -f build/bin/X-ReaderPlus ]; then
+            cp build/bin/X-ReaderPlus ../dist/X-ReaderPlus-linux-arm64
+          elif [ -f build/dist/X-ReaderPlus ]; then
+            cp build/dist/X-ReaderPlus ../dist/X-ReaderPlus-linux-arm64
+          fi
 
       - name: Package AppImage (amd64)
         if: matrix.arch == 'amd64'
@@ -247,7 +201,7 @@ jobs:
         if: matrix.arch == 'amd64' && steps.appimage.outputs.appimage_ok == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: X-ReaderPlus-linux-amd64-appimage
+          name: X-ReaderPlus-linux-appimage
           if-no-files-found: error
           path: dist/X-ReaderPlus-linux-x86_64.AppImage
 

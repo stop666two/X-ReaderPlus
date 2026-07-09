@@ -1,60 +1,64 @@
 name: Release
 
 on:
-  workflow_run:
-    workflows: [Build]
-    types: [completed]
+  push:
+    tags:
+      - 'v*'
 
 jobs:
   release:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/download-artifact@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
         with:
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: release-assets
-          merge-multiple: true
+          path: artifacts
+          merge-multiple: false
 
-      - name: Determine tag from git
-        id: tag
+      - name: Organize artifacts
         run: |
-          git fetch --tags --force
-          SHA="${{ github.event.workflow_run.head_sha }}"
-          # Find tag pointing to this commit
-          TAG=$(git tag --points-at "$SHA" --sort=-creatordate | head -1)
-          if [ -n "$TAG" ]; then
-            echo "version=$TAG" >> "$GITHUB_OUTPUT"
-          else
-            # Fallback to package.json version
-            PKG=$(node -p "require('./package.json').version")
-            echo "version=v$PKG" >> "$GITHUB_OUTPUT"
-          fi
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p release/windows release/macos release/linux
 
-      - name: Extract version from package.json
-        id: ver
+          # Windows — single-file portable exe, grouped in a folder
+          cp artifacts/X-ReaderPlus-win-x64/*.exe release/windows/ 2>/dev/null || true
+          cp artifacts/X-ReaderPlus-win-x86/*.exe release/windows/ 2>/dev/null || true
+          cp artifacts/X-ReaderPlus-win-arm64/*.exe release/windows/ 2>/dev/null || true
+
+          # macOS
+          cp artifacts/X-ReaderPlus-mac-intel/*.dmg release/macos/ 2>/dev/null || true
+          cp artifacts/X-ReaderPlus-mac-apple/*.dmg release/macos/ 2>/dev/null || true
+
+          # Linux
+          cp artifacts/X-ReaderPlus-linux-amd64/X-ReaderPlus-linux-amd64 release/linux/ 2>/dev/null || true
+          cp artifacts/X-ReaderPlus-linux-arm64/X-ReaderPlus-linux-arm64 release/linux/ 2>/dev/null || true
+          cp artifacts/X-ReaderPlus-linux-appimage/*.AppImage release/linux/ 2>/dev/null || true
+
+      - name: Generate release body
+        id: body
         run: |
-          echo "pkg=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          VERSION="${GITHUB_REF_NAME#v}"
+          node -e "
+            const fs = require('fs');
+            const md = fs.readFileSync('CHANGELOG.md', 'utf8');
+            const sections = md.split(/^## /m);
+            for (const s of sections) {
+              if (s.startsWith('v${VERSION}')) {
+                fs.writeFileSync('release_body.md', '## ' + s);
+                process.exit(0);
+              }
+            }
+            fs.writeFileSync('release_body.md', '## X-ReaderPlus v${VERSION}\\n\\nSee CHANGELOG.md for details.');
+          "
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.tag.outputs.version }}
-          name: X-ReaderPlus v${{ steps.ver.outputs.pkg }}
-          body: |
-            ## X-ReaderPlus v${{ steps.ver.outputs.pkg }}
-
-            完全脱机的桌面多格式电子书阅读器。
-
-            ### 下载
-
-            见下方 Assets，选择对应平台下载。
-
-            ### 更多信息
-
-            详见 [README](https://github.com/${{ github.repository }}#readme) 和 [ROADMAP](https://github.com/${{ github.repository }}/blob/main/ROADMAP.md)。
+          tag_name: ${{ github.ref_name }}
+          name: X-ReaderPlus ${{ github.ref_name }}
+          body_path: release_body.md
           files: |
-            release-assets/*
+            release/**/*
+          draft: false
+          prerelease: false

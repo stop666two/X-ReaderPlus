@@ -19,7 +19,7 @@ export default defineConfig({
         manualChunks: {
           vuetify: ['vuetify'],
           pdfjs: ['pdfjs-dist'],
-          vendor: ['vue', 'vue-router', 'pinia', 'dayjs']
+          vendor: ['vue', 'vue-router', 'pinia', 'dayjs', 'vue-i18n']
         }
       }
     }

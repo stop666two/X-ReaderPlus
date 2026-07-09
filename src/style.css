@@ -61,7 +61,18 @@ html, body, #app {
   font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Allow text selection in most of the app */
+html, body, #app {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Disable selection only for draggable/interactive elements */
+.nav-sidebar, .v-app-bar, .book-card, .v-list-item {
   user-select: none;
+  -webkit-user-select: none;
 }
 
 body {
@@ -101,6 +112,13 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgb(var(--v-theme-primary));
+}
+
+/* Firefox scrollbar support — only on scrollable containers */
+.settings-content, .stats-content, .notes-content, .reader-scroll-container,
+.v-virtual-scroll__container, .v-list, div[style*="overflow"] {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 /* ==================== Custom Title Bar ==================== */

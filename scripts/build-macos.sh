@@ -34,9 +34,9 @@ cat > "${BUNDLE}/Contents/Info.plist" << 'PLIST'
 	<key>CFBundleIdentifier</key>
 	<string>com.stop666.x-reader-plus</string>
 	<key>CFBundleVersion</key>
-	<string>0.3.1</string>
+	<string>0.4.1</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.3.1</string>
+	<string>0.4.1</string>
 	<key>CFBundleExecutable</key>
 	<string>X-ReaderPlus</string>
 	<key>CFBundlePackageType</key>
@@ -81,3 +81,4 @@ hdiutil create -volname "${APP_NAME}" -srcfolder "${BUNDLE}" -ov -format UDZO "$
 
 echo "Created ${DMG_OUT}"
 ls -lh "${DMG_OUT}"
+

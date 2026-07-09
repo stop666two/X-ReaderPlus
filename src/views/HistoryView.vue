@@ -47,8 +47,19 @@
         >
           <v-icon start size="18">mdi-delete-off</v-icon>
           仅清除已删除文件
-        </v-btn>
+          </v-btn>
       </template>
+      <v-btn
+        variant="outlined"
+        color="warning"
+        size="small"
+        :loading="cleaningOrphans"
+        class="ml-2"
+        @click="cleanupOrphans"
+      >
+        <v-icon start size="18">mdi-delete-restore</v-icon>
+        清理失效数据
+      </v-btn>
     </v-toolbar>
 
     <div class="history-content pa-4">
@@ -171,6 +182,9 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+    <v-snackbar v-model="showSnackbar" :timeout="3000">
+      {{ snackbarText }}
+    </v-snackbar>
   </div>
 </template>
 
@@ -195,6 +209,9 @@ const showClearAllDialog = ref(false)
 const showClearPageDialog = ref(false)
 const showClearDeletedDialog = ref(false)
 const showDeleteSelectedDialog = ref(false)
+const cleaningOrphans = ref(false)
+const snackbarText = ref('')
+const showSnackbar = ref(false)
 const historyPageSize = ref(20)
 
 const selectedIds = computed(() => new Set(selectedArr.value))
@@ -285,13 +302,27 @@ async function doDeleteSelected() {
   await loadHistory()
 }
 
+async function cleanupOrphans() {
+  cleaningOrphans.value = true
+  try {
+    const result = await window.electronAPI.cleanupOrphans()
+    snackbarText.value = `清理完成: ${result.annotations || 0} 条标注, ${result.bookmarks || 0} 条书签, ${result.history || 0} 条历史`
+    showSnackbar.value = true
+  } catch (e: any) {
+    snackbarText.value = '清理失败: ' + (e.message || '未知错误')
+    showSnackbar.value = true
+  } finally {
+    cleaningOrphans.value = false
+  }
+}
+
 function onCoverError(e: Event) {
   const img = e.target as HTMLImageElement
   img.style.display = 'none'
 }
 
 onMounted(async () => {
-  bookshelf.loadBooks()
+  await bookshelf.loadBooks()
   await loadHistory()
   historyPageSize.value = await getPageSize('history')
 })

@@ -1213,6 +1213,16 @@
             </v-btn>
 
             <v-btn
+              color="warning"
+              variant="outlined"
+              size="small"
+              prepend-icon="mdi-delete-restore"
+              :loading="dataOpInProgress"
+              @click="cleanupOrphanedData"
+            >
+              清理失效数据
+            </v-btn>
+            <v-btn
               color="error"
               variant="outlined"
               size="small"
@@ -1391,23 +1401,30 @@
           系统
         </v-card-title>
         <v-card-text>
-          <v-switch
-            v-model="systemAutoStart"
-            color="primary"
-            label="开机自启"
-            density="compact"
-            hide-details
-            class="mb-2"
-            @update:model-value="onAutoStartChange"
-          />
-          <v-switch
-            v-model="systemMinimizeToTray"
-            color="primary"
-            label="启动时最小化到托盘"
-            density="compact"
-            hide-details
-            @update:model-value="onMinimizeToTrayChange"
-          />
+          <div class="system-grid">
+            <v-switch v-model="systemAutoStart" color="primary" label="开机自启" density="compact" hide-details @update:model-value="onAutoStartChange" />
+            <v-switch v-model="systemMinimizeToTray" color="primary" label="启动时最小化到托盘" density="compact" hide-details @update:model-value="onMinimizeToTrayChange" />
+            <v-switch v-model="systemCloseToTray" color="primary" label="关闭窗口时缩小到托盘" density="compact" hide-details @update:model-value="saveSystemConfig" />
+            <v-switch v-model="systemShowNotifications" color="primary" label="启用桌面通知" density="compact" hide-details @update:model-value="saveSystemConfig" />
+          </div>
+
+          <v-divider class="my-3" />
+
+          <p class="text-caption font-weight-bold mb-2">启动延迟</p>
+          <v-slider v-model="systemStartDelay" :min="0" :max="30" :step="1" thumb-label density="compact" hide-details class="mb-1" @update:model-value="saveSystemConfig">
+            <template #append>
+              <span class="text-caption text-medium-emphasis" style="min-width:36px">{{ systemStartDelay }}秒</span>
+            </template>
+          </v-slider>
+
+          <v-divider class="my-3" />
+
+          <p class="text-caption font-weight-bold mb-2">托盘图标行为</p>
+          <v-btn-toggle v-model="systemTrayAction" color="primary" density="compact" variant="outlined" divided mandatory class="mb-2" @update:model-value="saveSystemConfig">
+            <v-btn :value="'show'" size="small">点击显示</v-btn>
+            <v-btn :value="'menu'" size="small">点击菜单</v-btn>
+            <v-btn :value="'none'" size="small">无操作</v-btn>
+          </v-btn-toggle>
 
           <p class="text-caption text-medium-emphasis mt-2">
             <v-icon size="14">mdi-information</v-icon>
@@ -1424,8 +1441,8 @@
         </v-card-title>
         <v-card-text>
           <div class="d-flex align-center gap-3 mb-3">
-            <v-avatar size="48" color="primary" rounded>
-              <v-icon size="28" color="white">mdi-book-open-variant</v-icon>
+            <v-avatar size="48" color="#1976D2" rounded>
+              <v-icon size="28" color="white">mdi-book-open-page-variant</v-icon>
             </v-avatar>
             <div>
               <p class="text-body-1 font-weight-bold mb-0">X-ReaderPlus v{{ APP_VERSION }}</p>
@@ -1493,7 +1510,7 @@
       </v-card>
     </v-dialog>
 
-    <!-- 清除全部数据对话框 -->
+    <!-- 清除全部数据对话框 — 两步确认 -->
     <v-dialog v-model="showClearAll" max-width="400">
       <v-card>
         <v-card-title class="d-flex align-center text-error">
@@ -1501,26 +1518,20 @@
           清除全部数据
         </v-card-title>
         <v-card-text>
-          <p>确定要清除所有数据吗？</p>
-          <p class="text-caption text-error">此操作不可撤销！所有书籍、标注、笔记、书签将被永久删除。</p>
-          <v-text-field
-            v-model="clearAllConfirm"
-            label="输入 '确认删除' 以继续"
-            variant="outlined"
-            density="compact"
-            class="mt-2"
-          />
+          <template v-if="!clearAllStep2">
+            <p>确定要清除所有数据吗？</p>
+            <p class="text-caption text-error mt-1">此操作不可撤销！所有书籍、标注、笔记、书签将被永久删除。</p>
+          </template>
+          <template v-else>
+            <p class="text-error font-weight-bold">再次确认：真的要删除所有数据吗？</p>
+            <p class="text-caption mt-1">所有已导入的书籍和阅读记录将永久消失。</p>
+          </template>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="showClearAll = false; clearAllConfirm = ''">取消</v-btn>
-          <v-btn
-            color="error"
-            :disabled="clearAllConfirm !== '确认删除'"
-            @click="confirmClearAll"
-          >
-            确认清除
-          </v-btn>
+          <v-btn variant="text" @click="showClearAll = false; clearAllStep2 = false">取消</v-btn>
+          <v-btn v-if="!clearAllStep2" color="error" variant="tonal" @click="clearAllStep2 = true">我要清除</v-btn>
+          <v-btn v-else color="error" :loading="dataOpInProgress" @click="confirmClearAll">确认清除</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -1587,7 +1598,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useThemeStore } from '@/stores/theme'
 import { useSettingsStore } from '@/stores/settings'
 import { useBookshelfStore } from '@/stores/bookshelf'
@@ -1802,9 +1813,15 @@ function injectFontFace(family: string, dataUrl: string, format: CustomFont['for
   document.head.appendChild(style)
 }
 
-// Inject all stored custom fonts on mount
+// Inject all stored custom fonts on mount, clean up on unmount
 onMounted(() => {
   settings.customFonts.forEach(f => injectFontFace(f.family, f.dataUrl, f.format))
+})
+onUnmounted(() => {
+  settings.customFonts.forEach(f => {
+    const el = document.getElementById(`font-${f.family}`)
+    if (el) el.remove()
+  })
 })
 
 // ---- Color pickers ----
@@ -2203,7 +2220,7 @@ const exporting = ref(false)
 const importing = ref(false)
 const refreshing = ref(false)
 const showClearAll = ref(false)
-const clearAllConfirm = ref('')
+const clearAllStep2 = ref(false)
 const dataOpInProgress = ref(false)
 const dataOpProgress = ref(0)
 const dataOpIndeterminate = ref(false)
@@ -2459,12 +2476,49 @@ async function refreshMetadata() {
 
 async function confirmClearAll() {
   showClearAll.value = false
-  clearAllConfirm.value = ''
+  clearAllStep2.value = false
   if (!window.electronAPI) return
-  await window.electronAPI.clearAll()
-  await window.electronAPI.libraries.insert('default', JSON.stringify({id:'default', name:'默认书库', path:'', mode:'copy', createdAt:Date.now(), bookCount:0}))
-  await new Promise(r => setTimeout(r, 200))
-  window.location.reload()
+  dataOpInProgress.value = true
+  dataOpProgress.value = 0
+  dataOpLabel.value = '正在清除所有数据...'
+  try {
+    await new Promise(r => setTimeout(r, 100))
+    dataOpProgress.value = 30
+    await window.electronAPI.clearAll()
+    dataOpProgress.value = 70
+    // Reload bookshelf store so the sample book appears
+    await bookshelf.loadBooks()
+    dataOpProgress.value = 90
+    await new Promise(r => setTimeout(r, 200))
+    dataOpProgress.value = 100
+    window.location.hash = '#/'
+  } catch (e: any) {
+    showSnackbar('清除失败: ' + (e.message || '未知错误'), 'error')
+  } finally {
+    dataOpInProgress.value = false
+    dataOpProgress.value = 0
+    dataOpLabel.value = ''
+  }
+}
+
+async function cleanupOrphanedData() {
+  dataOpInProgress.value = true
+  dataOpIndeterminate.value = true
+  dataOpLabel.value = '正在清理失效数据...'
+  try {
+    const r = await window.electronAPI.cleanupOrphans()
+    if (r && typeof r === 'object') {
+      showSnackbar(`清理完成: ${r.bookmarks || 0} 条书签, ${r.annotations || 0} 条标注, ${r.history || 0} 条历史记录`, 'success')
+    } else {
+      showSnackbar('失效数据清理完成', 'success')
+    }
+  } catch (e: any) {
+    showSnackbar('清理失败: ' + (e.message || '未知错误'), 'error')
+  } finally {
+    dataOpInProgress.value = false
+    dataOpIndeterminate.value = false
+    dataOpLabel.value = ''
+  }
 }
 
 // ---- Annotation Export ----
@@ -2869,6 +2923,10 @@ function formatTimestamp(ts: number): string {
 // ---- System ----
 const systemAutoStart = ref(false)
 const systemMinimizeToTray = ref(false)
+const systemCloseToTray = ref(false)
+const systemShowNotifications = ref(true)
+const systemStartDelay = ref(0)
+const systemTrayAction = ref<'show' | 'menu' | 'none'>('show')
 
 async function loadSystemConfig() {
   try {
@@ -2877,6 +2935,10 @@ async function loadSystemConfig() {
       const cfg = JSON.parse(v)
       systemAutoStart.value = cfg.autoStart ?? false
       systemMinimizeToTray.value = cfg.minimizeToTray ?? false
+      systemCloseToTray.value = cfg.closeToTray ?? false
+      systemShowNotifications.value = cfg.showNotifications ?? true
+      systemStartDelay.value = cfg.startDelay ?? 0
+      systemTrayAction.value = cfg.trayAction ?? 'show'
     }
   } catch (e) { logger.error('加载系统配置失败', e) }
 }
@@ -2885,7 +2947,11 @@ async function saveSystemConfig() {
   try {
     const cfg = {
       autoStart: systemAutoStart.value,
-      minimizeToTray: systemMinimizeToTray.value
+      minimizeToTray: systemMinimizeToTray.value,
+      closeToTray: systemCloseToTray.value,
+      showNotifications: systemShowNotifications.value,
+      startDelay: systemStartDelay.value,
+      trayAction: systemTrayAction.value
     }
     await api.cfg.put('systemConfig', JSON.stringify(cfg))
   } catch (e) {
@@ -3049,6 +3115,12 @@ onMounted(() => {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px 24px;
+}
+
+.system-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
 }
 
 .color-pickers-grid {

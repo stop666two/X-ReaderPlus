@@ -17,25 +17,26 @@ function db() {
 const ALL_LIBRARY_ID = '__all__'
 const ALL_LIBRARY_NAME = '全部书库文件'
 
+const MAX_CONCURRENT = 3
+
 /**
- * Process items in batches with requestAnimationFrame between batches to prevent UI freeze.
- * @param items - Array of items to process
- * @param batchSize - Number of items per batch (default 50)
- * @param fn - Async function called for each item
- * @param progressCallback - Optional callback receiving (done, total) after each batch
+ * Process items with limited concurrency (max 3 parallel) to avoid overwhelming the system.
+ * Uses requestAnimationFrame between batches to prevent UI freeze.
  */
 export async function batchProcess<T>(
   items: T[],
-  batchSize: number,
+  _batchSize: number, // kept for backward compatibility
   fn: (item: T) => Promise<void>,
   progressCallback?: (done: number, total: number) => void
 ): Promise<void> {
-  for (let i = 0; i < items.length; i += batchSize) {
-    const batch = items.slice(i, i + batchSize)
+  let done = 0
+  const total = items.length
+  for (let i = 0; i < items.length; i += MAX_CONCURRENT) {
+    const batch = items.slice(i, i + MAX_CONCURRENT)
     await Promise.all(batch.map(fn))
-    const done = Math.min(i + batchSize, items.length)
-    progressCallback?.(done, items.length)
-    if (i + batchSize < items.length) {
+    done = Math.min(i + MAX_CONCURRENT, items.length)
+    progressCallback?.(done, total)
+    if (i + MAX_CONCURRENT < items.length) {
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
     }
   }
@@ -161,6 +162,8 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
   function setActiveLibrary(id: string) {
     activeLibraryId.value = id
     selectedIds.value = new Set()
+    searchQuery.value = ''
+    filterTag.value = ''
   }
 
   // ========== Books ==========
@@ -188,7 +191,8 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
       totalBookCount.value = totalCount
       const allRows: any[] = []
       let p = 1
-      while (true) {
+      const MAX_PAGES = 1000
+      while (p <= MAX_PAGES) {
         const offset = (p - 1) * BATCH_SIZE
         if (offset >= totalCount && totalCount > 0) break
         const result = await db().books.getAll({ limit: BATCH_SIZE, offset })
@@ -217,7 +221,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
       progress: row.progress,
       chapterIndex: row.chapterIndex,
       chapterProgress: row.chapterProgress,
-      tags: Array.isArray(row.tags) ? row.tags : JSON.parse(row.tags || '[]'),
+      tags: Array.isArray(row.tags) ? row.tags : (() => { try { return JSON.parse(row.tags || '[]') } catch { return [] } })(),
       rating: row.rating,
       review: row.review,
       wordCount: row.wordCount,
@@ -226,6 +230,10 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
       libraryId: row.libraryId,
       contentHash: row.contentHash
     }))
+  }
+
+  async function loadBookCount() {
+    try { totalBookCount.value = await db().books.count() } catch { totalBookCount.value = 0 }
   }
 
   async function loadAllData() {
@@ -387,20 +395,21 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
           }
 
           try {
-            // Offload heavy parsing to Worker thread — keeps UI responsive
+            const bookId = generateId()
+
+            // Save original file BEFORE parsing (workerParse transfers the ArrayBuffer, neutering it)
+            const rawFilePromise = db().rawFile ? db().rawFile.save(bookId, r.name, data).catch(() => {}) : Promise.resolve()
+
+            // Offload heavy parsing to Worker thread
             const parsed = await workerParse(worker, filePaths[i] || r.name, r.name, data, dataSize, workerProgress)
 
             const chapterJson = JSON.stringify({ chapters: parsed.chapters, rawToc: parsed.rawToc })
-            const jsonMB = chapterJson.length / (1024 * 1024)
-            if (jsonMB > 5) {
-              logger.warn(`章节内容较大 (${jsonMB.toFixed(1)}MB)，请耐心等待`)
-            }
 
             // Auto-detect tags from parsed content
             const fullText = parsed.chapters.map((c: any) => c.content.replace(/<[^>]+>/g, ' ')).join('\n')
             const autoTags = detectTags(fullText)
             const book: Book = {
-              id: generateId(),
+              id: bookId,
               title: parsed.metadata.title.replace(/<[^>]+>/g, ''),
               author: parsed.metadata.author.replace(/<[^>]+>/g, ''),
               cover: await compressCover(parsed.metadata.cover || ''),
@@ -421,24 +430,28 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
               libraryId: targetLibId,
               contentHash
             }
-            await db().books.insert(book)
-            await db().chapters.set(book.id, chapterJson)
-            // Save original file for export
-            if (db().rawFile && data) {
-              db().rawFile.save(book.id, r.name, data).catch(() => {})
-            }
+
+            // Critical writes first (book + chapters)
+            await Promise.all([
+              db().books.insert(book),
+              db().chapters.set(bookId, chapterJson),
+              rawFilePromise,
+            ])
+            // Non-critical side effects (best-effort, errors are logged not thrown)
             upsertHistoryEntry({
-              bookId: book.id, title: book.title, author: book.author,
+              bookId, title: book.title, author: book.author,
               cover: book.cover, format: book.format, addedAt: book.addedAt,
               lastReadAt: book.lastReadAt, totalReadingTime: book.totalReadingTime,
               progress: book.progress
-            }).catch(() => { /* best-effort: history update is non-critical */ })
+            }).catch((e: any) => logger.error('保存历史记录失败', e))
             upsertStatsEntry({
-              bookId: book.id, title: book.title, author: book.author,
+              bookId, title: book.title, author: book.author,
               cover: book.cover, format: book.format, addedAt: book.addedAt,
               lastReadAt: book.lastReadAt, totalReadingTime: book.totalReadingTime,
               progress: book.progress
-            }).catch(() => { /* best-effort: stats update is non-critical */ })
+            }).catch((e: any) => logger.error('保存统计记录失败', e))
+
+            books.value.push(book)
             importedCount++
           } catch (e) {
             logger.error(`导入失败: ${r.name}`, e)
@@ -452,9 +465,6 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
               skippedDuplicates
             }
           }
-
-          // Yield to the main thread to keep UI responsive during batch imports
-          await new Promise(r => setTimeout(r, 0))
         }
       } finally {
         worker.terminate()
@@ -462,42 +472,45 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     } catch (e: any) { logger.error('导入异常', e) } finally {
       isLoading.value = false
       importProgress.value = { current: 0, total: 0, message: '', bytesProcessed: 0, bytesTotal: 0, skippedDuplicates: 0 }
-      await loadBooks()
+      if (importedCount === 0) { await loadBooks() }
     }
     return importedCount
   }
 
   async function deleteBooks(ids: string[]) {
-    await batchProcess(ids, 50, async (id) => {
+    // Insert into trash first — abort if any trash insert fails
+    for (const id of ids) {
       const book = books.value.find(b => b.id === id)
       if (book) {
         try {
           await db().trash.insert(id, JSON.stringify({ id, book, deletedAt: Date.now() }))
         } catch (e) {
-          logger.error('移入回收站失败', e)
+          logger.error('移入回收站失败，已取消删除', e)
+          return // Abort entire deletion if trash backup fails
         }
       }
       selectedIds.value.delete(id)
-    })
+    }
     selectedIds.value = new Set(selectedIds.value)
     const result: any = await db().books.delete(ids)
-    if (result?.success === false) {
-      logger.error('删除书籍失败:', result.error)
+    if (result && !result.success) {
+      logger.error(`删除书籍失败: ${result.failed} 本`)
     }
     const idSet = new Set(ids)
     books.value = books.value.filter(b => !idSet.has(b.id))
-    totalBookCount.value = Math.max(0, totalBookCount.value - ids.length)
+    totalBookCount.value = books.value.length
     for (const lib of libraries.value) { lib.bookCount = books.value.filter(b => b.libraryId === lib.id).length }
   }
 
   async function updateBook(id: string, updates: Partial<Book>) {
-    try {
-      const idx = books.value.findIndex(b => b.id === id)
-      if (idx < 0) return
+    const idx = books.value.findIndex(b => b.id === id)
+    if (idx < 0) return
 
-      const book = { ...books.value[idx], ...updates }
-      books.value[idx] = book
+    const prev = books.value[idx]
+    // Update DB first, then memory
+    try {
       await db().books.update(id, updates)
+      books.value[idx] = { ...prev, ...updates }
     } catch (e) {
       logger.error('更新书籍失败', e)
     }
@@ -523,7 +536,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
       book.progress = progress
       book.lastReadAt = lastReadAt
 
-      await db().books.update(id, { chapterIndex: ci, chapterProgress: cp, progress, lastReadAt })
+      await db().books.update(id, { chapterIndex: Math.max(0, ci), chapterProgress: safeCp, progress, lastReadAt })
 
       upsertHistoryEntry({
         bookId: book.id, title: book.title, author: book.author,
@@ -598,9 +611,10 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     selectedIds.value = inverted
   }
 
-  async function createTag(_name: string) {
+  async function createTag(name: string) {
     // Tags are derived from books' tags arrays.
-    // A tag exists once it is assigned to at least one book.
+    // A tag is considered created once at least one book has it assigned.
+    logger.info(`Tag "${name}" will apply when assigned to a book.`)
   }
 
 // generateId imported from @/services/base64 (L-8)
@@ -608,7 +622,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
   return {
     books, libraries, activeLibraryId, viewMode, searchQuery, filterTag, sortField, sortOrder,
     selectedIds, isLoading, importProgress, loadingProgress, loadingMessage, readChapters,
-    totalBookCount,
+    totalBookCount, loadBookCount,
     activeLibrary, allTags, filteredBooks, filteredLibraryBooks,
     loadLibraries, createLibrary, deleteLibrary, renameLibrary, setActiveLibrary,
     loadBooks, loadAllData, clearAllData, importFiles, deleteBooks, updateBook,

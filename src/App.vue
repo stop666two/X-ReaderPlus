@@ -5,15 +5,23 @@
       <div class="loading-card">
         <img src="/icon.svg" class="loading-icon" alt="" />
         <h2 class="loading-app-name">X-ReaderPlus</h2>
-        <p class="loading-step">{{ bookshelf.loadingMessage }}</p>
-        <v-progress-linear
-          :model-value="bookshelf.loadingProgress"
-          color="primary"
-          height="4"
-          rounded
-          class="loading-bar"
-        />
-        <p class="loading-pct">{{ bookshelf.loadingProgress }}%</p>
+        <template v-if="!initError">
+          <p class="loading-step">{{ bookshelf.loadingMessage }}</p>
+          <v-progress-linear
+            :model-value="bookshelf.loadingProgress"
+            color="primary"
+            height="4"
+            rounded
+            class="loading-bar"
+          />
+          <p class="loading-pct">{{ bookshelf.loadingProgress }}%</p>
+        </template>
+        <template v-else>
+          <v-icon size="48" color="error" class="my-3">mdi-alert-circle-outline</v-icon>
+          <p class="text-error text-body-2 mb-2">初始化失败</p>
+          <p class="text-caption text-medium-emphasis mb-3">{{ initError }}</p>
+          <v-btn color="primary" variant="tonal" size="small" @click="reinit">重试</v-btn>
+        </template>
       </div>
     </div>
 
@@ -41,6 +49,9 @@
         </v-tooltip>
       </div>
     </div>
+
+    <!-- Global progress bar -->
+    <v-progress-linear v-if="appProgress.isLoading.value" indeterminate color="primary" height="2" class="global-progress-bar" />
 
     <div class="app-body">
       <!-- Library sidebar -->
@@ -149,21 +160,35 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { logger } from '@/services/log'
 import { useThemeStore } from '@/stores/theme'
 import { useBookshelfStore } from '@/stores/bookshelf'
 import { db } from '@/services/db'
 import { createSampleBook, createSampleChapters } from '@/services/sample-data'
 import { upsertMeta, getMetaCount } from '@/services/metadata'
 import { DEFAULT_LIBRARY_ID } from '@/constants'
+import { useAppProgress } from '@/composables/useProgress'
 
 const { t } = useI18n()
 const themeStore = useThemeStore()
 const bookshelf = useBookshelfStore()
 const router = useRouter()
+const appProgress = useAppProgress()
 const route = useRoute()
 
 const isElectron = computed(() => typeof window !== 'undefined' && !!window.electronAPI && !(window as any).__xr_native_titlebar)
 const booksLoaded = ref(false)
+const initError = ref('')
+async function reinit() {
+  initError.value = ''
+  try {
+    await bookshelf.loadLibraries()
+    await bookshelf.loadBookCount()
+    await initSample()
+    await bookshelf.loadBooks()
+    booksLoaded.value = true
+  } catch (e: any) { initError.value = e.message || '未知错误' }
+}
 const showCommandPalette = ref(false)
 let unsubTheme: (() => void) | null = null
 let unsubPalette: (() => void) | null = null
@@ -264,13 +289,17 @@ async function initSample() {
   try {
     const count = await getMetaCount()
     if (count === 0) {
+      logger.info('初始化用户指南...')
       const book = createSampleBook()
       const ch = createSampleChapters()
       await insertBookLib(book)
       await insertChapters(book.id, ch)
       await upsertMeta(book)
+      logger.info('用户指南初始化完成')
     }
-  } catch { /* 样例数据初始化失败不影响正常使用 */ }
+  } catch (e) {
+    logger.warn('初始化用户指南失败（不影响正常使用）', e)
+  }
 }
 
 function handleGlobalKeydown(e: KeyboardEvent) {
@@ -279,18 +308,29 @@ function handleGlobalKeydown(e: KeyboardEvent) {
 }
 
 onMounted(async () => {
-  booksLoaded.value = true // Show UI immediately, load data in background
-  bookshelf.loadAllData()
-  initSample()
+  appProgress.setLoading(true, '正在初始化...')
+  try {
+    await themeStore.load()
+    appProgress.setLoading(true, '正在加载书库...')
+    await bookshelf.loadLibraries()
+    await bookshelf.loadBookCount()
+    appProgress.setLoading(true, '正在加载样例...')
+    await initSample()
+    // Ensure sample book is loaded into the store immediately
+    await bookshelf.loadBooks()
+  } finally {
+    booksLoaded.value = true
+    appProgress.setLoading(false)
+  }
   if (isElectron.value) {
     try {
       const themeListener = await window.electronAPI?.onToggleTheme(() => themeStore.toggle())
       if (themeListener) unsubTheme = themeListener
-    } catch { /* Tauri event listener — fallback to local keydown */ }
+    } catch { }
     try {
       const paletteListener = await window.electronAPI?.onCommandPalette(() => showCommandPalette.value = !showCommandPalette.value)
       if (paletteListener) unsubPalette = paletteListener
-    } catch { /* Tauri event listener — fallback to local keydown */ }
+    } catch { }
   }
   window.addEventListener('keydown', handleGlobalKeydown)
 })
@@ -334,6 +374,7 @@ onUnmounted(() => {
 
 .app-content { flex: 1; overflow: hidden; display: flex; flex-direction: column; background: rgb(var(--v-theme-background)); }
 .gap-1 { gap: 4px; }
+.global-progress-bar { flex-shrink: 0; }
 
 /* ========== Startup Loading Screen ========== */
 .loading-overlay {

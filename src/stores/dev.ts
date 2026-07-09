@@ -9,5 +9,10 @@ export const useDevStore = defineStore('dev', () => {
     showDevTools.value = !showDevTools.value
   }
 
+  // In dev mode, expose for console inspection
+  if (isDev.value) {
+    ;(window as any).__xrpDev = { showDevTools, toggleDevTools }
+  }
+
   return { isDev, showDevTools, toggleDevTools }
 })

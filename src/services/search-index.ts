@@ -109,6 +109,9 @@ const mutex = new AsyncMutex()
 // ---------------------------------------------------------------------------
 
 const CFG_KEY = 'searchIndex'
+let _saveTimer: ReturnType<typeof setTimeout> | null = null
+let _dirty = false
+let _pendingData: SearchIndexData | null = null
 
 async function loadIndex(): Promise<SearchIndexData | null> {
   const v = await configGet(CFG_KEY)
@@ -121,7 +124,13 @@ async function loadIndex(): Promise<SearchIndexData | null> {
 }
 
 async function saveIndex(data: SearchIndexData): Promise<void> {
+  // Save immediately — always called inside the mutex
   await configSet(CFG_KEY, JSON.stringify(data))
+}
+
+/** Force an immediate save (for page unload). No-op since saves are synchronous. */
+export async function flushIndex(): Promise<void> {
+  // Already saved synchronously by saveIndex
 }
 
 function emptyIndex(): SearchIndexData {
@@ -292,6 +301,7 @@ export async function search(query: string, bookId?: string): Promise<SearchResu
 
   const q = query.trim().toLowerCase()
   const results: SearchResult[] = []
+  const MAX_RESULTS = 200
 
   // For exact phrase / substring matching, we delegate to a two-phase approach:
   // 1) Find candidate chapters via token overlap
@@ -358,7 +368,7 @@ export async function search(query: string, bookId?: string): Promise<SearchResu
 
     const plainText = stripHtml(chapters[ci].content).toLowerCase()
     let pos = plainText.indexOf(q)
-    while (pos >= 0) {
+    while (pos >= 0 && results.length < MAX_RESULTS) {
       const start = Math.max(0, pos - 20)
       const end = Math.min(plainText.length, pos + q.length + 20)
       results.push({

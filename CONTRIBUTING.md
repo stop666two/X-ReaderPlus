@@ -19,13 +19,49 @@ npm install
 ### 启动开发
 
 ```bash
-# 终端1: 前端
-npm run dev          # http://localhost:5173
+# 终端 1: 前端 (Vite 开发服务器 :5173)
+npm run dev
 
-# 终端2: 后端
-cd backend
-go run .            # http://127.0.0.1:34123
+# 终端 2: 后端 (Go REST API :34123)
+cd backend && go run .
+
+# 禁用 WebView 调试模式（仅启动 API 服务）
+$env:XREADER_NO_WEBVIEW="1"; cd backend; go run .
 ```
+
+### 生产构建
+
+```bash
+# 完整构建（vite build → copy-frontend → wails build）
+npm run build:all
+
+# 仅 Go 后端构建（需先 npm run build）
+npm run build:go
+
+# 一键完整重建
+.\rebuild.bat
+```
+
+## 代码规范
+
+### TypeScript / Vue
+
+- **TypeScript**: `vue-tsc --noEmit` 零错误
+- **Vue**: Composition API + `<script setup>` 模式
+- **Pinia Store**: UI 状态与业务逻辑分离，使用 async/await，try/catch 日志记录
+- **类型**: 所有类型定义在 `src/types/index.ts`，新增属性时同步更新
+
+### Go
+
+- **编译**: `go vet ./...` 零警告
+- **错误处理**: 所有 `Exec`/`QueryRow` 检查返回值，不静默丢弃
+- **事务**: 跨表操作使用 `Begin()`/`Commit()`/`Rollback()`
+- **JSON**: 统一使用 `jsonOK`/`jsonErr` 辅助函数
+
+### CSS
+
+- 遵循 Vuetify 3 命名约定
+- 组件内使用 `<style scoped>`，全局样式放在 `src/style.css`
 
 ## 提交规范
 
@@ -35,30 +71,15 @@ go run .            # http://127.0.0.1:34123
 <type>: <简短描述>
 
 类型:
-  feat     新功能
-  fix      修复
-  perf     性能优化
-  refactor 重构
-  docs     文档
-  style    格式
-  test     测试
-  chore    构建/工具
+  feat      新功能
+  fix       修复
+  perf      性能优化
+  refactor  重构
+  docs      文档
+  style     格式
+  test      测试
+  chore     构建/工具
 ```
-
-### 代码规范
-
-- **TypeScript**: `vue-tsc --noEmit` 零错误
-- **Go**: `go build` 零错误零警告
-- **CSS**: 遵循 Vuetify 3 命名约定
-- **Vue**: Composition API + `<script setup>`
-
-## 提交流程
-
-1. Fork 仓库
-2. 创建分支: `git checkout -b feat/your-feature`
-3. 提交修改: `git commit -m "feat: add something"`
-4. 推送: `git push origin feat/your-feature`
-5. 创建 Pull Request
 
 ## 项目结构
 
@@ -66,72 +87,46 @@ go run .            # http://127.0.0.1:34123
 X-ReaderPlus/
 ├── src/                    # Vue 3 前端
 │   ├── views/              # 页面视图 (11 个)
-│   ├── stores/             # Pinia 状态管理 (5 个)
-│   ├── services/           # API 桥接 + 格式解析器
+│   ├── stores/             # Pinia 状态 (5 个)
+│   ├── services/           # API 桥接 + 格式解析器 + 加密
 │   ├── composables/        # 可复用组合函数
 │   ├── plugins/            # Vuetify / i18n 插件
 │   ├── locales/            # 国际化 (zh-CN / en-US)
-│   ├── router/             # Vue Router
-│   ├── types/              # TypeScript 类型声明
-│   └── main.ts
+│   ├── router/             # Vue Router (hash 模式)
+│   └── types/              # TypeScript 类型
 ├── backend/                # Go 后端
-│   ├── main.go             # HTTP 服务器 + 前端嵌入
-│   ├── types.go            # 共享类型
-│   ├── webview_*.go        # 平台特定窗口实现
-│   ├── db/                 # SQLite 数据库初始化
+│   ├── main.go             # HTTP 服务 + 前端嵌入
+│   ├── app.go              # Wails App + 文件操作
+│   ├── webview_*.go        # 平台窗口 (Win/Mac/Linux)
+│   ├── db/                 # SQLite 3 数据库
+│   │   ├── database.go     # 初始化 + 迁移
+│   │   └── main.go
 │   ├── api/                # REST API handlers
-│   └── frontend/           # 构建时嵌入的前端文件 (gitignored)
+│   └── go.mod / go.sum
+├── public/icon.svg         # 应用 SVG 图标
 ├── scripts/                # 构建与打包脚本
-│   ├── copy-frontend.js    # 复制前端 dist → backend/frontend
-│   ├── installer.nsi       # NSIS Windows 安装程序
-│   ├── build-macos.sh      # macOS .app + .dmg 打包
-│   └── build-linux.sh      # Linux AppImage 打包
+│   ├── copy-frontend.js
+│   ├── installer.nsi
+│   ├── build-macos.sh
+│   └── build-linux.sh
 ├── .github/workflows/      # CI/CD (build + release)
-├── public/icon.svg         # 应用图标
+├── CHANGELOG.md            # 版本变更记录
+├── ROADMAP.md              # 路线图
 └── package.json
 ```
 
-## 核心原则
-
-1. **完全脱机**: 除词典 API 外零网络
-2. **隐私至上**: 数据只存本地 SQLite
-3. **简洁**: 不为功能牺牲性能
-
-## 问题反馈
-
-- [GitHub Issues](https://github.com/stop666two/X-ReaderPlus/issues)
-- 附上控制台日志和复现步骤
-
-## 国际化 (i18n)
+## 国际化
 
 翻译文件位于 `src/locales/`：
+- `zh-CN.ts` — 简体中文（主要语言）
+- `en-US.ts` — 英文
 
-```
-src/locales/
-├── zh-CN.ts    # 简体中文（主要）
-└── en-US.ts    # 英文
-```
-
-添加新翻译时：
-1. 在 `zh-CN.ts` 中添加 key
-2. 在 `en-US.ts` 中同步添加英文翻译
-3. 组件中使用 `$t('key')` 引用
-
-## 测试
-
-```bash
-# 前端类型检查
-npm run lint           # vue-tsc --noEmit
-
-# Go 编译检查
-cd backend && go build ./...
-```
-
----
+添加新翻译时同步更新两个文件。
 
 ## 相关文档
 
 - [README](README.md) — 项目介绍
 - [AGENTS.md](AGENTS.md) — 开发规范
 - [SECURITY](SECURITY.md) — 安全策略
-- [ROADMAP](ROADMAP.md) — 路线图
+- [ROADMAP.md](ROADMAP.md) — 路线图
+- [CHANGELOG.md](CHANGELOG.md) — 版本记录

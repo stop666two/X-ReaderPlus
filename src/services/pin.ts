@@ -52,11 +52,16 @@ export async function getPinState(): Promise<PinState | null> {
   return null
 }
 
+// In-memory encryption key — derived on PIN verification, never persisted
+let _sessionKey: CryptoKey | null = null
+
+export function getSessionKey(): CryptoKey | null {
+  return _sessionKey
+}
+
 export async function setPin(pin: string): Promise<void> {
   const salt = generateSalt()
   const hash = await hashPin(pin, salt)
-  const key = await deriveKey(pin, salt)
-  const exportedKey = await exportKey(key)
 
   const state: PinState = {
     isSet: true,
@@ -68,7 +73,8 @@ export async function setPin(pin: string): Promise<void> {
   }
 
   await configSet(PIN_STATE_KEY, JSON.stringify(state))
-  await configSet('encryptionKey', exportedKey)
+  // Derive key for the session — NOT persisted
+  _sessionKey = await deriveKey(pin, salt)
 }
 
 export async function verifyPin(pin: string): Promise<boolean> {
@@ -88,6 +94,8 @@ export async function verifyPin(pin: string): Promise<boolean> {
     state.failedAttempts = 0
     state.lockedUntil = 0
     await configSet(PIN_STATE_KEY, JSON.stringify(state))
+    // Derive and cache encryption key in memory for the session
+    _sessionKey = await deriveKey(pin, salt)
     return true
   }
 
@@ -143,6 +151,7 @@ export async function getRemainingAttempts(): Promise<number> {
 }
 
 export async function clearPin(): Promise<void> {
+  _sessionKey = null
   await configDelete(PIN_STATE_KEY)
   await configDelete('encryptionKey')
 }
@@ -167,12 +176,7 @@ export async function getEscalationSettings(): Promise<PinEscalation> {
   return { ...DEFAULT_PIN_ESCALATION }
 }
 
+/** @deprecated Use getSessionKey() instead — the encryption key is no longer persisted */
 export async function getEncryptionKey(): Promise<CryptoKey | null> {
-  const raw = await configGet('encryptionKey')
-  if (!raw) return null
-  try {
-    return importKey(raw)
-  } catch {
-    return null
-  }
+  return _sessionKey
 }
