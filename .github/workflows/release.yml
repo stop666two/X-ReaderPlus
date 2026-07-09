@@ -7,7 +7,7 @@ on:
 
 jobs:
   release:
-    if: ${{ github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'refs/tags/v') }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'v') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,8 +15,7 @@ jobs:
       - name: Extract tag name
         id: tag
         run: |
-          REF="${{ github.event.workflow_run.head_branch }}"
-          TAG="${REF#refs/tags/}"
+          TAG="${{ github.event.workflow_run.head_branch }}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
