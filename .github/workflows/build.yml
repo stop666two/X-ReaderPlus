@@ -230,8 +230,10 @@ jobs:
           node -e "
             const fs = require('fs');
             const md = fs.readFileSync('CHANGELOG.md', 'utf8');
-            const s = md.split(/^## /m).find(s => s.startsWith('v${VERSION}'));
-            fs.writeFileSync('release_body.md', '## ' + (s || 'X-ReaderPlus v${VERSION}\\n\\nSee CHANGELOG.md for details.'));
+            // Match from '## v{VERSION}' to the next '## v' or end of file
+            const re = new RegExp('## v' + VERSION.replace(/\./g,'\\.') + '[\\s\\S]*?(?=\\n## v|\\n*$)', 'm');
+            const m = md.match(re);
+            fs.writeFileSync('release_body.md', m ? m[0] : 'See CHANGELOG.md for details.');
           "
       - uses: softprops/action-gh-release@v2
         with:
