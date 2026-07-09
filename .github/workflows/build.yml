@@ -3,7 +3,7 @@ name: Build
 on:
   push:
     branches: [main, master]
-    tags: ['*']
+    tags: ['**']
   pull_request:
     branches: [main, master]
 
@@ -96,16 +96,18 @@ jobs:
           GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: 1
         run: |
-          mkdir -p build/bin ../dist 2>/dev/null
           wails build
-          if [ -f build/bin/X-ReaderPlus ]; then
-            cp build/bin/X-ReaderPlus ../dist/X-ReaderPlus-mac-${{ matrix.arch }}
-          elif [ -f build/dist/X-ReaderPlus ]; then
-            cp build/dist/X-ReaderPlus ../dist/X-ReaderPlus-mac-${{ matrix.arch }}
+          # Wails Package:true creates .app in build/bin/
+          if [ -d build/bin/X-ReaderPlus.app ]; then
+            cp -R build/bin/X-ReaderPlus.app ../dist/X-ReaderPlus.app 2>/dev/null || true
+            hdiutil create -volname X-ReaderPlus -srcfolder ../dist/X-ReaderPlus.app -ov -format UDZO ../dist/X-ReaderPlus-mac-${{ matrix.arch == 'amd64' && 'intel' || 'apple' }}.dmg
+          elif [ -f build/bin/X-ReaderPlus ]; then
+            # Fallback: raw binary, create wrapper
+            mkdir -p ../dist/X-ReaderPlus.app/Contents/MacOS
+            cp build/bin/X-ReaderPlus ../dist/X-ReaderPlus.app/Contents/MacOS/X-ReaderPlus
+            cp build/appicon.png ../dist/X-ReaderPlus.app/Contents/Resources/icon.icns 2>/dev/null || true
+            hdiutil create -volname X-ReaderPlus -srcfolder ../dist/X-ReaderPlus.app -ov -format UDZO ../dist/X-ReaderPlus-mac-${{ matrix.arch == 'amd64' && 'intel' || 'apple' }}.dmg
           fi
-
-      - name: Package .app + .dmg
-        run: bash scripts/build-macos.sh "dist/X-ReaderPlus-mac-${{ matrix.arch }}" "${{ matrix.arch == 'amd64' && 'intel' || 'apple' }}"
 
       - uses: actions/upload-artifact@v4
         with:
