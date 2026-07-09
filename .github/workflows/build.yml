@@ -95,8 +95,8 @@ jobs:
         env:
           GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: 1
-          PATH: $(go env GOPATH)/bin:$PATH
         run: |
+          export PATH="$(go env GOPATH)/bin:$PATH"
           mkdir -p build/bin ../dist 2>/dev/null
           wails build
           # Wails Package:true creates .app in build/bin/
@@ -158,8 +158,8 @@ jobs:
         env:
           GOARCH: amd64
           CGO_ENABLED: 1
-          PATH: $(go env GOPATH)/bin:$PATH
         run: |
+          export PATH="$(go env GOPATH)/bin:$PATH"
           mkdir -p build/bin ../dist 2>/dev/null
           wails build
           if [ -f build/bin/X-ReaderPlus ]; then
@@ -174,8 +174,8 @@ jobs:
         env:
           GOARCH: arm64
           CGO_ENABLED: 0
-          PATH: $(go env GOPATH)/bin:$PATH
         run: |
+          export PATH="$(go env GOPATH)/bin:$PATH"
           mkdir -p build/bin ../dist 2>/dev/null
           wails build
           if [ -f build/bin/X-ReaderPlus ]; then
