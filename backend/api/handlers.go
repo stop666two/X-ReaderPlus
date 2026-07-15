@@ -11,6 +11,7 @@ import (
 	"log"
 	"mime"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -56,6 +57,7 @@ func Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/search", handleSearch)
 	mux.HandleFunc("/api/parse", handleParse)
 	mux.HandleFunc("/api/import", handleImport)
+	mux.HandleFunc("/api/tags", handleTags)
 	mux.HandleFunc("/api/clear", handleClear)
 	mux.HandleFunc("/api/delete-books", handleDeleteBooksBatch)
 	mux.HandleFunc("/api/cleanup-orphans", handleCleanupOrphans)
@@ -543,6 +545,46 @@ func handleImport(w http.ResponseWriter, r *http.Request) {
 	b := Book{ID: newID(), Title: fileTitle(body.FilePath), Author: "Unknown", Path: body.FilePath, Format: fileExt(body.FilePath), AddedAt: time.Now().UnixMilli(), Tags: []string{}, LibraryID: "default"}
 	if err := booksInsert(&b); err != nil { jsonErr(w, "insert failed: "+err.Error(), 500); return }
 	jsonOK(w, b)
+}
+
+// ── Tags (server-side aggregation) ──
+func handleTags(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" { jsonErr(w, "method not allowed", 405); return }
+	rows, err := db.Meta.Query("SELECT DISTINCT json_each.value AS tag FROM books, json_each(books.tags) ORDER BY tag")
+	if err != nil { jsonErr(w, "tags query failed: "+err.Error(), 500); return }
+	defer rowsClose(rows)
+	type TagEntry struct {
+		Name  string `json:"name"`
+		Count int    `json:"count"`
+	}
+	tagMap := make(map[string]int)
+	for rows.Next() {
+		var tag string
+		if rowsScan(rows, &tag) != nil { continue }
+		tagMap[tag]++
+	}
+	// Also count known_tags from config
+	var knownTagsRaw sql.NullString
+	if err := db.Settings.QueryRow("SELECT value FROM config WHERE key = 'known_tags'").Scan(&knownTagsRaw); err == nil && knownTagsRaw.Valid {
+		var knownTags []string
+		if err := json.Unmarshal([]byte(knownTagsRaw.String), &knownTags); err == nil {
+			for _, t := range knownTags {
+				if _, ok := tagMap[t]; !ok {
+					tagMap[t] = 0
+				}
+			}
+		}
+	}
+	var result []TagEntry
+	for name, count := range tagMap {
+		result = append(result, TagEntry{Name: name, Count: count})
+	}
+	// Sort by name
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name
+	})
+	if result == nil { result = []TagEntry{} }
+	jsonOK(w, result)
 }
 
 func handleRawFile(w http.ResponseWriter, r *http.Request) {

@@ -66,6 +66,9 @@ interface ElectronAPI {
   parseBook: (path: string) => Promise<any>
   importBook: (path: string) => Promise<any>
   search: (q: string) => Promise<any>
+  tags: {
+    getAll: () => Promise<Array<{ name: string; count: number }>>
+  }
 }
 
 declare global {

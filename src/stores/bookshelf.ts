@@ -60,6 +60,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
   const totalBookCount = ref(0)
   const readChapters = ref<Set<string>>(new Set())
   const _knownTags = ref<string[]>([])
+  const _tagCache = ref<Array<{ name: string; count: number }>>([])
   const _contentHashIndex = ref<Set<string>>(new Set())
 
   const activeLibrary = computed(() => {
@@ -188,25 +189,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
       totalBookCount.value = (result as any).total ?? rows.length
       books.value = mapBookRows(Array.isArray(rows) ? rows : [])
     } else {
-      // Load all books in batches for filtering / tag extraction
-      const BATCH_SIZE = 100
-      let totalCount = 0
-      try { totalCount = await db().books.count() } catch { /* best-effort */ }
-      totalBookCount.value = totalCount
-      const allRows: any[] = []
-      let p = 1
-      const MAX_PAGES = 50
-      while (p <= MAX_PAGES && allRows.length < MAX_BOOKS_LOAD) {
-        const offset = (p - 1) * BATCH_SIZE
-        if (offset >= totalCount && totalCount > 0) break
-        const result = await db().books.getAll({ limit: BATCH_SIZE, offset })
-        const rows = (Array.isArray(result) ? result : (result as any)?.rows) || []
-        if (rows.length === 0) break
-        allRows.push(...rows)
-        if (rows.length < BATCH_SIZE) break
-        p++
-      }
-      books.value = mapBookRows(allRows)
+      return loadBooks(1, 50)
     }
     for (const lib of libraries.value) { lib.bookCount = books.value.filter(b => b.libraryId === lib.id).length }
   }
@@ -251,6 +234,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
       loadingProgress.value = 40
       loadingMessage.value = '加载书籍...'
       await loadBooks()
+      ensureFullBooksLoaded().catch(e => logger.warn('后台全量加载失败', e))
 
       loadingProgress.value = 85
       loadingMessage.value = '加载标签...'
@@ -259,10 +243,10 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
         if (raw) _knownTags.value = JSON.parse(raw)
       } catch {}
 
-      // 构建 contentHash 索引
-      for (const b of books.value) {
-        if (b.contentHash) _contentHashIndex.value.add(b.contentHash)
-      }
+      // 后台异步加载 tags（不要阻塞 UI）
+      try {
+        _tagCache.value = await db().tags.getAll()
+      } catch {}
 
       loadingProgress.value = 95
       loadingMessage.value = '完成'
@@ -277,6 +261,40 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
 
   async function clearAllData() {
     await db().clearAll()
+  }
+
+  let _fullLoadPromise: Promise<void> | null = null
+
+  async function ensureFullBooksLoaded(): Promise<void> {
+    if (_fullLoadPromise) return _fullLoadPromise
+    if (totalBookCount.value <= 50 && books.value.length === totalBookCount.value) return
+    _fullLoadPromise = (async () => {
+      const BATCH_SIZE = 100
+      const allRows: any[] = []
+      let p = 1
+      const MAX_PAGES = 50
+      while (p <= MAX_PAGES && allRows.length < MAX_BOOKS_LOAD) {
+        const offset = (p - 1) * BATCH_SIZE
+        if (offset >= totalBookCount.value && totalBookCount.value > 0) break
+        const result = await db().books.getAll({ limit: BATCH_SIZE, offset })
+        const rows = (Array.isArray(result) ? result : (result as any)?.rows) || []
+        if (rows.length === 0) break
+        allRows.push(...rows)
+        if (rows.length < BATCH_SIZE) break
+        p++
+      }
+      books.value = mapBookRows(allRows)
+      _contentHashIndex.value = new Set()
+      for (const b of books.value) {
+        if (b.contentHash) _contentHashIndex.value.add(b.contentHash)
+      }
+      for (const lib of libraries.value) { lib.bookCount = books.value.filter(b => b.libraryId === lib.id).length }
+      try {
+        _tagCache.value = await db().tags.getAll()
+      } catch {}
+      _fullLoadPromise = null
+    })()
+    return _fullLoadPromise
   }
 
   async function importFiles(filePaths: string[], libraryId?: string, importMode?: ImportMode, customNames?: string[]): Promise<number> {
@@ -649,6 +667,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     loadBooks, loadAllData, clearAllData, importFiles, deleteBooks, updateBook,
     updateBookProgress, updateBookReadingTime, getChapterCount,
     createTag,
-    toggleSelect, selectAll, clearSelection, invertSelection
+    toggleSelect, selectAll, clearSelection, invertSelection,
+    tagCache: _tagCache,
   }
 })

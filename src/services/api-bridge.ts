@@ -535,6 +535,9 @@ const apiObj: any = {
   },
   clearAll: () => api('DELETE', '/api/clear'),
   cleanupOrphans: () => api('DELETE', '/api/cleanup-orphans'),
+  tags: {
+    getAll: () => api('GET', '/api/tags'),
+  },
   parseBook: (path: string) => api('POST', '/api/parse', { filePath: path }),
   importBook: (path: string) => api('POST', '/api/import', { filePath: path }),
   search: (q: string) => api('GET', `/api/search?q=${encodeURIComponent(q)}`),

@@ -326,11 +326,9 @@ function getTagColor(name: string): string {
 // ── Computed tag list with counts ──
 const tagCountMap = computed(() => {
   const map = new Map<string, number>()
-  bookshelf.books.forEach(b => {
-    b.tags.forEach(t => {
-      map.set(t, (map.get(t) || 0) + 1)
-    })
-  })
+  for (const t of bookshelf.tagCache) {
+    map.set(t.name, t.count)
+  }
   return map
 })
 
