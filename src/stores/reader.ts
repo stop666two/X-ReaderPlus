@@ -83,7 +83,7 @@ export const useReaderStore = defineStore('reader', () => {
         }
       }
       triggerRef(chapterContents)
-    }, 50)
+    }, 200)
   }
 
 async function loadBook(bid: string) {
@@ -137,8 +137,8 @@ async function loadBook(bid: string) {
     rawToc.value = []
   }
 
-  try { await loadBookmarks() } catch { bookmarks.value = [] }
-  try { await loadAnnotations() } catch { annotations.value = [] }
+  loadBookmarks().catch(() => { bookmarks.value = [] })
+  loadAnnotations().catch(() => { annotations.value = [] })
 }
 
 async function loadBookmarks() {

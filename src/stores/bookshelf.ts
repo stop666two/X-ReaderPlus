@@ -73,6 +73,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
 
   const allTags = computed(() => {
     const tags = new Set<string>()
+    _tagCache.value.forEach(t => tags.add(t.name))
     filteredLibraryBooks.value.forEach(b => b.tags.forEach(t => tags.add(t)))
     _knownTags.value.forEach(t => tags.add(t))
     return Array.from(tags).sort()
