@@ -1309,7 +1309,7 @@ function centerFocusParagraph(index: number) {
   const el = all[idx]
   const container = readerContainer.value
   const targetTop = el.offsetTop - container.clientHeight / 2 + el.offsetHeight / 2
-  container.scrollTo({ top: Math.max(0, targetTop), behavior: 'instant' })
+  container.scrollTo({ top: Math.max(0, targetTop), behavior: 'auto' })
   // Update highlight
   container.querySelectorAll('.focus-active').forEach(e => e.classList.remove('focus-active'))
   el.classList.add('focus-active')

@@ -374,8 +374,8 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
         for (let i = 0; i < filePaths.length; i++) {
           const fp = filePaths[i]
           const readResult = await window.electronAPI.readFile(fp)
-          if (readResult.error || !readResult.data || readResult.data.byteLength === 0) {
-            logger.warn(`读取失败: ${fp}`)
+          if (!readResult.success || !readResult.data || readResult.data.byteLength === 0) {
+            logger.warn(`读取失败: ${fp} — ${readResult.error || '未知错误'}`)
             continue
           }
           const r = { name: readResult.name || fp.split(/[/\\]/).pop() || fp, data: readResult.data }
@@ -508,7 +508,10 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     } catch (e: any) { logger.error('导入异常', e) } finally {
       isLoading.value = false
       importProgress.value = { current: 0, total: 0, message: '', bytesProcessed: 0, bytesTotal: 0, skippedDuplicates: 0 }
-      if (importedCount === 0) { await loadBooks() }
+      await loadBookCount()
+      if (importedCount > 0) {
+        await loadBooks()
+      }
     }
     return importedCount
   }

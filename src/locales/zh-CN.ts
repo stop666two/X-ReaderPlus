@@ -1,7 +1,15 @@
 export default {
   app: {
     title: 'X-ReaderPlus',
-    subtitle: '本程序完全免费，严禁倒卖 | GitHub开源'
+    subtitle: '本程序完全免费，严禁倒卖 | GitHub开源',
+    goToBookshelf: '返回书架',
+    manageLibraries: '书库管理',
+    viewAnnotations: '查看标注',
+    preferences: '偏好设置',
+    readingStats: '阅读统计',
+    toggleTheme: '切换主题',
+    lightDarkSepia: '明亮/暗黑/护眼',
+    createLibraryManage: '创建书库',
   },
   nav: {
     bookshelf: '书架',

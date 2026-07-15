@@ -550,18 +550,24 @@ func handleImport(w http.ResponseWriter, r *http.Request) {
 // ── Tags (server-side aggregation) ──
 func handleTags(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" { jsonErr(w, "method not allowed", 405); return }
-	rows, err := db.Meta.Query("SELECT DISTINCT json_each.value AS tag FROM books, json_each(books.tags) ORDER BY tag")
-	if err != nil { jsonErr(w, "tags query failed: "+err.Error(), 500); return }
-	defer rowsClose(rows)
 	type TagEntry struct {
 		Name  string `json:"name"`
 		Count int    `json:"count"`
 	}
 	tagMap := make(map[string]int)
+	// Iterate all books and parse tags from JSON (more reliable than json_each)
+	rows, err := db.Meta.Query("SELECT tags FROM books WHERE tags IS NOT NULL AND tags != '[]'")
+	if err != nil { jsonErr(w, "tags query failed: "+err.Error(), 500); return }
+	defer rowsClose(rows)
 	for rows.Next() {
-		var tag string
-		if rowsScan(rows, &tag) != nil { continue }
-		tagMap[tag]++
+		var tagsStr string
+		if rowsScan(rows, &tagsStr) != nil { continue }
+		var tags []string
+		if err := json.Unmarshal([]byte(tagsStr), &tags); err == nil {
+			for _, t := range tags {
+				tagMap[t]++
+			}
+		}
 	}
 	// Also count known_tags from config
 	var knownTagsRaw sql.NullString

@@ -1,7 +1,15 @@
 export default {
   app: {
     title: 'X-ReaderPlus',
-    subtitle: 'Free & Open Source | No Reselling | GitHub'
+    subtitle: 'Completely free, open source | GitHub',
+    goToBookshelf: 'Go to Bookshelf',
+    manageLibraries: 'Manage Libraries',
+    viewAnnotations: 'View Annotations',
+    preferences: 'Preferences',
+    readingStats: 'Reading Stats',
+    toggleTheme: 'Toggle Theme',
+    lightDarkSepia: 'Light/Dark/Sepia',
+    createLibraryManage: 'Create Library',
   },
   nav: {
     bookshelf: 'Bookshelf',

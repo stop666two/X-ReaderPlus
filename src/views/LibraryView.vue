@@ -32,7 +32,7 @@
     </div>
 
     <v-row v-else class="mt-2">
-      <v-col v-for="lib in filteredLibraries" :key="lib.id" cols="12" md="6" lg="4">
+      <v-col v-for="lib in filteredLibraries" :key="lib.id" cols="12" sm="6" lg="4" xl="3">
         <v-card
           variant="outlined"
           class="lib-card"
@@ -432,6 +432,8 @@ watch(() => bookshelf.libraries.length, () => {
 .lib-card {
   border-radius: 14px !important;
   transition: box-shadow .2s;
+  min-width: 0;
+  overflow: hidden;
 }
 .lib-card:hover {
   box-shadow: 0 4px 20px rgba(0,0,0,.08);
