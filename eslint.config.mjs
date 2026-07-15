@@ -34,6 +34,10 @@ export default [
         IntersectionObserver: 'readonly',
         NodeFilter: 'readonly',
         Text: 'readonly',
+        localStorage: 'readonly',
+        confirm: 'readonly',
+        AbortController: 'readonly',
+        cancelAnimationFrame: 'readonly',
         HTMLElement: 'readonly',
         HTMLInputElement: 'readonly',
         HTMLTextAreaElement: 'readonly',
@@ -48,7 +52,7 @@ export default [
       }
     },
     rules: {
-      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       'no-empty': ['error', { allowEmptyCatch: true }],
       'no-control-regex': 'off',

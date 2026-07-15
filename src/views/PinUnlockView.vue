@@ -59,7 +59,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { verifyPin, getLockRemaining, getRemainingAttempts } from '@/services/pin'
-import { resetPinCheck } from '@/router'
+import { invalidatePinCache } from '@/router'
 
 const router = useRouter()
 const route = useRoute()
@@ -113,7 +113,7 @@ async function unlock() {
   try {
     const valid = await verifyPin(pin.value)
     if (valid) {
-      resetPinCheck()
+      invalidatePinCache()
       router.replace({ name: 'bookshelf' })
     } else {
       pin.value = ''

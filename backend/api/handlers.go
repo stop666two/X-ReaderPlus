@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,6 +16,21 @@ import (
 
 	"x-reader-plus/backend/db"
 )
+
+func rowsScan(rows *sql.Rows, dest ...any) error {
+	if err := rows.Scan(dest...); err != nil {
+		log.Printf("rows.Scan error: %v", err)
+		return err
+	}
+	return nil
+}
+
+func rowsClose(rows *sql.Rows) {
+	if err := rows.Err(); err != nil {
+		log.Printf("rows iteration error: %v", err)
+	}
+	rows.Close()
+}
 
 func Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/books/count", handleBooksCount)
@@ -56,8 +72,8 @@ func jsonErr(w http.ResponseWriter, msg string, code int) {
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
-func decode(r *http.Request, v any) error {
-	r.Body = http.MaxBytesReader(nil, r.Body, 10<<20) // 10MB body limit
+func decode(w http.ResponseWriter, r *http.Request, v any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // 10MB body limit
 	return json.NewDecoder(r.Body).Decode(v)
 }
 
@@ -73,7 +89,7 @@ func handleBooks(w http.ResponseWriter, r *http.Request) {
 		jsonOK(w, []any{books, total})
 	case "POST":
 		var b Book
-		if err := decode(r, &b); err != nil { jsonErr(w, "invalid JSON", 400); return }
+		if err := decode(w, r, &b); err != nil { jsonErr(w, "invalid JSON", 400); return }
 		if err := booksInsert(&b); err != nil { jsonErr(w, "insert failed: "+err.Error(), 500); return }
 		jsonOK(w, b)
 	}
@@ -95,8 +111,8 @@ func handleBookByID(w http.ResponseWriter, r *http.Request) {
 		jsonOK(w, b)
 	case "PUT":
 		var u map[string]any
-		if err := decode(r, &u); err != nil { jsonErr(w, "invalid JSON", 400); return }
-		bookUpdate(id, u)
+		if err := decode(w, r, &u); err != nil { jsonErr(w, "invalid JSON", 400); return }
+		if err := bookUpdate(id, u); err != nil { jsonErr(w, "update failed: "+err.Error(), 500); return }
 		jsonOK(w, map[string]string{"ok": "true"})
 	case "DELETE":
 		if err := deleteBooks([]string{id}); err != nil { jsonErr(w, "delete failed: "+err.Error(), 500); return }
@@ -106,7 +122,7 @@ func handleBookByID(w http.ResponseWriter, r *http.Request) {
 
 func handleDeleteBooksBatch(w http.ResponseWriter, r *http.Request) {
 	var body struct{ Ids []string `json:"ids"` }
-	if err := decode(r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
+	if err := decode(w, r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
 	for _, id := range body.Ids {
 		if err := deleteBooks([]string{id}); err != nil { jsonErr(w, "delete failed: "+err.Error(), 500); return }
 	}
@@ -116,9 +132,12 @@ func handleDeleteBooksBatch(w http.ResponseWriter, r *http.Request) {
 func handleCleanupOrphans(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "DELETE" { jsonErr(w, "method not allowed", 405); return }
 	// Delete all orphaned data: bookmarks, annotations, history referencing non-existent books
-	delBm, _ := db.Meta.Exec(`DELETE FROM bookmarks WHERE json_extract(data, '$.bookId') IS NOT NULL AND json_extract(data, '$.bookId') NOT IN (SELECT id FROM books)`)
-	delAn, _ := db.Meta.Exec(`DELETE FROM annotations WHERE json_extract(data, '$.bookId') IS NOT NULL AND json_extract(data, '$.bookId') NOT IN (SELECT id FROM books)`)
-	delHx, _ := db.Meta.Exec(`DELETE FROM reading_history WHERE book_id NOT IN (SELECT id FROM books)`)
+	delBm, err := db.Meta.Exec(`DELETE FROM bookmarks WHERE json_extract(data, '$.bookId') IS NOT NULL AND json_extract(data, '$.bookId') NOT IN (SELECT id FROM books)`)
+	if err != nil { jsonErr(w, "cleanup bookmarks failed: "+err.Error(), 500); return }
+	delAn, err := db.Meta.Exec(`DELETE FROM annotations WHERE json_extract(data, '$.bookId') IS NOT NULL AND json_extract(data, '$.bookId') NOT IN (SELECT id FROM books)`)
+	if err != nil { jsonErr(w, "cleanup annotations failed: "+err.Error(), 500); return }
+	delHx, err := db.Meta.Exec(`DELETE FROM reading_history WHERE book_id NOT IN (SELECT id FROM books)`)
+	if err != nil { jsonErr(w, "cleanup history failed: "+err.Error(), 500); return }
 	bmCount, _ := delBm.RowsAffected()
 	anCount, _ := delAn.RowsAffected()
 	hxCount, _ := delHx.RowsAffected()
@@ -155,7 +174,7 @@ func handleChapters(w http.ResponseWriter, r *http.Request) {
 		if data.Valid { w.Header().Set("Content-Type", "application/json"); w.Write([]byte(data.String)) } else { jsonOK(w, nil) }
 	case "POST":
 		var body struct{ Chapters json.RawMessage `json:"chapters"` }
-		if err := decode(r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
+		if err := decode(w, r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
 		if _, err := db.Content.Exec("INSERT OR REPLACE INTO chapters (book_id, data) VALUES (?, ?)", bookID, string(body.Chapters)); err != nil { jsonErr(w, "write failed: "+err.Error(), 500); return }
 		jsonOK(w, map[string]string{"ok": "true"})
 	case "DELETE":
@@ -168,7 +187,7 @@ func handleChapters(w http.ResponseWriter, r *http.Request) {
 func handleConfigRoot(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		var body struct{ Key string `json:"key"`; Value string `json:"value"` }
-		if err := decode(r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
+		if err := decode(w, r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
 		if body.Key == "" { jsonErr(w, "missing key", 400); return }
 		if _, err := db.Settings.Exec("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", body.Key, body.Value); err != nil { jsonErr(w, "write failed: "+err.Error(), 500); return }
 		jsonOK(w, map[string]string{"ok": "true"})
@@ -201,13 +220,13 @@ func handleBookmarks(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		rows, err := db.Meta.Query("SELECT id, data FROM bookmarks")
 		if err != nil { jsonErr(w, "query failed: "+err.Error(), 500); return }
-		defer rows.Close()
+		defer rowsClose(rows)
 		var items []map[string]any
-		for rows.Next() { var id, data string; rows.Scan(&id, &data); items = append(items, map[string]any{"id": id, "data": json.RawMessage(data)}) }
+		for rows.Next() { var id, data string; if rowsScan(rows, &id, &data) != nil { continue }; items = append(items, map[string]any{"id": id, "data": json.RawMessage(data)}) }
 		if items == nil { items = []map[string]any{} }
 		jsonOK(w, items)
 	case "POST":
-		var body struct{ Bookmark json.RawMessage `json:"bookmark"` }; decode(r, &body)
+		var body struct{ Bookmark json.RawMessage `json:"bookmark"` }; if err := decode(w, r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
 		var m map[string]any
 		if err := json.Unmarshal(body.Bookmark, &m); err != nil { jsonErr(w, "invalid bookmark JSON", 400); return }
 		if _, err := db.Meta.Exec("INSERT OR REPLACE INTO bookmarks (id, data) VALUES (?, ?)", fmt.Sprint(m["id"]), string(body.Bookmark)); err != nil { jsonErr(w, "write failed: "+err.Error(), 500); return }
@@ -230,13 +249,13 @@ func handleAnnotations(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		rows, err := db.Meta.Query("SELECT id, data FROM annotations")
 		if err != nil { jsonErr(w, "query failed: "+err.Error(), 500); return }
-		defer rows.Close()
+		defer rowsClose(rows)
 		var items []map[string]any
-		for rows.Next() { var id, data string; rows.Scan(&id, &data); items = append(items, map[string]any{"id": id, "data": json.RawMessage(data)}) }
+		for rows.Next() { var id, data string; if rowsScan(rows, &id, &data) != nil { continue }; items = append(items, map[string]any{"id": id, "data": json.RawMessage(data)}) }
 		if items == nil { items = []map[string]any{} }
 		jsonOK(w, items)
 	case "POST":
-		var body struct{ Annotation json.RawMessage `json:"annotation"` }; decode(r, &body)
+		var body struct{ Annotation json.RawMessage `json:"annotation"` }; if err := decode(w, r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
 		var m map[string]any
 		if err := json.Unmarshal(body.Annotation, &m); err != nil { jsonErr(w, "invalid annotation JSON", 400); return }
 		if _, err := db.Meta.Exec("INSERT OR REPLACE INTO annotations (id, data) VALUES (?, ?)", fmt.Sprint(m["id"]), string(body.Annotation)); err != nil { jsonErr(w, "write failed: "+err.Error(), 500); return }
@@ -249,7 +268,7 @@ func handleAnnotationByID(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "PUT":
 		var body struct{ Annotation json.RawMessage `json:"annotation"` }
-		if err := decode(r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
+		if err := decode(w, r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
 		if len(body.Annotation) == 0 { jsonErr(w, "empty annotation", 400); return }
 		if _, err := db.Meta.Exec("UPDATE annotations SET data = ? WHERE id = ?", string(body.Annotation), id); err != nil { jsonErr(w, "update failed: "+err.Error(), 500); return }
 		jsonOK(w, map[string]string{"ok": "true"})
@@ -264,13 +283,13 @@ func handleTrash(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		rows, err := db.Meta.Query("SELECT id, data FROM trash")
 		if err != nil { jsonErr(w, "query failed: "+err.Error(), 500); return }
-		defer rows.Close()
+		defer rowsClose(rows)
 		var items []map[string]any
-		for rows.Next() { var id, data string; rows.Scan(&id, &data); items = append(items, map[string]any{"id": id, "data": json.RawMessage(data)}) }
+		for rows.Next() { var id, data string; if rowsScan(rows, &id, &data) != nil { continue }; items = append(items, map[string]any{"id": id, "data": json.RawMessage(data)}) }
 		if items == nil { items = []map[string]any{} }
 		jsonOK(w, items)
 	case "POST":
-		var body struct{ Item json.RawMessage `json:"item"` }; decode(r, &body)
+		var body struct{ Item json.RawMessage `json:"item"` }; if err := decode(w, r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
 		var m map[string]any
 		if err := json.Unmarshal(body.Item, &m); err != nil { jsonErr(w, "invalid trash item JSON", 400); return }
 		if _, err := db.Meta.Exec("INSERT OR REPLACE INTO trash (id, data) VALUES (?, ?)", fmt.Sprint(m["id"]), string(body.Item)); err != nil { jsonErr(w, "write failed: "+err.Error(), 500); return }
@@ -296,13 +315,13 @@ func handleLibraries(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		rows, err := db.Meta.Query("SELECT id, data FROM libraries")
 		if err != nil { jsonErr(w, "query failed: "+err.Error(), 500); return }
-		defer rows.Close()
+		defer rowsClose(rows)
 		var items []map[string]any
-		for rows.Next() { var id, data string; rows.Scan(&id, &data); items = append(items, map[string]any{"id": id, "data": json.RawMessage(data)}) }
+		for rows.Next() { var id, data string; if rowsScan(rows, &id, &data) != nil { continue }; items = append(items, map[string]any{"id": id, "data": json.RawMessage(data)}) }
 		if items == nil { items = []map[string]any{} }
 		jsonOK(w, items)
 	case "POST":
-		var body struct{ Library json.RawMessage `json:"library"` }; decode(r, &body)
+		var body struct{ Library json.RawMessage `json:"library"` }; if err := decode(w, r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
 		var m map[string]any
 		if err := json.Unmarshal(body.Library, &m); err != nil { jsonErr(w, "invalid library JSON", 400); return }
 		if _, err := db.Meta.Exec("INSERT OR REPLACE INTO libraries (id, data) VALUES (?, ?)", fmt.Sprint(m["id"]), string(body.Library)); err != nil { jsonErr(w, "write failed: "+err.Error(), 500); return }
@@ -326,17 +345,17 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		rows, err := db.Meta.Query("SELECT book_id, data, read_at FROM reading_history ORDER BY read_at DESC LIMIT 500")
 		if err != nil { jsonErr(w, "query failed: "+err.Error(), 500); return }
-		defer rows.Close()
+		defer rowsClose(rows)
 		var items []map[string]any
 		for rows.Next() {
 			var bid, data string; var readAt int64
-			rows.Scan(&bid, &data, &readAt)
+			if rowsScan(rows, &bid, &data, &readAt) != nil { continue }
 			items = append(items, map[string]any{"bookId": bid, "data": json.RawMessage(data), "readAt": readAt})
 		}
 		if items == nil { items = []map[string]any{} }
 		jsonOK(w, items)
 	case "POST":
-		var body struct{ BookId string `json:"bookId"`; Data string `json:"data"` }; decode(r, &body)
+		var body struct{ BookId string `json:"bookId"`; Data string `json:"data"` }; if err := decode(w, r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
 		tx, err := db.Meta.Begin()
 		if err != nil { jsonErr(w, "tx begin failed: "+err.Error(), 500); return }
 		if _, err := tx.Exec("DELETE FROM reading_history WHERE book_id = ?", body.BookId); err != nil { tx.Rollback(); jsonErr(w, "delete failed: "+err.Error(), 500); return }
@@ -363,13 +382,13 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		rows, err := db.Meta.Query("SELECT date, data FROM reading_stats ORDER BY date DESC LIMIT 365")
 		if err != nil { jsonErr(w, "query failed: "+err.Error(), 500); return }
-		defer rows.Close()
+		defer rowsClose(rows)
 		var items []map[string]any
-		for rows.Next() { var date, data string; rows.Scan(&date, &data); items = append(items, map[string]any{"date": date, "data": json.RawMessage(data)}) }
+		for rows.Next() { var date, data string; if rowsScan(rows, &date, &data) != nil { continue }; items = append(items, map[string]any{"date": date, "data": json.RawMessage(data)}) }
 		if items == nil { items = []map[string]any{} }
 		jsonOK(w, items)
 	case "POST":
-		var body struct{ Date string `json:"date"`; Data string `json:"data"` }; decode(r, &body)
+		var body struct{ Date string `json:"date"`; Data string `json:"data"` }; if err := decode(w, r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
 		if _, err := db.Meta.Exec("INSERT OR REPLACE INTO reading_stats (date, data) VALUES (?, ?)", body.Date, body.Data); err != nil { jsonErr(w, "write failed: "+err.Error(), 500); return }
 		jsonOK(w, map[string]string{"ok": "true"})
 	case "DELETE":
@@ -396,7 +415,7 @@ func handleStatsUpsert(w http.ResponseWriter, r *http.Request) {
 		MinutesRead  int    `json:"minutesRead"`
 		PagesRead    int    `json:"pagesRead"`
 	}
-	if err := decode(r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
+	if err := decode(w, r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
 	if body.Date == "" {
 		jsonErr(w, "missing date", 400)
 		return
@@ -433,7 +452,7 @@ func handleTheme(w http.ResponseWriter, r *http.Request) {
 		if v.Valid { jsonOK(w, v.String) } else { jsonOK(w, "light") }
 	case "POST":
 		var body struct{ Value string `json:"value"` }
-		if err := decode(r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
+		if err := decode(w, r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
 		if _, err := db.Settings.Exec("INSERT OR REPLACE INTO config (key, value) VALUES ('theme_mode', ?)", body.Value); err != nil { jsonErr(w, "write failed: "+err.Error(), 500); return }
 		jsonOK(w, map[string]string{"ok": "true"})
 	}
@@ -448,7 +467,7 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	case "POST":
 		var body struct{ Settings json.RawMessage `json:"settings"` }
-		if err := decode(r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
+		if err := decode(w, r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
 		if _, err := db.Settings.Exec("INSERT OR REPLACE INTO config (key, value) VALUES ('app_settings', ?)", string(body.Settings)); err != nil { jsonErr(w, "write failed: "+err.Error(), 500); return }
 		jsonOK(w, map[string]string{"ok": "true"})
 	}
@@ -462,10 +481,10 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 	// Limit results to prevent full table scan performance issues (M-10)
 	rows, err := db.Meta.Query("SELECT id, title FROM books WHERE lower(title) LIKE ? OR lower(author) LIKE ? LIMIT 100", "%"+strings.ToLower(q)+"%", "%"+strings.ToLower(q)+"%")
 	if err != nil { jsonErr(w, "search failed: "+err.Error(), 500); return }
-	defer rows.Close()
+	defer rowsClose(rows)
 	type R struct{ BookID string `json:"bookId"`; BookTitle string `json:"bookTitle"`; MatchText string `json:"matchText"` }
 	var results []R
-	for rows.Next() { var id, title string; rows.Scan(&id, &title); results = append(results, R{BookID: id, BookTitle: title, MatchText: title}) }
+	for rows.Next() { var id, title string; if rowsScan(rows, &id, &title) != nil { continue }; results = append(results, R{BookID: id, BookTitle: title, MatchText: title}) }
 	if results == nil { results = []R{} }
 	jsonOK(w, results)
 }
@@ -473,7 +492,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 // ── Parse / Import (stub, real parsing in frontend) ──
 func handleParse(w http.ResponseWriter, r *http.Request) {
 	var body struct{ FilePath string `json:"filePath"` }
-	if err := decode(r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
+	if err := decode(w, r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
 	if body.FilePath == "" { jsonErr(w, "missing filePath", 400); return }
 	allowedExts := []string{".epub",".pdf",".txt",".md",".markdown",".html",".htm",".fb2",".djvu",".docx",".rtf",".odt",".cbz",".cbt",".chm",".lit",".lrf"}
 	ok := false
@@ -489,7 +508,7 @@ func handleParse(w http.ResponseWriter, r *http.Request) {
 }
 func handleImport(w http.ResponseWriter, r *http.Request) {
 	var body struct{ FilePath string `json:"filePath"` }
-	if err := decode(r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
+	if err := decode(w, r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
 	if body.FilePath == "" { jsonErr(w, "missing filePath", 400); return }
 	b := Book{ID: newID(), Title: fileTitle(body.FilePath), Author: "Unknown", Path: body.FilePath, Format: fileExt(body.FilePath), AddedAt: time.Now().UnixMilli(), Tags: []string{}, LibraryID: "default"}
 	if err := booksInsert(&b); err != nil { jsonErr(w, "insert failed: "+err.Error(), 500); return }
@@ -507,8 +526,7 @@ func handleRawFile(w http.ResponseWriter, r *http.Request) {
 		err := db.Content.QueryRow("SELECT filename, data, size FROM raw_files WHERE book_id = ?", bookID).Scan(&filename, &data, &size)
 		if err != nil { jsonErr(w, "not found", 404); return }
 		w.Header().Set("Content-Type", "application/octet-stream")
-		sanitized := strings.ReplaceAll(strings.ReplaceAll(filename, `"`, `\"`), "\n", "")
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, sanitized))
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
 		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 		w.Write(data)
 	case "POST":
@@ -516,7 +534,7 @@ func handleRawFile(w http.ResponseWriter, r *http.Request) {
 			Filename string `json:"filename"`
 			Data     string `json:"data"` // base64 encoded
 		}
-		if err := decode(r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
+		if err := decode(w, r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
 		raw, err := base64.StdEncoding.DecodeString(body.Data)
 		if err != nil { jsonErr(w, "invalid base64", 400); return }
 		if _, err := db.Content.Exec("INSERT OR REPLACE INTO raw_files (book_id, filename, data, size) VALUES (?, ?, ?, ?)", bookID, body.Filename, raw, len(raw)); err != nil { jsonErr(w, "write failed: "+err.Error(), 500); return }
@@ -562,11 +580,11 @@ func booksGet(page, pageSize int, libID string) ([]Book, int64) {
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := db.Meta.Query("SELECT id,title,author,cover,path,format,size,added_at,last_read_at,progress,chapter_index,chapter_progress,tags,rating,review,word_count,chapter_count,total_reading_time,library_id,content_hash FROM books"+where+" ORDER BY added_at DESC LIMIT ? OFFSET ?", args...)
 	if err != nil { return []Book{}, total }
-	defer rows.Close()
+	defer rowsClose(rows)
 	var books []Book
 	for rows.Next() {
 		b := Book{}; var tagsStr string
-		rows.Scan(&b.ID, &b.Title, &b.Author, &b.Cover, &b.Path, &b.Format, &b.Size, &b.AddedAt, &b.LastReadAt, &b.Progress, &b.ChapterIndex, &b.ChapterProgress, &tagsStr, &b.Rating, &b.Review, &b.WordCount, &b.ChapterCount, &b.TotalReadingTime, &b.LibraryID, &b.ContentHash)
+		if rowsScan(rows, &b.ID, &b.Title, &b.Author, &b.Cover, &b.Path, &b.Format, &b.Size, &b.AddedAt, &b.LastReadAt, &b.Progress, &b.ChapterIndex, &b.ChapterProgress, &tagsStr, &b.Rating, &b.Review, &b.WordCount, &b.ChapterCount, &b.TotalReadingTime, &b.LibraryID, &b.ContentHash) != nil { continue }
 		if err := json.Unmarshal([]byte(tagsStr), &b.Tags); err != nil { b.Tags = []string{} }
 		if b.Tags == nil { b.Tags = []string{} }
 		books = append(books, b)
@@ -596,7 +614,7 @@ var allowedBookColumns = map[string]bool{
 	"total_reading_time": true, "library_id": true, "content_hash": true,
 }
 
-func bookUpdate(id string, u map[string]any) {
+func bookUpdate(id string, u map[string]any) error {
 	sets := []string{}
 	args := []any{}
 	for k, v := range u {
@@ -618,19 +636,23 @@ func bookUpdate(id string, u map[string]any) {
 		sets = append(sets, dbKey+" = ?")
 		args = append(args, v)
 	}
-	if len(sets) == 0 { return }
+	if len(sets) == 0 { return nil }
 	args = append(args, id)
-	db.Meta.Exec("UPDATE books SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...)
+	_, err := db.Meta.Exec("UPDATE books SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...)
+	return err
 }
 func deleteBooks(ids []string) error {
-	tx, err := db.Meta.Begin()
+	metaTx, err := db.Meta.Begin()
 	if err != nil { return fmt.Errorf("tx begin failed: %w", err) }
+	contentTx, err := db.Content.Begin()
+	if err != nil { metaTx.Rollback(); return fmt.Errorf("content tx begin failed: %w", err) }
 	for _, id := range ids {
-		if _, err := tx.Exec("DELETE FROM books WHERE id = ?", id); err != nil { tx.Rollback(); return fmt.Errorf("delete book %s failed: %w", id, err) }
-		db.Content.Exec("DELETE FROM chapters WHERE book_id = ?", id)
-		db.Content.Exec("DELETE FROM raw_files WHERE book_id = ?", id)
+		if _, err := metaTx.Exec("DELETE FROM books WHERE id = ?", id); err != nil { metaTx.Rollback(); contentTx.Rollback(); return fmt.Errorf("delete book %s failed: %w", id, err) }
+		if _, err := contentTx.Exec("DELETE FROM chapters WHERE book_id = ?", id); err != nil { metaTx.Rollback(); contentTx.Rollback(); return fmt.Errorf("delete chapters %s failed: %w", id, err) }
+		if _, err := contentTx.Exec("DELETE FROM raw_files WHERE book_id = ?", id); err != nil { metaTx.Rollback(); contentTx.Rollback(); return fmt.Errorf("delete raw_files %s failed: %w", id, err) }
 	}
-	if err := tx.Commit(); err != nil { return fmt.Errorf("tx commit failed: %w", err) }
+	if err := metaTx.Commit(); err != nil { contentTx.Rollback(); return fmt.Errorf("meta tx commit failed: %w", err) }
+	if err := contentTx.Commit(); err != nil { return fmt.Errorf("content tx commit failed: %w", err) }
 	return nil
 }
 
@@ -659,4 +681,4 @@ func fileExt(p string) string {
 	if i := strings.LastIndex(p, "."); i >= 0 { return strings.ToLower(p[i+1:]) }
 	return ""
 }
-func init() { log.SetFlags(log.LstdFlags) }
+

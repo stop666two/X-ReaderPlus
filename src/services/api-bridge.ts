@@ -33,7 +33,6 @@ declare global {
       Quit: () => void
       BrowserOpenURL: (url: string) => void
     }
-    electronAPI?: any
   }
 }
 
@@ -541,5 +540,5 @@ const apiObj: any = {
   search: (q: string) => api('GET', `/api/search?q=${encodeURIComponent(q)}`),
 }
 
-;(window as any).electronAPI = apiObj
+window.electronAPI = apiObj
 console.log('[API Bridge] Ready')

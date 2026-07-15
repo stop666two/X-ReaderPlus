@@ -169,6 +169,21 @@ import { upsertMeta, getMetaCount } from '@/services/metadata'
 import { DEFAULT_LIBRARY_ID } from '@/constants'
 import { useAppProgress } from '@/composables/useProgress'
 
+interface CommandItem {
+  title: string
+  subtitle: string
+  icon: string
+  route?: string
+  action?: string
+  shortcut?: string
+}
+
+declare global {
+  interface Window {
+    __xr_native_titlebar?: boolean
+  }
+}
+
 const { t } = useI18n()
 const themeStore = useThemeStore()
 const bookshelf = useBookshelfStore()
@@ -176,7 +191,7 @@ const router = useRouter()
 const appProgress = useAppProgress()
 const route = useRoute()
 
-const isElectron = computed(() => typeof window !== 'undefined' && !!window.electronAPI && !(window as any).__xr_native_titlebar)
+const isElectron = computed(() => typeof window !== 'undefined' && !!window.electronAPI && !window.__xr_native_titlebar)
 const booksLoaded = ref(false)
 const initError = ref('')
 async function reinit() {
@@ -203,8 +218,8 @@ const selectedFolderPath = ref('')
 const themeIcon = computed(() => themeStore.current === 'dark' ? 'mdi-weather-night' : themeStore.current === 'sepia' ? 'mdi-palette' : 'mdi-white-balance-sunny')
 
 const libItems = computed(() => [
-  { text: '📚 全部书籍 (' + bookshelf.books.length + ')', value: '__all__' },
-  ...bookshelf.libraries.map(l => ({ text: l.name + (l.id === DEFAULT_LIBRARY_ID ? '' : ` (${l.bookCount})`), value: l.id }))
+  { text: `${t('library.allBooks')} (${bookshelf.books.length})`, value: '__all__' },
+  ...bookshelf.libraries.map(l => ({ text: l.name + (l.id === DEFAULT_LIBRARY_ID ? '' : ` (${l.bookCount}${t('library.bookCount')})`), value: l.id }))
 ])
 
 const navItems = computed(() => [
@@ -219,14 +234,14 @@ const navItems = computed(() => [
   { label: t('nav.settings'), icon: 'mdi-cog', to: '/settings' },
 ])
 
-const commands = [
-  { title: t('nav.bookshelf'), subtitle: '返回书架首页', icon: 'mdi-bookshelf', route: '/' },
-  { title: '书库管理', subtitle: '管理所有书库', icon: 'mdi-folder-multiple', route: '/libraries' },
-  { title: t('nav.notes'), subtitle: '查看所有标注', icon: 'mdi-note-edit-outline', route: '/notes' },
-  { title: t('nav.settings'), subtitle: '偏好设置', icon: 'mdi-cog', route: '/settings' },
-  { title: t('nav.stats'), subtitle: '阅读统计', icon: 'mdi-chart-bar', route: '/stats' },
-  { title: '切换主题', subtitle: '明亮/暗黑/护眼', icon: 'mdi-theme-light-dark', action: 'toggleTheme', shortcut: 'Ctrl+T' },
-  { title: t('library.newLibrary'), subtitle: '创建书库管理书籍', icon: 'mdi-bookshelf-plus', action: 'newLibrary' },
+const commands: CommandItem[] = [
+  { title: t('nav.bookshelf'), subtitle: t('app.goToBookshelf'), icon: 'mdi-bookshelf', route: '/' },
+  { title: t('nav.library'), subtitle: t('app.manageLibraries'), icon: 'mdi-folder-multiple', route: '/libraries' },
+  { title: t('nav.notes'), subtitle: t('app.viewAnnotations'), icon: 'mdi-note-edit-outline', route: '/notes' },
+  { title: t('nav.settings'), subtitle: t('app.preferences'), icon: 'mdi-cog', route: '/settings' },
+  { title: t('nav.stats'), subtitle: t('app.readingStats'), icon: 'mdi-chart-bar', route: '/stats' },
+  { title: t('app.toggleTheme'), subtitle: t('app.lightDarkSepia'), icon: 'mdi-theme-light-dark', action: 'toggleTheme', shortcut: 'Ctrl+T' },
+  { title: t('library.newLibrary'), subtitle: t('app.createLibraryManage'), icon: 'mdi-bookshelf-plus', action: 'newLibrary' },
 ]
 
 const filteredCommands = computed(() => {
@@ -236,7 +251,7 @@ const filteredCommands = computed(() => {
 
 function isActive(to: string) { return to === '/' ? route.path === '/' : route.path.startsWith(to) }
 function executeCommand() { if (filteredCommands.value.length > 0) executeCommandItem(filteredCommands.value[0]) }
-function executeCommandItem(item: any) {
+function executeCommandItem(item: CommandItem) {
   showCommandPalette.value = false; commandQuery.value = ''
   if (item.route) router.push(item.route)
   else if (item.action === 'toggleTheme') themeStore.toggle()

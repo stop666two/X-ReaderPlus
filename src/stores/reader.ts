@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef, triggerRef, computed } from 'vue'
 import type { Bookmark, Annotation, HighlightColor, ChapterContent, TocItem, ReadingMode, Book } from '@/types'
-import { useSettingsStore } from './settings'
 import { useBookshelfStore } from './bookshelf'
 import { BASE } from '@/services/api-bridge'
 import { generateId } from '@/services/base64'

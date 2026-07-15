@@ -35,18 +35,22 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' http://127.0.0.1:34123; worker-src 'self' blob:")
 		next.ServeHTTP(w, r)
 	})
 }
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Server binds only to 127.0.0.1 — reflect any origin (only local clients can reach)
+		allowedOrigins := map[string]bool{
+			"http://127.0.0.1:34123": true,
+			"http://localhost:5173":  true,
+		}
 		origin := r.Header.Get("Origin")
-		if origin != "" {
+		if allowedOrigins[origin] {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 		} else {
-			w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:34123")
+			w.Header().Set("Access-Control-Allow-Origin", "null")
 		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
@@ -105,6 +109,11 @@ func main() {
 	}
 
 	apiSrv := startAPIServer(port)
+
+	if os.Getenv("XREADER_SERVER_ONLY") == "true" {
+		log.Println("Server-only mode (XREADER_SERVER_ONLY=true), Wails window disabled")
+		select {}
+	}
 
 	app := NewApp()
 

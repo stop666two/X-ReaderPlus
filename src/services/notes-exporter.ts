@@ -13,7 +13,7 @@ function stripHtml(html: string): string {
 }
 
 function escapeMarkdown(s: string): string {
-  return s.replace(/([_*`#\[\]()])/g, '\\$1')
+  return s.replace(/([_*`#[]()])/g, '\\$1')
 }
 
 function annotationToMarkdown(a: Annotation, bookTitle: string, chapterTitle?: string): string {

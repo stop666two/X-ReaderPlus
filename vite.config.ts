@@ -14,6 +14,8 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
+    sourcemap: false,
+    minify: 'esbuild',
     rollupOptions: {
       output: {
         manualChunks: {

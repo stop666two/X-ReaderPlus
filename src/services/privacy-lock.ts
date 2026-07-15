@@ -172,7 +172,9 @@ export async function removeLibraryLock(libraryId: string, password: string): Pr
   // Decrypt all books in this library
   const allBooks = await getAllBooksInLibrary(libraryId)
   for (const book of allBooks) {
-    try { await decryptChapterContent(key, book) } catch { /* skip books without encrypted chapters */ }
+    try { await decryptChapterContent(key, book) } catch (e) {
+      console.warn(`[privacy] decryptBookContent failed for ${book}`, e)
+    }
   }
 
   _libraryKeyCache.delete(libraryId)
@@ -348,5 +350,11 @@ export async function decryptBookChapters(bookId: string, key: CryptoKey): Promi
 export async function encryptBookChapters(bookId: string, chaptersJson: string, key: CryptoKey): Promise<void> {
   const { iv, ciphertext } = await encryptData(key, chaptersJson)
   await configSet(encryptedChaptersKey(bookId), JSON.stringify({ iv, ciphertext }))
-  await deleteChaptersRaw(bookId)
+  const decrypted = await decryptData(key, iv, ciphertext)
+  if (decrypted === chaptersJson) {
+    await deleteChaptersRaw(bookId)
+  } else {
+    await configDelete(encryptedChaptersKey(bookId))
+    throw new Error('加密验证失败，已回滚')
+  }
 }

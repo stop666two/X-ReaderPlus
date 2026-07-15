@@ -1,8 +1,6 @@
-import { uploadFile, downloadFile, listDirectory, hasEncryptionKey, clearEncryptionKey } from './webdav'
+import { uploadFile, downloadFile, hasEncryptionKey, encryptPassword, decryptPassword } from './webdav'
 
 const SYNC_FILE = 'x-readerplus-sync.json'
-const SYNC_PREFIX = 'xrp-sync'
-
 interface SyncEntry {
   bookId: string
   chapterIndex: number
@@ -70,10 +68,22 @@ export async function loadSyncCredentials(): Promise<{ url: string; username: st
       const data = JSON.parse(raw)
       _webdavUrl = data.url || ''
       _webdavUser = data.username || ''
-      _webdavPass = data.password || ''
-      return data
+      let password = data.password || ''
+      if (password && password.startsWith('{')) {
+        try {
+          const enc = JSON.parse(password)
+          if (enc.iv && enc.ciphertext) {
+            const hasKey = await hasEncryptionKey().catch(() => false)
+            if (hasKey) password = await decryptPassword(enc.iv, enc.ciphertext)
+          }
+        } catch {}
+      }
+      _webdavPass = password
+      return { url: data.url || '', username: data.username || '', password }
     }
-  } catch {}
+  } catch (e) {
+    console.warn('[sync] loadSyncCredentials failed', e)
+  }
   return { url: '', username: '', password: '' }
 }
 
@@ -81,7 +91,15 @@ export async function saveSyncCredentials(url: string, username: string, passwor
   _webdavUrl = url
   _webdavUser = username
   _webdavPass = password
-  await syncCfgSet(SYNC_CFG_KEY, JSON.stringify({ url, username, password }))
+  let stored = { url, username, password }
+  const hasKey = await hasEncryptionKey().catch(() => false)
+  if (hasKey && password) {
+    try {
+      const enc = await encryptPassword(password)
+      stored = { url, username, password: JSON.stringify(enc) }
+    } catch {}
+  }
+  await syncCfgSet(SYNC_CFG_KEY, JSON.stringify(stored))
 }
 
 export async function clearSyncCredentials(): Promise<void> {
@@ -116,12 +134,10 @@ export async function pushReadingProgress(
   if (!_webdavUrl) return
   try {
     const manifest = await loadManifest() || { version: 1, deviceId: getDeviceId(), entries: {}, lastSyncAt: 0 }
-    const existing = manifest.entries[bookId]
-    if (existing && existing.updatedAt > Date.now()) return
     manifest.entries[bookId] = { bookId, chapterIndex, chapterProgress, progress, updatedAt: Date.now() }
     manifest.lastSyncAt = Date.now()
     await saveManifest(manifest)
-  } catch {}
+  } catch (e) { console.warn('[sync] pushReadingProgress failed', e) }
 }
 
 export async function pullReadingProgress(): Promise<Record<string, SyncEntry>> {
@@ -130,7 +146,7 @@ export async function pullReadingProgress(): Promise<Record<string, SyncEntry>> 
     const manifest = await loadManifest()
     if (!manifest) return {}
     return manifest.entries
-  } catch {
+  } catch (e) { console.warn('[sync] pullReadingProgress failed', e)
     return {}
   }
 }

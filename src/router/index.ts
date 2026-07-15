@@ -1,6 +1,23 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { isPinRequired, getLockRemaining } from '@/services/pin'
 
+let _pinRequired: boolean | null = null
+let _lastPinCheck = 0
+
+export function invalidatePinCache() {
+  _pinRequired = null
+}
+
+async function cachedIsPinRequired(): Promise<boolean> {
+  const now = Date.now()
+  if (_pinRequired !== null && now - _lastPinCheck < 5000) {
+    return _pinRequired
+  }
+  _pinRequired = await isPinRequired()
+  _lastPinCheck = now
+  return _pinRequired
+}
+
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
@@ -59,13 +76,18 @@ const router = createRouter({
       path: '/libraries',
       name: 'libraries',
       component: () => import('@/views/LibraryView.vue')
+    },
+    {
+      path: '/:pathMatch(.*)*',
+      name: 'not-found',
+      component: () => import('@/views/BookshelfView.vue')
     }
   ]
 })
 
 router.beforeEach(async (to) => {
   if (to.name === 'unlock') return true
-  const locked = await isPinRequired()
+  const locked = await cachedIsPinRequired()
   if (locked) {
     const remaining = await getLockRemaining()
     if (remaining > 0) {
@@ -75,8 +97,5 @@ router.beforeEach(async (to) => {
   }
   return true
 })
-
-/** @deprecated No longer needed — PIN is checked on every navigation */
-export function resetPinCheck() {}
 
 export default router

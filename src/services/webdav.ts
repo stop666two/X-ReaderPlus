@@ -20,13 +20,19 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
   )
 }
 
+function hasElectronAPI(): boolean {
+  return typeof window !== 'undefined' && !!window.electronAPI?.config
+}
+
 // Persist the raw exported key so it survives page refresh
 async function persistKey(key: CryptoKey): Promise<void> {
+  if (!hasElectronAPI()) return
   const raw = await crypto.subtle.exportKey('raw', key)
   await configSet(WEBDAV_KEY_CONFIG, arrayBufferToBase64(raw))
 }
 
 async function loadPersistedKey(): Promise<CryptoKey | null> {
+  if (!hasElectronAPI()) return null
   const raw = await configGet(WEBDAV_KEY_CONFIG)
   if (!raw) return null
   try {
@@ -124,19 +130,12 @@ function stripMagic(data: ArrayBuffer): ArrayBuffer {
   return data.slice(ENC_MAGIC.length)
 }
 
-function prependMagic(data: ArrayBuffer): ArrayBuffer {
-  const combined = new Uint8Array(ENC_MAGIC.length + data.byteLength)
-  combined.set(ENC_MAGIC, 0)
-  combined.set(new Uint8Array(data), ENC_MAGIC.length)
-  return combined.buffer
-}
-
-function encryptFileName(name: string): string {
+function encodeFileName(name: string): string {
   return btoa(String.fromCharCode(...new TextEncoder().encode(name)))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
-function decryptFileName(enc: string): string {
+function decodeFileName(enc: string): string {
   const b64 = enc.replace(/-/g, '+').replace(/_/g, '/')
   return new TextDecoder().decode(Uint8Array.from(atob(b64), c => c.charCodeAt(0)))
 }
@@ -216,7 +215,7 @@ export async function listDirectory(url: string, username: string, password: str
 export async function uploadFile(url: string, username: string, password: string, fileName: string, data: ArrayBuffer): Promise<void> {
   const key = await getCryptoKey()
   const hasKey = key !== null
-  const encName = hasKey ? encryptFileName(fileName) : encodeURIComponent(fileName)
+  const encName = hasKey ? encodeFileName(fileName) : encodeURIComponent(fileName)
   let uploadData: ArrayBuffer
   if (hasKey) {
     const { iv, encrypted } = await encryptData(data)
@@ -237,7 +236,7 @@ export async function uploadFile(url: string, username: string, password: string
 export async function downloadFile(url: string, username: string, password: string, fileName: string): Promise<ArrayBuffer> {
   const key = await getCryptoKey()
   const hasKey = key !== null
-  const encName = hasKey ? encryptFileName(fileName) : encodeURIComponent(fileName)
+  const encName = hasKey ? encodeFileName(fileName) : encodeURIComponent(fileName)
   const fileUrl = buildUrl(url, encName)
   const resp = await fetch(fileUrl, { method: 'GET', headers: { Authorization: basicAuthHeader(username, password) } })
   if (!resp.ok) throw new Error(`Download failed (${resp.status})`)

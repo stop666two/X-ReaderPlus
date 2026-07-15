@@ -561,7 +561,7 @@ async function parseDjvu(fileData: ArrayBuffer, fileName: string): Promise<Parse
         chars.push(' ')
       }
     }
-    let raw = chars.join('')
+    const raw = chars.join('')
     const collapsed = raw.replace(/\s{3,}/g, '\n').trim()
     if (collapsed.length > 50) pageTexts.push(collapsed)
   }
@@ -792,7 +792,7 @@ async function parseChm(fileData: ArrayBuffer, fileName: string): Promise<Parsed
 
 async function parseLit(fileData: ArrayBuffer, fileName: string): Promise<ParsedBook> {
   const data = new Uint8Array(fileData)
-  let title = fileName.replace(/\.lit$/i, '')
+  const title = fileName.replace(/\.lit$/i, '')
   let text = ''
   let author = '未知作者'
 

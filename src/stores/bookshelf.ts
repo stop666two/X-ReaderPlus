@@ -18,6 +18,7 @@ const ALL_LIBRARY_ID = '__all__'
 const ALL_LIBRARY_NAME = '全部书库文件'
 
 const MAX_CONCURRENT = 3
+const MAX_BOOKS_LOAD = 5000
 
 /**
  * Process items with limited concurrency (max 3 parallel) to avoid overwhelming the system.
@@ -58,6 +59,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
   const loadingMessage = ref('正在加载...')
   const totalBookCount = ref(0)
   const readChapters = ref<Set<string>>(new Set())
+  const _knownTags = ref<string[]>([])
 
   const activeLibrary = computed(() => {
     if (activeLibraryId.value === ALL_LIBRARY_ID) {
@@ -69,6 +71,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
   const allTags = computed(() => {
     const tags = new Set<string>()
     filteredLibraryBooks.value.forEach(b => b.tags.forEach(t => tags.add(t)))
+    _knownTags.value.forEach(t => tags.add(t))
     return Array.from(tags).sort()
   })
 
@@ -191,8 +194,8 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
       totalBookCount.value = totalCount
       const allRows: any[] = []
       let p = 1
-      const MAX_PAGES = 1000
-      while (p <= MAX_PAGES) {
+      const MAX_PAGES = 50
+      while (p <= MAX_PAGES && allRows.length < MAX_BOOKS_LOAD) {
         const offset = (p - 1) * BATCH_SIZE
         if (offset >= totalCount && totalCount > 0) break
         const result = await db().books.getAll({ limit: BATCH_SIZE, offset })
@@ -240,8 +243,6 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     try {
       loadingProgress.value = 10
       loadingMessage.value = '连接数据库...'
-      await new Promise(r => setTimeout(r, 50))
-
       loadingProgress.value = 25
       loadingMessage.value = '加载书库...'
       await loadLibraries()
@@ -250,9 +251,15 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
       loadingMessage.value = '加载书籍...'
       await loadBooks()
 
+      loadingProgress.value = 85
+      loadingMessage.value = '加载标签...'
+      try {
+        const raw = await db().config.get('known_tags')
+        if (raw) _knownTags.value = JSON.parse(raw)
+      } catch {}
+
       loadingProgress.value = 95
       loadingMessage.value = '完成'
-      await new Promise(r => setTimeout(r, 80))
     } catch (e) {
       logger.error('加载数据失败', e)
       if (books.value.length === 0) books.value = []
@@ -612,9 +619,15 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
   }
 
   async function createTag(name: string) {
-    // Tags are derived from books' tags arrays.
-    // A tag is considered created once at least one book has it assigned.
-    logger.info(`Tag "${name}" will apply when assigned to a book.`)
+    if (!name.trim()) return
+    if (_knownTags.value.includes(name.trim())) return
+    if (books.value.some(b => b.tags.includes(name.trim()))) return
+    _knownTags.value.push(name.trim())
+    try {
+      await db().config.set('known_tags', JSON.stringify(_knownTags.value))
+    } catch (e) {
+      logger.error('save known_tags failed', e)
+    }
   }
 
 // generateId imported from @/services/base64 (L-8)

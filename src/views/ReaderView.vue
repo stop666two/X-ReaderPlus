@@ -91,6 +91,61 @@
               <v-btn v-bind="props" icon="mdi-image-filter-center-focus" size="small" variant="text" :color="settings.focusMode ? 'primary' : ''" @click="settings.setFocusMode(!settings.focusMode)" />
             </template>
           </v-tooltip>
+
+          <v-menu>
+            <template #activator="{ props }">
+              <v-btn v-bind="props" icon="mdi-timer-outline" size="small" variant="text" :color="pomState !== 'idle' ? 'primary' : ''" />
+            </template>
+            <v-card min-width="220" class="pa-3">
+              <div class="text-center">
+                <div class="text-h5 font-weight-bold my-1">{{ pomDisplay }}</div>
+                <v-progress-linear :model-value="pomProgress * 100" height="4" color="primary" rounded class="my-2" />
+                <div class="text-caption mb-2">
+                  {{ pomState === 'idle' ? '准备就绪' : pomState === 'focus' ? '专注中' : pomState === 'break' ? '休息中' : '已暂停' }}
+                  <span v-if="pomCycles > 0"> | {{ pomCycles }} 轮</span>
+                </div>
+                <div class="d-flex justify-center ga-1">
+                  <v-btn v-if="pomState === 'idle' || pomState === 'paused'" icon="mdi-play" size="small" color="primary" @click="pomStart" />
+                  <v-btn v-if="pomState === 'focus' || pomState === 'break'" icon="mdi-pause" size="small" color="primary" @click="pomPause" />
+                  <v-btn v-if="pomState !== 'idle'" icon="mdi-skip-forward" size="small" variant="text" @click="pomSkip" />
+                  <v-btn v-if="pomState !== 'idle'" icon="mdi-stop" size="small" variant="text" @click="pomReset" />
+                </div>
+                <div class="d-flex ga-2 mt-2">
+                  <v-text-field v-model.number="pomFocus" label="专注" type="number" density="compact" hide-details variant="outlined" :min="1" :max="120" style="width:80px" />
+                  <v-text-field v-model.number="pomBreak" label="休息" type="number" density="compact" hide-details variant="outlined" :min="1" :max="60" style="width:80px" />
+                </div>
+              </div>
+            </v-card>
+          </v-menu>
+
+          <v-menu>
+            <template #activator="{ props }">
+              <v-btn v-bind="props" icon="mdi-volume-high" size="small" variant="text" :color="ambient.isPlaying() ? 'primary' : ''" />
+            </template>
+            <v-card min-width="200" class="pa-3">
+              <div class="text-caption font-weight-medium mb-1">白噪音</div>
+              <div class="d-flex flex-wrap ga-1 mb-2">
+                <v-btn
+                  v-for="[type, cfg] in soundTypes"
+                  :key="type"
+                  :icon="cfg.icon"
+                  size="small"
+                  variant="text"
+                  :color="ambient.isPlaying(type) ? 'primary' : ''"
+                  @click="ambient.isPlaying(type) ? ambient.stop() : ambient.play(type)"
+                />
+              </div>
+              <v-slider v-model="ambientVolume" min="0" max="1" step="0.05" density="compact" hide-details class="mt-1" @update:model-value="ambient.setVolume($event)" />
+              <div class="d-flex justify-space-between text-caption text-medium-emphasis px-1">
+                <span>静音</span>
+                <span>最大</span>
+              </div>
+              <v-btn v-if="ambient.isPlaying()" variant="text" color="error" size="small" class="mt-1" block @click="ambient.stop()">
+                停止
+              </v-btn>
+            </v-card>
+          </v-menu>
+
           <v-tooltip text="阅读统计" location="bottom">
             <template #activator="{ props }">
               <v-btn v-bind="props" icon="mdi-chart-line" size="small" variant="text" :color="showStatsOverlay ? 'primary' : ''" @click="showStatsOverlay = !showStatsOverlay" />
@@ -528,6 +583,8 @@ import { HIGHLIGHT_COLORS } from '@/constants'
 import { logger } from '@/services/log'
 import { renderPage, releasePdfCache } from '@/services/pdf-renderer'
 import type { Annotation, HighlightColor, ReadingMode } from '@/types'
+import { usePomodoro } from '@/composables/usePomodoro'
+import { useAmbientSound, SOUND_CONFIGS, type SoundType } from '@/composables/useAmbientSound'
 
 const router = useRouter()
 const route = useRoute()
@@ -535,6 +592,20 @@ const reader = useReaderStore()
 const settings = useSettingsStore()
 const bookshelf = useBookshelfStore()
 const theme = useThemeStore()
+const ambient = useAmbientSound()
+const soundTypes = Object.entries(SOUND_CONFIGS) as [SoundType, { label: string; icon: string }][]
+const {
+  state: pomState,
+  displayTime: pomDisplay,
+  progress: pomProgress,
+  cycles: pomCycles,
+  focusMinutes: pomFocus,
+  breakMinutes: pomBreak,
+  start: pomStart,
+  pause: pomPause,
+  reset: pomReset,
+  skip: pomSkip
+} = usePomodoro()
 
 const readerRef = ref<HTMLElement | null>(null)
 const readerContainer = ref<HTMLElement | null>(null)
@@ -557,6 +628,8 @@ const dictLoading = ref(false)
 const dictError = ref('')
 const isChapterLoading = ref(false)
 const showStatsOverlay = ref(false)
+
+const ambientVolume = ref(0.5)
 
 const highlightColors = HIGHLIGHT_COLORS
 

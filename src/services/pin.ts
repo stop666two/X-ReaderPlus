@@ -1,6 +1,6 @@
-import { generateSalt, hashPin, deriveKey, exportKey, importKey } from './crypto'
+import { generateSalt, hashPin, deriveKey, arrayBufferToBase64, base64ToArrayBuffer } from './crypto'
 import type { PinState, PinEscalation } from '@/types'
-import { PIN_MAX_ATTEMPTS, PIN_LOCK_DURATION, DEFAULT_PIN_ESCALATION } from '@/constants'
+import { DEFAULT_PIN_ESCALATION } from '@/constants'
 
 // Config helpers — uses electronAPI in Electron, localStorage fallback in browser dev mode
 function configGet(key: string): Promise<string | null> {
@@ -66,7 +66,7 @@ export async function setPin(pin: string): Promise<void> {
   const state: PinState = {
     isSet: true,
     hash,
-    salt: btoa(String.fromCharCode(...salt)),
+    salt: arrayBufferToBase64(salt.buffer),
     lockedUntil: 0,
     failedAttempts: 0,
     escalation: { ...DEFAULT_PIN_ESCALATION }
@@ -85,9 +85,7 @@ export async function verifyPin(pin: string): Promise<boolean> {
     return false
   }
 
-  const salt = new Uint8Array(
-    atob(state.salt).split('').map(c => c.charCodeAt(0))
-  )
+  const salt = new Uint8Array(base64ToArrayBuffer(state.salt))
   const hash = await hashPin(pin, salt)
 
   if (timingSafeEqual(hash, state.hash)) {

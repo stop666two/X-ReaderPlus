@@ -4,9 +4,15 @@ import (
 	"context"
 	"encoding/base64"
 	"os"
+	"path/filepath"
+	"strings"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+var trustedPaths = make(map[string]struct{})
+
+const maxReadFileSize = 100 << 20 // 100MB limit for ReadFile
 
 type App struct {
 	ctx context.Context
@@ -43,6 +49,36 @@ func (a *App) Close() {
 	wailsRuntime.Quit(a.ctx)
 }
 
+func appDataDir() string {
+	if cwd, err := os.Getwd(); err == nil {
+		if _, err := os.Stat(filepath.Join(cwd, "data")); err == nil {
+			abs, _ := filepath.Abs(filepath.Join(cwd, "data"))
+			return abs
+		}
+	}
+	appdata := os.Getenv("APPDATA")
+	if appdata == "" {
+		appdata = filepath.Join(os.Getenv("HOME"), ".config")
+	}
+	dir := filepath.Join(appdata, "x-reader-plus", "X-ReaderPlus", "data")
+	return dir
+}
+
+func pathAllowed(path string) bool {
+	if _, ok := trustedPaths[path]; ok {
+		return true
+	}
+	if !filepath.IsAbs(path) {
+		return false
+	}
+	clean := filepath.Clean(path)
+	dataDir := appDataDir()
+	if strings.HasPrefix(clean, dataDir) {
+		return true
+	}
+	return false
+}
+
 type FileInfo struct {
 	Path  string `json:"path"`
 	Name  string `json:"name"`
@@ -51,15 +87,22 @@ type FileInfo struct {
 	Size  int64  `json:"size,omitempty"`
 }
 
-func readFileInfo(path string) FileInfo {
-	// Path comes from OS file dialog or internal usage, validated at the source
-	data, err := os.ReadFile(path)
+func readFileInfoSafe(path string) FileInfo {
 	info, statErr := os.Stat(path)
 	fi := FileInfo{Path: path}
 	if statErr == nil {
 		fi.Name = info.Name()
 		fi.Size = info.Size()
 	}
+	if statErr != nil {
+		fi.Error = statErr.Error()
+		return fi
+	}
+	if info.Size() > maxReadFileSize {
+		fi.Error = "file too large"
+		return fi
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		fi.Error = err.Error()
 	} else {
@@ -77,7 +120,8 @@ func (a *App) OpenFiles() ([]FileInfo, error) {
 	}
 	var results []FileInfo
 	for _, p := range paths {
-		results = append(results, readFileInfo(p))
+		trustedPaths[p] = struct{}{}
+		results = append(results, readFileInfoSafe(p))
 	}
 	return results, nil
 }
@@ -89,7 +133,8 @@ func (a *App) OpenFile() (*FileInfo, error) {
 	if err != nil || path == "" {
 		return nil, err
 	}
-	fi := readFileInfo(path)
+	trustedPaths[path] = struct{}{}
+	fi := readFileInfoSafe(path)
 	return &fi, nil
 }
 
@@ -103,6 +148,10 @@ func (a *App) FileSizes(paths []string) ([]FileInfo, error) {
 	// File paths come from the OS file dialog (user-initiated), no XSS risk
 	var results []FileInfo
 	for _, p := range paths {
+		if !pathAllowed(p) {
+			results = append(results, FileInfo{Path: p, Error: "access denied"})
+			continue
+		}
 		info, err := os.Stat(p)
 		fi := FileInfo{Path: p}
 		if err != nil {
@@ -140,7 +189,10 @@ func (a *App) OpenExternal(url string) string {
 }
 
 func (a *App) ReadFile(path string) FileInfo {
-	return readFileInfo(path)
+	if !pathAllowed(path) {
+		return FileInfo{Path: path, Error: "access denied"}
+	}
+	return readFileInfoSafe(path)
 }
 
 func (a *App) GetAppDir() string {

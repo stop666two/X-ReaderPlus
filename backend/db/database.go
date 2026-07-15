@@ -42,12 +42,14 @@ func dataDir() string {
 			return dir
 		}
 	}
-	// Last resort: APPDATA
-	appdata := os.Getenv("APPDATA")
-	if appdata == "" {
-		appdata = filepath.Join(os.Getenv("HOME"), ".config")
+	// Last resort: next to current working directory
+	if cwd, err := os.Getwd(); err == nil {
+		dir := filepath.Join(cwd, "data")
+		os.MkdirAll(dir, 0700)
+		return dir
 	}
-	dir := filepath.Join(appdata, "x-reader-plus", "X-ReaderPlus", "data")
+	// Absolute fallback: use temp directory (never APPDATA)
+	dir := filepath.Join(os.TempDir(), "x-reader-plus", "data")
 	os.MkdirAll(dir, 0700)
 	return dir
 }

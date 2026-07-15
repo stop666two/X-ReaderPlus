@@ -16,6 +16,10 @@ function stripStyleUrls(html: string): string {
   return html
     .replace(/style\s*=\s*"[^"]*url\([^)]*\)[^"]*"/gi, (m: string) => m.replace(/url\([^)]*\)/gi, 'none'))
     .replace(/style\s*=\s*'[^']*url\([^)]*\)[^']*'/gi, (m: string) => m.replace(/url\([^)]*\)/gi, 'none'))
+    .replace(/style\s*=\s*[^"' >]+/gi, (m: string) => {
+      if (/url\(/i.test(m)) return m.replace(/url\([^)]*\)/gi, 'none')
+      return m
+    })
 }
 
 /**
