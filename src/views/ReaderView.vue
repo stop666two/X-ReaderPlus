@@ -1279,15 +1279,26 @@ function onScroll() {
 // ---- Focus mode ----
 
 let _focusParagraphs: HTMLElement[] = []
+let _focusCacheKey = ''
 let _focusIndex = 0
 let _focusLoopId: number | null = null
+
+function clearFocusCache() {
+  _focusParagraphs = []
+  _focusCacheKey = ''
+  _focusIndex = 0
+}
 
 function getFocusableParagraphs(): HTMLElement[] {
   const contentEl = readerContainer.value?.querySelector<HTMLElement>('.reader-content')
   if (!contentEl) return []
-  return Array.from(contentEl.querySelectorAll<HTMLElement>(
+  const key = String(reader.currentChapterIndex)
+  if (_focusCacheKey === key && _focusParagraphs.length > 0) return _focusParagraphs
+  _focusParagraphs = Array.from(contentEl.querySelectorAll<HTMLElement>(
     'p, h1, h2, h3, h4, h5, h6, blockquote, li, div, td, th, pre, section'
   )).filter(el => el.textContent?.trim() && el.offsetHeight > 0)
+  _focusCacheKey = key
+  return _focusParagraphs
 }
 
 function centerFocusParagraph(index: number) {
@@ -1298,7 +1309,7 @@ function centerFocusParagraph(index: number) {
   const el = all[idx]
   const container = readerContainer.value
   const targetTop = el.offsetTop - container.clientHeight / 2 + el.offsetHeight / 2
-  container.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' })
+  container.scrollTo({ top: Math.max(0, targetTop), behavior: 'instant' })
   // Update highlight
   container.querySelectorAll('.focus-active').forEach(e => e.classList.remove('focus-active'))
   el.classList.add('focus-active')
@@ -1306,8 +1317,11 @@ function centerFocusParagraph(index: number) {
   _focusParagraphs = all
 }
 
+let _focusWheelTimer: ReturnType<typeof setTimeout> | null = null
+
 function onFocusWheel(e: WheelEvent) {
-  e.preventDefault()
+  if (_focusWheelTimer) return
+  _focusWheelTimer = setTimeout(() => { _focusWheelTimer = null }, 50)
   const delta = e.deltaY > 0 ? 1 : -1
   centerFocusParagraph(_focusIndex + delta)
 }
@@ -1347,7 +1361,7 @@ watch(() => settings.focusMode, (val) => {
       if (dist < bestDist) { bestDist = dist; bestIdx = i }
     }
     centerFocusParagraph(bestIdx)
-    container.addEventListener('wheel', onFocusWheel, { passive: false })
+    container.addEventListener('wheel', onFocusWheel, { passive: true })
     document.addEventListener('keydown', onFocusKeydown)
   } else {
     container.removeEventListener('wheel', onFocusWheel)
@@ -1367,6 +1381,7 @@ watch(() => reader.currentChapterIndex, (newIdx) => {
   sliderValue.value = newIdx
   // Restore scroll after content renders (deferred to lazyContent watcher)
   nextTick(() => {
+    clearFocusCache()
     applyChapterAnnotations()
     isChapterLoading.value = false
     if (settings.focusMode) { centerFocusParagraph(_focusIndex) }
@@ -1592,6 +1607,11 @@ function highlightAndScrollToMatch(result: { text: string; chapterIndex: number 
 // ---- Selection handling ----
 
 function handleSelection() {
+  const container = readerContainer.value
+  if (!container || (!container.contains(document.activeElement) && !container.contains(document.getSelection()?.anchorNode ?? null))) {
+    selectionMenu.value.visible = false
+    return
+  }
   const selection = window.getSelection()
   if (!selection || selection.isCollapsed || !selection.rangeCount) {
     selectionMenu.value.visible = false
@@ -2483,19 +2503,12 @@ onBeforeRouteLeave(async (_to, _from) => {
 .focus-mode .reader-content :deep(blockquote),
 .focus-mode .reader-content :deep(li) {
   opacity: 0.22;
-  transition: opacity 0.35s ease, box-shadow 0.35s ease, font-weight 0.35s ease;
+  transition: opacity 0.3s ease;
 }
 .focus-mode .reader-content :deep(.focus-active) {
   opacity: 1;
-  font-weight: 700 !important;
-  box-shadow:
-    0 0 60px 30px rgba(var(--v-theme-on-surface), 0.08),
-    0 0 120px 60px rgba(var(--v-theme-on-surface), 0.04);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.1);
   border-radius: 6px;
-  padding: 8px 12px;
-  margin: -8px -12px;
-  position: relative;
-  z-index: 2;
   background: rgba(var(--v-theme-on-surface), 0.03);
 }
 /* Search highlight */
