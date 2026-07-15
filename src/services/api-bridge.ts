@@ -87,7 +87,7 @@ function toSnake(obj: any): any {
 }
 
 // File dialog + read cache (LRU, max 50 entries)
-const MAX_CACHED_FILES = 50
+const MAX_CACHED_FILES = 500
 let _cachedFiles: Array<{ name: string; data: ArrayBuffer; error?: string }> = []
 
 function addToCache(file: { name: string; data: ArrayBuffer; error?: string }) {

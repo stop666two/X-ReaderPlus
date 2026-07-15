@@ -371,16 +371,15 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
       }
 
       try {
+        const batchData = await window.electronAPI.readBatchFiles(filePaths)
         for (let i = 0; i < filePaths.length; i++) {
-          const fp = filePaths[i]
-          const readResult = await window.electronAPI.readFile(fp)
-          if (!readResult.success || !readResult.data || readResult.data.byteLength === 0) {
-            logger.warn(`读取失败: ${fp} — ${readResult.error || '未知错误'}`)
+          const r = batchData[i]
+          if (!r || r.error || !r.data || r.data.byteLength === 0) {
+            logger.warn(`读取失败: ${filePaths[i]} — ${r?.error || '未知错误'}`)
             continue
           }
-          const r = { name: readResult.name || fp.split(/[/\\]/).pop() || fp, data: readResult.data }
 
-          bytesProcessed += readResult.data.byteLength
+          bytesProcessed += r.data.byteLength
           importProgress.value = {
             current: i + 1,
             total: filePaths.length,
@@ -434,7 +433,9 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
             const bookId = generateId()
 
             // Save original file BEFORE parsing (workerParse transfers the ArrayBuffer, neutering it)
-            const rawFilePromise = db().rawFile ? db().rawFile.save(bookId, r.name, data).catch(() => {}) : Promise.resolve()
+            const rawFilePromise = db().rawFile && data.byteLength < 5 * 1024 * 1024
+              ? db().rawFile.save(bookId, r.name, data).catch(() => {})
+              : Promise.resolve()
 
             // Offload heavy parsing to Worker thread
             const parsed = await workerParse(worker, filePaths[i] || r.name, r.name, data, dataSize, workerProgress)
