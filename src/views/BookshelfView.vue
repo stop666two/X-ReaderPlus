@@ -1372,8 +1372,8 @@ function getCoverColor(title: string): string {
 // ========== Lifecycle ==========
 onMounted(async () => {
   bookshelfPageSize.value = await getPageSize('bookshelf')
-  if (store.libraries.length > 0) return
-  await store.loadLibraries()
+  if (store.books.length > 0) return
+  if (store.libraries.length === 0) await store.loadLibraries()
   await store.loadBooks()
 })
 

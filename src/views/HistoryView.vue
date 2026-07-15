@@ -322,7 +322,7 @@ function onCoverError(e: Event) {
 }
 
 onMounted(async () => {
-  await bookshelf.loadBooks()
+  if (bookshelf.books.length === 0) await bookshelf.loadBooks()
   await loadHistory()
   historyPageSize.value = await getPageSize('history')
 })

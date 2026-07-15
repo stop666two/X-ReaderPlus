@@ -698,7 +698,7 @@ async function cleanupOrphans() {
 }
 
 onMounted(async () => {
-  await bookshelf.loadBooks()
+  if (bookshelf.books.length === 0) await bookshelf.loadBooks()
   await loadAnnotations()
   notesPageSize.value = await getPageSize('notes')
 })

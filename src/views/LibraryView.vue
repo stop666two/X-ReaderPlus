@@ -399,7 +399,7 @@ function importToLibrary(lib: Library) {
 
 async function refresh() {
   await bookshelf.loadLibraries()
-  await bookshelf.loadBooks()
+  if (bookshelf.books.length === 0) await bookshelf.loadBooks()
 }
 
 onMounted(refresh)

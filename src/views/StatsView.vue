@@ -318,7 +318,8 @@ async function cleanupOrphans() {
 }
 
 onMounted(async () => {
-  await Promise.all([bookshelf.loadBooks(), loadRecent(), loadReadingCalendar()])
+  if (bookshelf.books.length === 0) await bookshelf.loadBooks()
+  await Promise.all([loadRecent(), loadReadingCalendar()])
 })
 
 watch(() => bookshelf.books.length, () => loadRecent())

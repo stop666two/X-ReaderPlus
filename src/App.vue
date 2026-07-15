@@ -202,6 +202,7 @@ async function reinit() {
     await initSample()
     await bookshelf.loadBooks()
     booksLoaded.value = true
+    bookshelf.ensureFullBooksLoaded?.().catch(() => {})
   } catch (e: any) { initError.value = e.message || '未知错误' }
 }
 const showCommandPalette = ref(false)
@@ -323,20 +324,7 @@ function handleGlobalKeydown(e: KeyboardEvent) {
 }
 
 onMounted(async () => {
-  appProgress.setLoading(true, '正在初始化...')
-  try {
-    await themeStore.load()
-    appProgress.setLoading(true, '正在加载书库...')
-    await bookshelf.loadLibraries()
-    await bookshelf.loadBookCount()
-    appProgress.setLoading(true, '正在加载样例...')
-    await initSample()
-    // Ensure sample book is loaded into the store immediately
-    await bookshelf.loadBooks()
-  } finally {
-    booksLoaded.value = true
-    appProgress.setLoading(false)
-  }
+  reinit()
   if (isElectron.value) {
     try {
       const themeListener = await window.electronAPI?.onToggleTheme(() => themeStore.toggle())

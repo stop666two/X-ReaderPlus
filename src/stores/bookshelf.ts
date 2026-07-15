@@ -58,6 +58,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
   const loadingProgress = ref(0)
   const loadingMessage = ref('正在加载...')
   const totalBookCount = ref(0)
+  const _dataLoaded = ref(false)
   const readChapters = ref<Set<string>>(new Set())
   const _knownTags = ref<string[]>([])
   const _tagCache = ref<Array<{ name: string; count: number }>>([])
@@ -191,6 +192,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     } else {
       return loadBooks(1, 50)
     }
+    _dataLoaded.value = true
     for (const lib of libraries.value) { lib.bookCount = books.value.filter(b => b.libraryId === lib.id).length }
   }
 
@@ -661,10 +663,10 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
   return {
     books, libraries, activeLibraryId, viewMode, searchQuery, filterTag, sortField, sortOrder,
     selectedIds, isLoading, importProgress, loadingProgress, loadingMessage, readChapters,
-    totalBookCount, loadBookCount,
+    totalBookCount, loadBookCount, dataLoaded: _dataLoaded,
     activeLibrary, allTags, filteredBooks, filteredLibraryBooks,
     loadLibraries, createLibrary, deleteLibrary, renameLibrary, setActiveLibrary,
-    loadBooks, loadAllData, clearAllData, importFiles, deleteBooks, updateBook,
+    loadBooks, loadAllData, clearAllData, importFiles, deleteBooks, updateBook, ensureFullBooksLoaded,
     updateBookProgress, updateBookReadingTime, getChapterCount,
     createTag,
     toggleSelect, selectAll, clearSelection, invertSelection,
