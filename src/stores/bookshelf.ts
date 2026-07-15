@@ -305,6 +305,8 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     const targetLibId = libraryId || activeLibraryId.value
     let importedCount = 0
     const names = customNames || filePaths.map(p => p.split(/[\\/]/).pop() || 'unknown')
+    const importErrors: Array<{ file: string; type: string; detail: string }> = []
+    const importedPaths = new Set<string>()
 
     try {
       // ---- File size estimation & large-file warning ----
@@ -375,9 +377,18 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
         for (let i = 0; i < filePaths.length; i++) {
           const r = batchData[i]
           if (!r || r.error || !r.data || r.data.byteLength === 0) {
-            logger.warn(`读取失败: ${filePaths[i]} — ${r?.error || '未知错误'}`)
+            const readErr = r?.error || '未知错误'
+            logger.warn(`读取失败: ${filePaths[i]} — ${readErr}`)
+            importErrors.push({ file: r?.name || filePaths[i], type: '读取失败', detail: readErr })
             continue
           }
+
+          // 路径去重
+          if (importedPaths.has(filePaths[i])) {
+            importErrors.push({ file: r.name, type: '重复文件', detail: '本次导入中已选择相同路径' })
+            continue
+          }
+          importedPaths.add(filePaths[i])
 
           bytesProcessed += r.data.byteLength
           importProgress.value = {
@@ -391,43 +402,85 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
 
           const data = r.data
           const dataSize = data.byteLength
-          if (dataSize > 500 * 1024 * 1024) { logger.warn(`文件过大: ${r.name}`); continue }
+          if (dataSize > 500 * 1024 * 1024) {
+            logger.warn(`文件过大: ${r.name}`)
+            importErrors.push({ file: r.name, type: '文件过大', detail: '超过500MB' })
+            continue
+          }
 
-          const fmt = detectFormat(r.name)
+          let fmt: string
+          try {
+            fmt = detectFormat(r.name)
+          } catch (e) {
+            importErrors.push({ file: r.name, type: '格式不支持', detail: String(e) })
+            continue
+          }
           if (fmt === 'epub') {
             try {
               const JSZip = (await import('jszip')).default
               const zip = await JSZip.loadAsync(data)
               if (Object.keys(zip.files).length > 10000) { logger.warn(`EPUB 文件数过多: ${r.name}`); continue }
-            } catch { logger.warn(`EPUB 无效: ${r.name}`); continue }
-          }
-
-          // ---- SHA-256 content deduplication ----
-          let contentHash: string
-          try {
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-            const hashArray = Array.from(new Uint8Array(hashBuffer))
-            contentHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-          } catch { logger.warn(`哈希计算失败: ${r.name}`); continue }
-
-          if (contentHash) {
-            const isDuplicate = _contentHashIndex.value.has(contentHash)
-              || importedHashes.has(contentHash)
-            if (isDuplicate) {
-              skippedDuplicates++
-              importProgress.value = {
-                current: i + 1,
-                total: filePaths.length,
-                message: `已存在（内容重复）: ${r.name}`,
-                bytesProcessed,
-                bytesTotal: totalBytes,
-                skippedDuplicates
-              }
+            } catch {
+              logger.warn(`EPUB 无效: ${r.name}`)
+              importErrors.push({ file: r.name, type: 'EPUB无效', detail: 'ZIP 解析失败' })
               continue
             }
-            importedHashes.add(contentHash)
-            _contentHashIndex.value.add(contentHash)
           }
+
+          // ---- 内容去重: 先 MD5 快速预检，再 SHA-256 确认 ----
+          let contentHash: string
+          let isDuplicate = false
+
+          // 快速 MD5 预检（比 SHA-256 快）
+          let md5Hash: string
+          try {
+            const md5Buffer = await crypto.subtle.digest('MD5', data)
+            const md5Array = Array.from(new Uint8Array(md5Buffer))
+            md5Hash = md5Array.map(b => b.toString(16).padStart(2, '0')).join('')
+          } catch {
+            md5Hash = ''
+          }
+
+          if (md5Hash) {
+            isDuplicate = _contentHashIndex.value.has(md5Hash) || importedHashes.has(md5Hash)
+          }
+
+          if (!isDuplicate) {
+            try {
+              const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+              const hashArray = Array.from(new Uint8Array(hashBuffer))
+              contentHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+              if (_contentHashIndex.value.has(contentHash) || importedHashes.has(contentHash)) {
+                isDuplicate = true
+              }
+            } catch (e) {
+              logger.warn(`哈希计算失败: ${r.name}`)
+              importErrors.push({ file: r.name, type: '哈希失败', detail: String(e) })
+              continue
+            }
+          } else {
+            contentHash = ''
+          }
+
+          if (isDuplicate) {
+            skippedDuplicates++
+            importProgress.value = {
+              current: i + 1,
+              total: filePaths.length,
+              message: `已存在（内容重复）: ${r.name}`,
+              bytesProcessed,
+              bytesTotal: totalBytes,
+              skippedDuplicates
+            }
+            if (contentHash) {
+              importErrors.push({ file: r.name, type: '重复内容', detail: 'SHA-256 哈希与已有书籍相同' })
+            } else {
+              importErrors.push({ file: r.name, type: '重复内容', detail: 'MD5 哈希与已有书籍相同' })
+            }
+            continue
+          }
+
+          importedHashes.add(contentHash || md5Hash)
 
           try {
             const bookId = generateId()
@@ -490,9 +543,15 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
 
             books.value.push(book)
             importedCount++
+            if (contentHash) _contentHashIndex.value.add(contentHash)
           } catch (e) {
             logger.error(`导入失败: ${r.name}`, e)
             const errMsg = e instanceof Error ? e.message : String(e)
+            if (errMsg.includes('Worker') || errMsg.includes('timeout') || errMsg.includes('超时')) {
+              importErrors.push({ file: r.name, type: '解析超时', detail: 'Worker 处理超过30秒' })
+            } else {
+              importErrors.push({ file: r.name, type: '解析失败', detail: errMsg })
+            }
             importProgress.value = {
               current: i + 1,
               total: filePaths.length,
@@ -512,6 +571,20 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
       await loadBookCount()
       if (importedCount > 0) {
         await loadBooks()
+        _contentHashIndex.value = new Set()
+        for (const b of books.value) {
+          if (b.contentHash) _contentHashIndex.value.add(b.contentHash)
+        }
+        ensureFullBooksLoaded().catch(() => {})
+      }
+      if (importErrors.length > 0) {
+        const errorSummary = importErrors.map(e => `• ${e.file}\n  类型: ${e.type}\n  详情: ${e.detail}`).join('\n\n')
+        try {
+          await window.electronAPI.showMessageBox({
+            title: `导入完成 — ${importedCount} 本成功，${importErrors.length} 本失败`,
+            message: errorSummary
+          })
+        } catch {}
       }
     }
     return importedCount

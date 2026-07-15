@@ -219,7 +219,7 @@ const selectedFolderPath = ref('')
 const themeIcon = computed(() => themeStore.current === 'dark' ? 'mdi-weather-night' : themeStore.current === 'sepia' ? 'mdi-palette' : 'mdi-white-balance-sunny')
 
 const libItems = computed(() => [
-  { text: `${t('library.allBooks')} (${bookshelf.books.length})`, value: '__all__' },
+  { text: `${t('library.allBooks')} (${bookshelf.totalBookCount})`, value: '__all__' },
   ...bookshelf.libraries.map(l => ({ text: l.name + (l.id === DEFAULT_LIBRARY_ID ? '' : ` (${l.bookCount}${t('library.bookCount')})`), value: l.id }))
 ])
 
