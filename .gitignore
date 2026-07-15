@@ -37,3 +37,22 @@ githublogs/
 # Environment
 .env
 .env.local
+
+# AI / Agent config files (sensitive development rules)
+AGENTS.md
+AGENTS.txt
+AGENT.md
+AGENT.txt
+agent-readme.md
+RULES.md
+.agents/
+.reasonix/
+
+# Audit / Diagnosis / Review reports
+*审计报告*.md
+*审计报告*.txt
+DIAGNOSIS*.md
+DIAGNOSIS*.txt
+*audit*.md
+*audit*.txt
+*review-report*.md
