@@ -25,31 +25,31 @@
       class="mt-4"
     />
 
-    <div v-if="filteredLibraries.length === 0" class="text-center py-12 text-medium-emphasis">
-      <v-icon size="56" color="grey-lighten-1">mdi-bookshelf</v-icon>
-      <p class="mt-3 text-body-1">没有匹配的书库</p>
-      <p class="text-caption mt-1">尝试修改搜索条件或创建新书库</p>
+    <div v-if="filteredLibraries.length === 0" class="empty-state">
+      <v-icon size="64" color="grey-lighten-1">mdi-bookshelf</v-icon>
+      <p class="text-body-1 mt-3">没有匹配的书库</p>
+      <p class="text-caption text-medium-emphasis mt-1">尝试修改搜索条件或创建新书库</p>
     </div>
 
-    <v-row v-else class="mt-2">
-      <v-col v-for="lib in filteredLibraries" :key="lib.id" cols="12" sm="6" lg="4" xl="3">
+    <v-row v-else class="mt-4" dense>
+      <v-col
+        v-for="lib in pagedLibraries"
+        :key="lib.id"
+        cols="12" sm="6" lg="4" xl="4"
+      >
         <v-card
           variant="outlined"
           class="lib-card"
           :class="{ 'lib-card-default': lib.id === 'default' }"
         >
-          <div class="lib-card-header">
-            <div class="d-flex align-center gap-3 w-100">
-              <v-avatar
-                :color="lib.id === 'default' ? 'grey-lighten-2' : 'primary'"
-                size="48"
-                rounded
-              >
-                <v-icon :color="lib.id === 'default' ? 'grey' : 'white'" size="24">
+          <div class="lib-card-body">
+            <div class="lib-card-top">
+              <div class="lib-icon-wrap" :class="lib.id === 'default' ? 'lib-icon-default' : 'lib-icon-normal'">
+                <v-icon size="28">
                   {{ lib.mode === 'folder' ? 'mdi-folder-outline' : 'mdi-content-copy' }}
                 </v-icon>
-              </v-avatar>
-              <div class="flex-grow-1 min-w-0">
+              </div>
+              <div class="lib-info">
                 <template v-if="editingId === lib.id">
                   <v-text-field
                     v-model="editName" density="compact" variant="outlined"
@@ -59,8 +59,8 @@
                   />
                 </template>
                 <template v-else>
-                  <div class="d-flex align-center ga-2">
-                    <span class="lib-name text-truncate">{{ lib.name }}</span>
+                  <div class="d-flex align-center ga-2 flex-wrap">
+                    <span class="lib-name">{{ lib.name }}</span>
                     <v-chip v-if="lib.id === 'default'" size="x-small" variant="flat" color="grey">默认</v-chip>
                     <v-chip
                       v-if="lockedLibs.has(lib.id)" size="x-small"
@@ -68,37 +68,55 @@
                     >已锁定</v-chip>
                   </div>
                 </template>
-                <div class="text-caption text-medium-emphasis mt-1">
-                  {{ lib.bookCount }} 本书
-                  <v-icon size="12" class="mx-1">mdi-circle-small</v-icon>
-                  {{ lib.mode === 'folder' ? '文件夹链接' : '复制导入' }}
-                  <v-icon size="12" class="mx-1">mdi-circle-small</v-icon>
-                  {{ formatDate(lib.createdAt) }}
-                </div>
               </div>
             </div>
-          </div>
 
-          <v-divider />
+            <div class="lib-stats">
+              <div class="stat-item">
+                <span class="stat-value">{{ lib.bookCount }}</span>
+                <span class="stat-label">书籍</span>
+              </div>
+              <div class="stat-divider" />
+              <div class="stat-item">
+                <span class="stat-value">{{ formatFiles(lib) }}</span>
+                <span class="stat-label">格式</span>
+              </div>
+              <div class="stat-divider" />
+              <div class="stat-item">
+                <span class="stat-value">{{ formatHours(lib) }}</span>
+                <span class="stat-label">小时</span>
+              </div>
+              <div class="stat-divider" />
+              <div class="stat-item">
+                <span class="stat-value">{{ formatPercent(lib) }}</span>
+                <span class="stat-label">进度</span>
+              </div>
+            </div>
 
-          <div class="pa-3">
-            <div class="d-flex justify-space-around text-center">
-              <div>
-                <div class="text-h6 font-weight-bold">{{ lib.bookCount }}</div>
-                <div class="text-caption text-medium-emphasis">书籍</div>
-              </div>
-              <div>
-                <div class="text-h6 font-weight-bold">{{ formatFiles(lib) }}</div>
-                <div class="text-caption text-medium-emphasis">格式</div>
-              </div>
-              <div>
-                <div class="text-h6 font-weight-bold">{{ formatHours(lib) }}</div>
-                <div class="text-caption text-medium-emphasis">阅读小时</div>
-              </div>
-              <div>
-                <div class="text-h6 font-weight-bold">{{ formatPercent(lib) }}</div>
-                <div class="text-caption text-medium-emphasis">平均进度</div>
-              </div>
+            <div class="lib-tags" v-if="getLibraryTags(lib.id).length > 0">
+              <v-chip
+                v-for="tag in getLibraryTags(lib.id).slice(0, 6)"
+                :key="tag.name"
+                size="x-small"
+                variant="tonal"
+                density="compact"
+                class="tag-chip"
+              >
+                {{ tag.name }}
+                <span class="tag-count">({{ tag.count }})</span>
+              </v-chip>
+              <span v-if="getLibraryTags(lib.id).length > 6" class="text-caption text-medium-emphasis ml-1">
+                +{{ getLibraryTags(lib.id).length - 6 }}
+              </span>
+            </div>
+
+            <div class="lib-created text-caption text-medium-emphasis">
+              <v-icon size="12" class="mr-1">mdi-calendar</v-icon>
+              {{ formatDate(lib.createdAt) }}
+              <template v-if="lib.mode === 'folder'">
+                <v-icon size="12" class="mx-1">mdi-circle-small</v-icon>
+                文件夹链接
+              </template>
             </div>
           </div>
 
@@ -140,6 +158,19 @@
         </v-card>
       </v-col>
     </v-row>
+
+    <div v-if="totalPages > 1" class="pagination-bar">
+      <v-pagination
+        v-model="currentPage"
+        :length="totalPages"
+        :total-visible="7"
+        density="comfortable"
+        size="small"
+      />
+      <span class="text-caption text-medium-emphasis ml-3">
+        {{ filteredLibraries.length }} 个书库
+      </span>
+    </div>
 
     <v-dialog v-model="showCreateDialog" max-width="420">
       <v-card>
@@ -218,6 +249,8 @@ const bookshelf = useBookshelfStore()
 const router = useRouter()
 const searchQuery = ref('')
 
+const PAGE_SIZE = 6
+
 const libraries = computed(() => bookshelf.libraries)
 const totalBooks = computed(() => bookshelf.books.length)
 const totalReadingHours = computed(() => {
@@ -232,6 +265,20 @@ const filteredLibraries = computed(() => {
     l.name.toLowerCase().includes(q) ||
     l.mode.toLowerCase().includes(q)
   )
+})
+
+const currentPage = ref(1)
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredLibraries.value.length / PAGE_SIZE)))
+
+const pagedLibraries = computed(() => {
+  const start = (currentPage.value - 1) * PAGE_SIZE
+  return filteredLibraries.value.slice(start, start + PAGE_SIZE)
+})
+
+watch(filteredLibraries, () => {
+  if (currentPage.value > totalPages.value) {
+    currentPage.value = Math.max(1, totalPages.value)
+  }
 })
 
 const showCreateDialog = ref(false)
@@ -257,6 +304,30 @@ const privacyPassword2 = ref('')
 const privacyLoading = ref(false)
 const pwdError = ref('')
 const lockedLibs = ref<Set<string>>(new Set())
+
+const tagCache = ref<Map<string, Array<{ name: string; count: number }>>>(new Map())
+
+function buildTagCache() {
+  const cache = new Map<string, Array<{ name: string; count: number }>>()
+  for (const lib of libraries.value) {
+    const libBooks = bookshelf.books.filter(b => b.libraryId === lib.id)
+    const tagMap = new Map<string, number>()
+    for (const b of libBooks) {
+      for (const tag of b.tags) {
+        tagMap.set(tag, (tagMap.get(tag) || 0) + 1)
+      }
+    }
+    const entries = Array.from(tagMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+    cache.set(lib.id, entries)
+  }
+  tagCache.value = cache
+}
+
+function getLibraryTags(libId: string) {
+  return tagCache.value.get(libId) || []
+}
 
 function formatDate(ts: number): string {
   if (!ts) return '未知'
@@ -400,13 +471,19 @@ function importToLibrary(lib: Library) {
 async function refresh() {
   await bookshelf.loadLibraries()
   if (bookshelf.books.length === 0) await bookshelf.loadBooks()
+  buildTagCache()
 }
 
-onMounted(refresh)
-
-watch(() => bookshelf.libraries.length, () => {
+watch(() => bookshelf.libraries, () => {
   lockedLibs.value = new Set()
+  buildTagCache()
+}, { deep: true })
+
+watch(() => bookshelf.books.length, () => {
+  buildTagCache()
 })
+
+onMounted(refresh)
 </script>
 
 <style scoped>
@@ -429,21 +506,115 @@ watch(() => bookshelf.libraries.length, () => {
   font-weight: 700;
   margin: 0;
 }
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 0;
+}
 .lib-card {
   border-radius: 14px !important;
-  transition: box-shadow .2s;
-  min-width: 0;
-  overflow: hidden;
+  transition: box-shadow .2s, transform .2s;
+  display: flex;
+  flex-direction: column;
 }
 .lib-card:hover {
-  box-shadow: 0 4px 20px rgba(0,0,0,.08);
+  box-shadow: 0 4px 24px rgba(0,0,0,.08);
+  transform: translateY(-2px);
 }
 .lib-card-default {
   border-color: rgb(var(--v-theme-primary)) !important;
   border-width: 2px !important;
 }
-.lib-card-header {
-  padding: 18px 18px 12px;
+.lib-card-body {
+  padding: 20px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.lib-card-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.lib-icon-wrap {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.lib-icon-normal {
+  background: rgba(var(--v-theme-primary), 0.1);
+  color: rgb(var(--v-theme-primary));
+}
+.lib-icon-default {
+  background: rgba(0,0,0,0.06);
+  color: rgba(0,0,0,0.38);
+}
+.lib-info {
+  flex: 1;
+  min-width: 0;
+}
+.lib-name {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.edit-name-field {
+  max-width: 200px;
+}
+.lib-stats {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 10px 0;
+  border-top: 1px solid rgba(0,0,0,0.06);
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+.stat-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.stat-label {
+  font-size: 11px;
+  color: rgba(0,0,0,0.45);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.stat-divider {
+  width: 1px;
+  height: 28px;
+  background: rgba(0,0,0,0.08);
+}
+.lib-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.tag-chip :deep(.v-chip__content) {
+  font-size: 11px;
+}
+.tag-count {
+  opacity: .6;
+  margin-left: 2px;
+}
+.lib-created {
+  display: flex;
+  align-items: center;
 }
 .lib-card-actions {
   display: flex;
@@ -451,11 +622,12 @@ watch(() => bookshelf.libraries.length, () => {
   padding: 4px 8px;
   gap: 2px;
 }
-.lib-name {
-  font-size: 16px;
-  font-weight: 600;
-}
-.edit-name-field {
-  max-width: 200px;
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 0 8px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 </style>
