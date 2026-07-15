@@ -60,6 +60,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
   const totalBookCount = ref(0)
   const readChapters = ref<Set<string>>(new Set())
   const _knownTags = ref<string[]>([])
+  const _contentHashIndex = ref<Set<string>>(new Set())
 
   const activeLibrary = computed(() => {
     if (activeLibraryId.value === ALL_LIBRARY_ID) {
@@ -258,6 +259,11 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
         if (raw) _knownTags.value = JSON.parse(raw)
       } catch {}
 
+      // 构建 contentHash 索引
+      for (const b of books.value) {
+        if (b.contentHash) _contentHashIndex.value.add(b.contentHash)
+      }
+
       loadingProgress.value = 95
       loadingMessage.value = '完成'
     } catch (e) {
@@ -329,10 +335,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
         skippedDuplicates: 0
       }
 
-      let results: Array<{ name: string; data: ArrayBuffer; error?: string }> = []
-      if (window.electronAPI) {
-        results = await window.electronAPI.readBatchFiles(filePaths)
-      } else {
+      if (!window.electronAPI) {
         throw new Error('请在 Electron 环境下导入')
       }
 
@@ -347,20 +350,24 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
       }
 
       try {
-        for (let i = 0; i < results.length; i++) {
-          const r = results[i]
-          if (r.data && r.data.byteLength) bytesProcessed += r.data.byteLength
+        for (let i = 0; i < filePaths.length; i++) {
+          const fp = filePaths[i]
+          const readResult = await window.electronAPI.readFile(fp)
+          if (readResult.error || !readResult.data || readResult.data.byteLength === 0) {
+            logger.warn(`读取失败: ${fp}`)
+            continue
+          }
+          const r = { name: readResult.name || fp.split(/[/\\]/).pop() || fp, data: readResult.data }
 
+          bytesProcessed += readResult.data.byteLength
           importProgress.value = {
             current: i + 1,
-            total: results.length,
+            total: filePaths.length,
             message: `正在导入 ${r.name}...`,
             bytesProcessed,
             bytesTotal: totalBytes,
             skippedDuplicates
           }
-
-          if (r.error) { logger.error(`读取失败: ${r.name}`, r.error); continue }
 
           const data = r.data
           const dataSize = data.byteLength
@@ -384,13 +391,13 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
           } catch { logger.warn(`哈希计算失败: ${r.name}`); continue }
 
           if (contentHash) {
-            const isDuplicate = books.value.some(b => b.contentHash === contentHash)
+            const isDuplicate = _contentHashIndex.value.has(contentHash)
               || importedHashes.has(contentHash)
             if (isDuplicate) {
               skippedDuplicates++
               importProgress.value = {
                 current: i + 1,
-                total: results.length,
+                total: filePaths.length,
                 message: `已存在（内容重复）: ${r.name}`,
                 bytesProcessed,
                 bytesTotal: totalBytes,
@@ -399,6 +406,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
               continue
             }
             importedHashes.add(contentHash)
+            _contentHashIndex.value.add(contentHash)
           }
 
           try {
@@ -465,7 +473,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
             const errMsg = e instanceof Error ? e.message : String(e)
             importProgress.value = {
               current: i + 1,
-              total: results.length,
+              total: filePaths.length,
               message: `导入失败: ${r.name} — ${errMsg}`,
               bytesProcessed,
               bytesTotal: totalBytes,

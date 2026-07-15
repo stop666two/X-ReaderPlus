@@ -14,7 +14,7 @@ import (
 var trustedPaths = make(map[string]struct{})
 var trustedPathsMu sync.RWMutex
 
-const maxReadFileSize = 100 << 20 // 100MB limit for ReadFile
+const maxReadFileSize = 500 << 20 // 500MB limit for ReadFile
 
 type App struct {
 	ctx context.Context
