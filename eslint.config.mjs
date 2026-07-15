@@ -59,7 +59,9 @@ export default [
       'no-case-declarations': 'off',
       '@typescript-eslint/no-unused-expressions': ['error', { allowTernary: true }],
       'vue/no-side-effects-in-computed-properties': 'off',
-      'vue/multi-word-component-names': 'off'
+      'vue/multi-word-component-names': 'off',
+      'eqeqeq': 'error',
+      '@typescript-eslint/ban-ts-comment': ['error', { 'ts-ignore': 'allow-with-description' }]
     }
   },
   { ignores: ['dist/', 'backend/', 'node_modules/', 'src/services/parse-worker.ts'] }

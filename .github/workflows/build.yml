@@ -11,7 +11,43 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
+  lint-and-vet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: backend/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Check AGENTS.md not staged
+        run: |
+          if git ls-files --error-unmatch AGENTS.md 2>/dev/null; then
+            echo "::error::AGENTS.md must not be committed!"
+            exit 1
+          fi
+          echo "AGENTS.md check passed"
+
+      - run: npm ci
+
+      - name: Lint frontend
+        run: npm run lint
+
+      - name: Go vet
+        working-directory: backend
+        run: go vet ./...
+
+  build-windows:
   build-windows:
     runs-on: windows-latest
     strategy:

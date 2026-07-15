@@ -401,7 +401,7 @@ const apiObj: any = {
         .then((r: any) => {
         const rows = toCamel(Array.isArray(r) ? r[0] : r)
         const total = Array.isArray(r) ? r[1] : null
-        return total != null ? { rows, total } : rows
+        return total !== null ? { rows, total } : rows
       })
     },
     getById: (id: string) => api('GET', `/api/books/${id}`).then(r => toCamel(r)),

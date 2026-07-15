@@ -898,9 +898,6 @@ const sanitizedContent = computed(() => {
     .replace(/<a\b([^>]*?)href\s*=\s*'([^']*)'([^>]*)>/gi, (_, pre, val, post) => {
       count++; return `<a${pre}data-href='${val}'${post}>`
     })
-    .replace(/<a\b([^>]*?)\bhref\s*=\s*([^\s"'>]+)/gi, (_, pre, val) => {
-      count++; return `<a${pre}data-href="${val}"`
-    })
   if (count > 0) { logger.info(`Rewrote ${count} links in chapter`) }
   return result
 })

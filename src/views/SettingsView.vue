@@ -2960,7 +2960,7 @@ async function saveSystemConfig() {
 }
 
 async function onAutoStartChange(v: boolean | null) {
-  if (v == null) return
+  if (v === null) return
   systemAutoStart.value = v
   await saveSystemConfig()
   if (window.electronAPI?.setAutoStart) {
@@ -2969,7 +2969,7 @@ async function onAutoStartChange(v: boolean | null) {
 }
 
 async function onMinimizeToTrayChange(v: boolean | null) {
-  if (v == null) return
+  if (v === null) return
   systemMinimizeToTray.value = v
   await saveSystemConfig()
   if (window.electronAPI?.setStartMinimized) {

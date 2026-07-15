@@ -1142,7 +1142,6 @@ async function pickFiles() {
         }
         resolve()
       }
-      input.oncancel = () => resolve()
       input.click()
     })
   }

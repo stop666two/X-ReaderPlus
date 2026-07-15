@@ -37,6 +37,14 @@ githublogs/
 # Environment
 .env
 .env.local
+.env.development
+.env.production
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Wails
+.wails/
 
 # AI / Agent config files (sensitive development rules)
 AGENTS.md

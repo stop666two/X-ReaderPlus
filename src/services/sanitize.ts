@@ -48,8 +48,7 @@ export async function sanitizeHtml(dirty: string): Promise<string> {
       'width', 'height', 'style',
       'start', 'type', 'colspan', 'rowspan'
     ],
-    ALLOW_DATA_ATTR: false,
-    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|app):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i
+    ALLOW_DATA_ATTR: false
   })
 
   return stripStyleUrls(clean)

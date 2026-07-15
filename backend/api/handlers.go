@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"mime"
@@ -74,7 +75,12 @@ func jsonErr(w http.ResponseWriter, msg string, code int) {
 }
 func decode(w http.ResponseWriter, r *http.Request, v any) error {
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // 10MB body limit
-	return json.NewDecoder(r.Body).Decode(v)
+	err := json.NewDecoder(r.Body).Decode(v)
+	var maxBytesErr *http.MaxBytesError
+	if errors.As(err, &maxBytesErr) {
+		return nil
+	}
+	return err
 }
 
 // ── Books ──
@@ -92,6 +98,8 @@ func handleBooks(w http.ResponseWriter, r *http.Request) {
 		if err := decode(w, r, &b); err != nil { jsonErr(w, "invalid JSON", 400); return }
 		if err := booksInsert(&b); err != nil { jsonErr(w, "insert failed: "+err.Error(), 500); return }
 		jsonOK(w, b)
+	default:
+		jsonErr(w, "method not allowed", 405)
 	}
 }
 func handleBooksCount(w http.ResponseWriter, r *http.Request) {
@@ -117,15 +125,15 @@ func handleBookByID(w http.ResponseWriter, r *http.Request) {
 	case "DELETE":
 		if err := deleteBooks([]string{id}); err != nil { jsonErr(w, "delete failed: "+err.Error(), 500); return }
 		jsonOK(w, map[string]string{"ok": "true"})
+	default:
+		jsonErr(w, "method not allowed", 405)
 	}
 }
 
 func handleDeleteBooksBatch(w http.ResponseWriter, r *http.Request) {
 	var body struct{ Ids []string `json:"ids"` }
 	if err := decode(w, r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
-	for _, id := range body.Ids {
-		if err := deleteBooks([]string{id}); err != nil { jsonErr(w, "delete failed: "+err.Error(), 500); return }
-	}
+	if err := deleteBooks(body.Ids); err != nil { jsonErr(w, "delete failed: "+err.Error(), 500); return }
 	jsonOK(w, map[string]int{"deleted": len(body.Ids)})
 }
 
@@ -180,6 +188,8 @@ func handleChapters(w http.ResponseWriter, r *http.Request) {
 	case "DELETE":
 		if _, err := db.Content.Exec("DELETE FROM chapters WHERE book_id = ?", bookID); err != nil { jsonErr(w, "delete failed: "+err.Error(), 500); return }
 		jsonOK(w, map[string]string{"ok": "true"})
+	default:
+		jsonErr(w, "method not allowed", 405)
 	}
 }
 
@@ -211,6 +221,8 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 	case "DELETE":
 		if _, err := db.Settings.Exec("DELETE FROM config WHERE key = ?", key); err != nil { jsonErr(w, "delete failed: "+err.Error(), 500); return }
 		jsonOK(w, map[string]string{"ok": "true"})
+	default:
+		jsonErr(w, "method not allowed", 405)
 	}
 }
 
@@ -231,6 +243,8 @@ func handleBookmarks(w http.ResponseWriter, r *http.Request) {
 		if err := json.Unmarshal(body.Bookmark, &m); err != nil { jsonErr(w, "invalid bookmark JSON", 400); return }
 		if _, err := db.Meta.Exec("INSERT OR REPLACE INTO bookmarks (id, data) VALUES (?, ?)", fmt.Sprint(m["id"]), string(body.Bookmark)); err != nil { jsonErr(w, "write failed: "+err.Error(), 500); return }
 		jsonOK(w, map[string]string{"ok": "true"})
+	default:
+		jsonErr(w, "method not allowed", 405)
 	}
 }
 func handleBookmarkByID(w http.ResponseWriter, r *http.Request) {
@@ -260,6 +274,8 @@ func handleAnnotations(w http.ResponseWriter, r *http.Request) {
 		if err := json.Unmarshal(body.Annotation, &m); err != nil { jsonErr(w, "invalid annotation JSON", 400); return }
 		if _, err := db.Meta.Exec("INSERT OR REPLACE INTO annotations (id, data) VALUES (?, ?)", fmt.Sprint(m["id"]), string(body.Annotation)); err != nil { jsonErr(w, "write failed: "+err.Error(), 500); return }
 		jsonOK(w, map[string]string{"ok": "true"})
+	default:
+		jsonErr(w, "method not allowed", 405)
 	}
 }
 func handleAnnotationByID(w http.ResponseWriter, r *http.Request) {
@@ -275,6 +291,8 @@ func handleAnnotationByID(w http.ResponseWriter, r *http.Request) {
 	case "DELETE":
 		if _, err := db.Meta.Exec("DELETE FROM annotations WHERE id = ?", id); err != nil { jsonErr(w, "delete failed: "+err.Error(), 500); return }
 		jsonOK(w, map[string]string{"ok": "true"})
+	default:
+		jsonErr(w, "method not allowed", 405)
 	}
 }
 
@@ -297,6 +315,8 @@ func handleTrash(w http.ResponseWriter, r *http.Request) {
 	case "DELETE":
 		if _, err := db.Meta.Exec("DELETE FROM trash"); err != nil { jsonErr(w, "clear failed: "+err.Error(), 500); return }
 		jsonOK(w, map[string]string{"ok": "true"})
+	default:
+		jsonErr(w, "method not allowed", 405)
 	}
 }
 func handleTrashByID(w http.ResponseWriter, r *http.Request) {
@@ -326,6 +346,8 @@ func handleLibraries(w http.ResponseWriter, r *http.Request) {
 		if err := json.Unmarshal(body.Library, &m); err != nil { jsonErr(w, "invalid library JSON", 400); return }
 		if _, err := db.Meta.Exec("INSERT OR REPLACE INTO libraries (id, data) VALUES (?, ?)", fmt.Sprint(m["id"]), string(body.Library)); err != nil { jsonErr(w, "write failed: "+err.Error(), 500); return }
 		jsonOK(w, map[string]string{"ok": "true"})
+	default:
+		jsonErr(w, "method not allowed", 405)
 	}
 }
 func handleLibraryByID(w http.ResponseWriter, r *http.Request) {
@@ -373,6 +395,8 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 			if _, err := db.Meta.Exec("DELETE FROM reading_history"); err != nil { jsonErr(w, "clear failed: "+err.Error(), 500); return }
 		}
 		jsonOK(w, map[string]string{"ok": "true"})
+	default:
+		jsonErr(w, "method not allowed", 405)
 	}
 }
 
@@ -401,6 +425,8 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 			if _, err := db.Meta.Exec("DELETE FROM reading_stats"); err != nil { jsonErr(w, "clear failed: "+err.Error(), 500); return }
 		}
 		jsonOK(w, map[string]string{"ok": "true"})
+	default:
+		jsonErr(w, "method not allowed", 405)
 	}
 }
 
@@ -455,6 +481,8 @@ func handleTheme(w http.ResponseWriter, r *http.Request) {
 		if err := decode(w, r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
 		if _, err := db.Settings.Exec("INSERT OR REPLACE INTO config (key, value) VALUES ('theme_mode', ?)", body.Value); err != nil { jsonErr(w, "write failed: "+err.Error(), 500); return }
 		jsonOK(w, map[string]string{"ok": "true"})
+	default:
+		jsonErr(w, "method not allowed", 405)
 	}
 }
 func handleSettings(w http.ResponseWriter, r *http.Request) {
@@ -470,6 +498,8 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 		if err := decode(w, r, &body); err != nil { jsonErr(w, "invalid JSON", 400); return }
 		if _, err := db.Settings.Exec("INSERT OR REPLACE INTO config (key, value) VALUES ('app_settings', ?)", string(body.Settings)); err != nil { jsonErr(w, "write failed: "+err.Error(), 500); return }
 		jsonOK(w, map[string]string{"ok": "true"})
+	default:
+		jsonErr(w, "method not allowed", 405)
 	}
 }
 
@@ -525,6 +555,10 @@ func handleRawFile(w http.ResponseWriter, r *http.Request) {
 		var size int64
 		err := db.Content.QueryRow("SELECT filename, data, size FROM raw_files WHERE book_id = ?", bookID).Scan(&filename, &data, &size)
 		if err != nil { jsonErr(w, "not found", 404); return }
+		if size > 500<<20 {
+			jsonErr(w, "file too large", 413)
+			return
+		}
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
 		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
@@ -542,6 +576,8 @@ func handleRawFile(w http.ResponseWriter, r *http.Request) {
 	case "DELETE":
 		if _, err := db.Content.Exec("DELETE FROM raw_files WHERE book_id = ?", bookID); err != nil { jsonErr(w, "delete failed: "+err.Error(), 500); return }
 		jsonOK(w, map[string]string{"ok": "true"})
+	default:
+		jsonErr(w, "method not allowed", 405)
 	}
 }
 

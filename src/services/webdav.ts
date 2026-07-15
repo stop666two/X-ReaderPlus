@@ -252,11 +252,29 @@ export async function downloadFile(url: string, username: string, password: stri
 
 export async function listBackups(url: string, username: string, password: string): Promise<string[]> {
   const entries = await listDirectory(url, username, password)
+  const hasKey = await hasEncryptionKey().catch(() => false)
   return entries
-    .filter(e => !e.isCollection && e.href.endsWith('.json'))
+    .filter(e => {
+      if (e.isCollection) return false
+      if (e.href.endsWith('.json')) return true
+      if (hasKey) {
+        const name = decodeURIComponent(e.href.split('/').pop() || '')
+        try {
+          const decoded = decodeFileName(name)
+          if (decoded.endsWith('.json')) return true
+        } catch {}
+      }
+      return false
+    })
     .map(e => {
-      const parts = e.href.split('/')
-      return decodeURIComponent(parts[parts.length - 1])
+      const name = decodeURIComponent(e.href.split('/').pop() || '')
+      if (hasKey) {
+        try {
+          const decoded = decodeFileName(name)
+          return decoded
+        } catch {}
+      }
+      return name
     })
 }
 

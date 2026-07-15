@@ -122,7 +122,7 @@ async function loadManifest(): Promise<SyncManifest | null> {
 async function saveManifest(manifest: SyncManifest): Promise<void> {
   const json = JSON.stringify(manifest)
   const data = new TextEncoder().encode(json)
-  await uploadFile(_webdavUrl, _webdavUser, _webdavPass, SYNC_FILE, data.buffer)
+  await uploadFile(_webdavUrl, _webdavUser, _webdavPass, SYNC_FILE, data.buffer.slice(0, data.byteLength))
 }
 
 export async function pushReadingProgress(
@@ -157,7 +157,7 @@ export async function syncAll(entries: SyncEntry[]): Promise<Record<string, Sync
   let changed = false
   for (const e of entries) {
     const existing = manifest.entries[e.bookId]
-    if (!existing || existing.updatedAt < e.updatedAt) {
+    if (!existing || existing.updatedAt <= e.updatedAt) {
       manifest.entries[e.bookId] = e
       changed = true
     }

@@ -125,11 +125,17 @@ func Init() error {
 	}
 
 	// Ensure schema_version record exists
-	Meta.Exec("INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, unixepoch())", SCHEMA_VERSION)
+	if _, err := Meta.Exec("INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, unixepoch())", SCHEMA_VERSION); err != nil {
+		log.Printf("Warning: schema_version insert failed: %v", err)
+	}
 
 	// Verify settings DB has schema_version too
-	Settings.Exec("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, applied_at INTEGER)")
-	Content.Exec("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, applied_at INTEGER)")
+	if _, err := Settings.Exec("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, applied_at INTEGER)"); err != nil {
+		log.Printf("Warning: settings schema_version table creation failed: %v", err)
+	}
+	if _, err := Content.Exec("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, applied_at INTEGER)"); err != nil {
+		log.Printf("Warning: content schema_version table creation failed: %v", err)
+	}
 
 	// Ensure default library
 	var count int

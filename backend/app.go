@@ -6,11 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 var trustedPaths = make(map[string]struct{})
+var trustedPathsMu sync.RWMutex
 
 const maxReadFileSize = 100 << 20 // 100MB limit for ReadFile
 
@@ -52,7 +54,8 @@ func (a *App) Close() {
 func appDataDir() string {
 	if cwd, err := os.Getwd(); err == nil {
 		if _, err := os.Stat(filepath.Join(cwd, "data")); err == nil {
-			abs, _ := filepath.Abs(filepath.Join(cwd, "data"))
+			abs, err := filepath.Abs(filepath.Join(cwd, "data"))
+			if err != nil { return "" }
 			return abs
 		}
 	}
@@ -65,7 +68,10 @@ func appDataDir() string {
 }
 
 func pathAllowed(path string) bool {
-	if _, ok := trustedPaths[path]; ok {
+	trustedPathsMu.RLock()
+	_, ok := trustedPaths[path]
+	trustedPathsMu.RUnlock()
+	if ok {
 		return true
 	}
 	if !filepath.IsAbs(path) {
@@ -73,7 +79,7 @@ func pathAllowed(path string) bool {
 	}
 	clean := filepath.Clean(path)
 	dataDir := appDataDir()
-	if strings.HasPrefix(clean, dataDir) {
+	if strings.HasPrefix(strings.ToLower(clean), strings.ToLower(dataDir)) {
 		return true
 	}
 	return false
@@ -120,7 +126,9 @@ func (a *App) OpenFiles() ([]FileInfo, error) {
 	}
 	var results []FileInfo
 	for _, p := range paths {
+		trustedPathsMu.Lock()
 		trustedPaths[p] = struct{}{}
+		trustedPathsMu.Unlock()
 		results = append(results, readFileInfoSafe(p))
 	}
 	return results, nil
@@ -133,7 +141,9 @@ func (a *App) OpenFile() (*FileInfo, error) {
 	if err != nil || path == "" {
 		return nil, err
 	}
+	trustedPathsMu.Lock()
 	trustedPaths[path] = struct{}{}
+	trustedPathsMu.Unlock()
 	fi := readFileInfoSafe(path)
 	return &fi, nil
 }
