@@ -260,6 +260,177 @@
               hide-details
               @update:model-value="(v: boolean | null) => v != null && settings.updateReadingSetting('hyphenation', v)"
             />
+            <v-switch
+              :model-value="readingSettings.firstLineIndent"
+              color="primary"
+              label="首行缩进"
+              density="compact"
+              hide-details
+              @update:model-value="(v: boolean | null) => v != null && settings.updateReadingSetting('firstLineIndent', v)"
+            />
+            <v-switch
+              :model-value="readingSettings.verticalText"
+              color="primary"
+              label="竖排文字"
+              density="compact"
+              hide-details
+              @update:model-value="(v: boolean | null) => v != null && settings.updateReadingSetting('verticalText', v)"
+            />
+            <v-switch
+              :model-value="readingSettings.hideScrollbar"
+              color="primary"
+              label="隐藏滚动条"
+              density="compact"
+              hide-details
+              @update:model-value="(v: boolean | null) => v != null && settings.updateReadingSetting('hideScrollbar', v)"
+            />
+            <v-switch
+              :model-value="readingSettings.dimBackground"
+              color="primary"
+              label="调暗背景"
+              density="compact"
+              hide-details
+              @update:model-value="(v: boolean | null) => v != null && settings.updateReadingSetting('dimBackground', v)"
+            />
+            <v-switch
+              :model-value="readingSettings.lineFocus"
+              color="primary"
+              label="行聚焦模式"
+              density="compact"
+              hide-details
+              @update:model-value="(v: boolean | null) => v != null && settings.updateReadingSetting('lineFocus', v)"
+            />
+          </div>
+
+          <!-- Advanced reading settings -->
+          <div class="settings-grid mt-4 pt-2 border-t">
+            <!-- 字间距 -->
+            <div>
+              <label class="text-caption d-flex justify-space-between">
+                <span>字间距</span>
+                <span class="text-primary font-weight-bold">{{ readingSettings.letterSpacing }}px</span>
+              </label>
+              <v-slider
+                :model-value="readingSettings.letterSpacing"
+                :min="0" :max="5" :step="0.5"
+                hide-details density="compact" thumb-label
+                color="primary"
+                @update:model-value="(v: number) => settings.updateReadingSetting('letterSpacing', v)"
+              />
+            </div>
+
+            <!-- 词间距 -->
+            <div>
+              <label class="text-caption d-flex justify-space-between">
+                <span>词间距</span>
+                <span class="text-primary font-weight-bold">{{ readingSettings.wordSpacing }}px</span>
+              </label>
+              <v-slider
+                :model-value="readingSettings.wordSpacing"
+                :min="0" :max="10" :step="1"
+                hide-details density="compact" thumb-label
+                color="primary"
+                @update:model-value="(v: number) => settings.updateReadingSetting('wordSpacing', v)"
+              />
+            </div>
+
+            <!-- 分栏数 -->
+            <div>
+              <label class="text-caption">分栏数</label>
+              <v-btn-toggle
+                :model-value="readingSettings.columnCount"
+                mandatory density="compact"
+                variant="outlined" divided
+                color="primary"
+                class="w-100"
+                @update:model-value="(v: number) => settings.updateReadingSetting('columnCount', v)"
+              >
+                <v-btn :value="1" size="small" class="flex-1-0">1栏</v-btn>
+                <v-btn :value="2" size="small" class="flex-1-0">2栏</v-btn>
+                <v-btn :value="3" size="small" class="flex-1-0">3栏</v-btn>
+              </v-btn-toggle>
+            </div>
+
+            <!-- 阅读区宽度 -->
+            <div>
+              <label class="text-caption">阅读区宽度</label>
+              <v-btn-toggle
+                :model-value="readingSettings.readingWidth"
+                mandatory density="compact"
+                variant="outlined" divided
+                color="primary"
+                class="w-100"
+                @update:model-value="(v: string) => settings.updateReadingSetting('readingWidth', v)"
+              >
+                <v-btn value="narrow" size="small" class="flex-1-0">窄</v-btn>
+                <v-btn value="medium" size="small" class="flex-1-0">中</v-btn>
+                <v-btn value="wide" size="small" class="flex-1-0">宽</v-btn>
+                <v-btn value="full" size="small" class="flex-1-0">全屏</v-btn>
+              </v-btn-toggle>
+            </div>
+
+            <!-- 翻页动画 -->
+            <div>
+              <label class="text-caption">翻页动画</label>
+              <v-btn-toggle
+                :model-value="readingSettings.pageAnimation"
+                mandatory density="compact"
+                variant="outlined" divided
+                color="primary"
+                class="w-100"
+                @update:model-value="(v: string) => settings.updateReadingSetting('pageAnimation', v)"
+              >
+                <v-btn value="none" size="small" class="flex-1-0">无</v-btn>
+                <v-btn value="slide" size="small" class="flex-1-0">滑动</v-btn>
+                <v-btn value="fade" size="small" class="flex-1-0">淡入淡出</v-btn>
+                <v-btn value="flip" size="small" class="flex-1-0">翻转</v-btn>
+              </v-btn-toggle>
+            </div>
+
+            <!-- 护眼强度 -->
+            <div>
+              <label class="text-caption d-flex justify-space-between">
+                <span>护眼强度</span>
+                <span class="text-primary font-weight-bold">{{ readingSettings.sepiaIntensity }}%</span>
+              </label>
+              <v-slider
+                :model-value="readingSettings.sepiaIntensity"
+                :min="0" :max="100" :step="10"
+                hide-details density="compact" thumb-label
+                color="primary"
+                @update:model-value="(v: number) => settings.updateReadingSetting('sepiaIntensity', v)"
+              />
+            </div>
+
+            <!-- 亮度 -->
+            <div>
+              <label class="text-caption d-flex justify-space-between">
+                <span>亮度</span>
+                <span class="text-primary font-weight-bold">{{ readingSettings.brightness }}%</span>
+              </label>
+              <v-slider
+                :model-value="readingSettings.brightness"
+                :min="50" :max="150" :step="5"
+                hide-details density="compact" thumb-label
+                color="primary"
+                @update:model-value="(v: number) => settings.updateReadingSetting('brightness', v)"
+              />
+            </div>
+
+            <!-- 对比度 -->
+            <div>
+              <label class="text-caption d-flex justify-space-between">
+                <span>对比度</span>
+                <span class="text-primary font-weight-bold">{{ readingSettings.contrast }}%</span>
+              </label>
+              <v-slider
+                :model-value="readingSettings.contrast"
+                :min="50" :max="150" :step="5"
+                hide-details density="compact" thumb-label
+                color="primary"
+                @update:model-value="(v: number) => settings.updateReadingSetting('contrast', v)"
+              />
+            </div>
           </div>
 
           <v-btn

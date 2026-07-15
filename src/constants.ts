@@ -26,7 +26,20 @@ export const DEFAULT_READING_SETTINGS: ReadingSettings = {
   bgOpacity: 0.85,
   customCSS: '',
   showReadingStats: true,
-  autoSaveInterval: 10
+  autoSaveInterval: 10,
+  letterSpacing: 0,
+  wordSpacing: 0,
+  firstLineIndent: true,
+  verticalText: false,
+  columnCount: 1,
+  readingWidth: 'medium',
+  pageAnimation: 'none',
+  hideScrollbar: false,
+  dimBackground: false,
+  lineFocus: false,
+  sepiaIntensity: 100,
+  brightness: 100,
+  contrast: 100
 }
 
 export const DEFAULT_THEME_COLORS: ThemeColors = {

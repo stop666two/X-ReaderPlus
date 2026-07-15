@@ -109,6 +109,19 @@ export interface ReadingSettings {
   customCSS: string
   showReadingStats: boolean
   autoSaveInterval: number
+  letterSpacing: number
+  wordSpacing: number
+  firstLineIndent: boolean
+  verticalText: boolean
+  columnCount: number
+  readingWidth: string
+  pageAnimation: string
+  hideScrollbar: boolean
+  dimBackground: boolean
+  lineFocus: boolean
+  sepiaIntensity: number
+  brightness: number
+  contrast: number
 }
 
 export interface ThemeColors {
