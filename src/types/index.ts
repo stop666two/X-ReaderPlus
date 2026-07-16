@@ -211,6 +211,19 @@ export interface PinState {
 
 export type EncryptionMethod = 'aes-gcm' | 'aes-cbc' | 'chacha20'
 
+export type EncryptionMode = 'none' | 'password' | 'symmetric' | 'asymmetric'
+export type PasswordAlgorithm = 'pbkdf2-sha256' | 'pbkdf2-sha512' | 'argon2id'
+export type SymmetricAlgorithm = 'aes-256-gcm' | 'aes-256-cbc' | 'chacha20-poly1305'
+export type AsymmetricAlgorithm = 'rsa-2048' | 'rsa-4096' | 'ecc-p256' | 'ecc-p384'
+
+export interface WebdavEncryptionConfig {
+  mode: EncryptionMode
+  passwordAlgorithm?: PasswordAlgorithm
+  symmetricAlgorithm?: SymmetricAlgorithm
+  asymmetricAlgorithm?: AsymmetricAlgorithm
+  pbkdf2Iterations?: number
+}
+
 export interface BackupData {
   version: string
   exportedAt: number

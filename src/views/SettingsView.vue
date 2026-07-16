@@ -1490,22 +1490,7 @@
                 @update:model-value="onWebdavConfigChange"
               />
             </div>
-            <div>
-              <v-select
-                v-model="webdavEncryption"
-                :items="[
-                  { title: 'AES-256-GCM（推荐）', value: 'aes-gcm' },
-                  { title: 'AES-256-CBC', value: 'aes-cbc' },
-                  { title: 'ChaCha20-Poly1305', value: 'chacha20' }
-                ]"
-                label="加密方式"
-                variant="outlined"
-                density="compact"
-                hide-details
-                class="mb-2"
-                @update:model-value="onWebdavConfigChange"
-              />
-            </div>
+
             <div>
               <v-text-field
                 v-model="webdavPassword"
@@ -1520,20 +1505,7 @@
               />
               <p class="text-caption text-medium-emphasis mt-1">用于连接 WebDAV 服务器（Basic Auth）</p>
             </div>
-            <div>
-              <v-text-field
-                v-model="webdavEncPassword"
-                label="加密密码（可选）"
-                type="password"
-                density="compact"
-                variant="outlined"
-                hide-details
-                :append-inner-icon="webdavEncShowPwd ? 'mdi-eye-off' : 'mdi-eye'"
-                @click:append-inner="webdavEncShowPwd = !webdavEncShowPwd"
-                @update:model-value="onWebdavConfigChange"
-              />
-              <p class="text-caption text-medium-emphasis mt-1">用于 AES 加密备份文件，留空则不加密</p>
-            </div>
+
             <div>
               <label class="text-caption">自动备份</label>
               <v-select
@@ -1547,6 +1519,137 @@
                 @update:model-value="onWebdavConfigChange"
               />
             </div>
+          </div>
+
+          <!-- 文件加密 -->
+          <div class="mt-4">
+            <div class="text-subtitle-2 mb-2">文件加密</div>
+            <p class="text-caption text-medium-emphasis mb-3">备份文件可选择加密存储，加密方式可随时更改</p>
+
+            <v-select
+              v-model="webdavEncMode"
+              :items="[
+                { title: '不加密', value: 'none' },
+                { title: '密码加密', value: 'password' },
+                { title: '对称密钥', value: 'symmetric' },
+                { title: '非对称加密', value: 'asymmetric' }
+              ]"
+              label="加密方式"
+              variant="outlined"
+              density="compact"
+              hide-details
+              @update:model-value="onEncModeChange"
+            />
+
+            <!-- 密码加密选项 -->
+            <template v-if="webdavEncMode === 'password'">
+              <v-text-field
+                v-model="webdavEncPassword"
+                label="加密密码"
+                type="password"
+                variant="outlined"
+                density="compact"
+                hint="用于派生加密密钥，建议 8 位以上"
+                persistent-hint
+                class="mt-2"
+                @update:model-value="onWebdavConfigChange"
+              />
+              <v-select
+                v-model="webdavPasswordAlgo"
+                :items="[
+                  { title: 'PBKDF2-SHA256（推荐）', value: 'pbkdf2-sha256' },
+                  { title: 'PBKDF2-SHA512', value: 'pbkdf2-sha512' },
+                  { title: 'Argon2id', value: 'argon2id' }
+                ]"
+                label="密钥派生算法"
+                variant="outlined"
+                density="compact"
+                hide-details
+                class="mt-2"
+                @update:model-value="onWebdavConfigChange"
+              />
+              <v-text-field
+                v-model.number="webdavPbkdf2Iterations"
+                label="迭代次数"
+                type="number"
+                variant="outlined"
+                density="compact"
+                :min="10000"
+                :max="10000000"
+                hint="越大越安全，默认为 600000"
+                persistent-hint
+                class="mt-2"
+                @update:model-value="onWebdavConfigChange"
+              />
+            </template>
+
+            <!-- 对称密钥选项 -->
+            <template v-if="webdavEncMode === 'symmetric'">
+              <v-textarea
+                v-model="webdavSymmetricKey"
+                label="对称密钥（Base64）"
+                variant="outlined"
+                density="compact"
+                rows="2"
+                hint="输入 Base64 编码的 AES 密钥，或留空自动生成"
+                persistent-hint
+                class="mt-2"
+                @update:model-value="onWebdavConfigChange"
+              />
+              <v-btn size="small" variant="tonal" class="mt-1" @click="generateSymmetricKey">生成随机密钥</v-btn>
+              <v-select
+                v-model="webdavSymmetricAlgo"
+                :items="[
+                  { title: 'AES-256-GCM（推荐）', value: 'aes-256-gcm' },
+                  { title: 'AES-256-CBC', value: 'aes-256-cbc' },
+                  { title: 'ChaCha20-Poly1305', value: 'chacha20-poly1305' }
+                ]"
+                label="加密算法"
+                variant="outlined"
+                density="compact"
+                hide-details
+                class="mt-2"
+                @update:model-value="onWebdavConfigChange"
+              />
+            </template>
+
+            <!-- 非对称加密选项 -->
+            <template v-if="webdavEncMode === 'asymmetric'">
+              <v-textarea
+                v-model="webdavPublicKey"
+                label="公钥（PEM 格式）"
+                variant="outlined"
+                density="compact"
+                rows="3"
+                class="mt-2"
+                @update:model-value="onWebdavConfigChange"
+              />
+              <v-textarea
+                v-model="webdavPrivateKey"
+                label="私钥（PEM 格式）"
+                variant="outlined"
+                density="compact"
+                rows="3"
+                class="mt-2"
+                @update:model-value="onWebdavConfigChange"
+              />
+              <v-btn size="small" variant="tonal" class="mt-1" @click="generateKeyPair">生成密钥对</v-btn>
+              <v-select
+                v-model="webdavAsymmetricAlgo"
+                :items="[
+                  { title: 'RSA-2048', value: 'rsa-2048' },
+                  { title: 'RSA-4096', value: 'rsa-4096' },
+                  { title: 'ECC-P256', value: 'ecc-p256' },
+                  { title: 'ECC-P384', value: 'ecc-p384' }
+                ]"
+                label="非对称算法"
+                variant="outlined"
+                density="compact"
+                hide-details
+                class="mt-2"
+                @update:model-value="onWebdavConfigChange"
+              />
+            </template>
           </div>
 
           <p v-if="webdavLastBackupAt" class="text-caption text-medium-emphasis mt-2">
@@ -1591,7 +1694,7 @@
 
           <p class="text-caption text-medium-emphasis mt-3">
             <v-icon size="14">mdi-information</v-icon>
-            服务器密码用于 WebDAV Basic Auth 认证。加密密码用于 AES 加密备份内容，留空则不加密。
+            服务器密码用于 WebDAV Basic Auth 认证。可选择密码/对称密钥/非对称加密方式保护备份文件。
           </p>
         </v-card-text>
       </v-card>
@@ -1812,7 +1915,7 @@ import { FONT_FAMILIES, SECURITY_QUESTIONS, APP_VERSION } from '@/constants'
 import { hashPin, generateSalt } from '@/services/crypto'
 import { testConnection, uploadFile, downloadFile, encryptPassword, decryptPassword, listBackups, ensureDirectory } from '@/services/webdav'
 import { arrayBufferToBase64 } from '@/services/base64'
-import type { ThemeMode, BackupData, CustomTheme, Annotation, CustomFont } from '@/types'
+import type { ThemeMode, BackupData, CustomTheme, Annotation, CustomFont, EncryptionMode, PasswordAlgorithm, SymmetricAlgorithm, AsymmetricAlgorithm } from '@/types'
 
 // ---- API helpers: prefer electronAPI, fall back to Dexie ----
 const api = {
@@ -2880,13 +2983,21 @@ const webdavShowPwd = ref(false)
 const webdavEncPassword = ref('')
 const webdavEncShowPwd = ref(false)
 const webdavAutoBackupInterval = ref('off')
-const webdavEncryption = ref('aes-gcm')
 const webdavLastBackupAt = ref(0)
 const webdavMessage = ref('')
 const webdavMessageType = ref<'success' | 'error' | 'warning' | 'info'>('info')
 const webdavTesting = ref(false)
 const webdavBackingUp = ref(false)
 const webdavRestoring = ref(false)
+
+const webdavEncMode = ref<EncryptionMode>('none')
+const webdavPasswordAlgo = ref<PasswordAlgorithm>('pbkdf2-sha256')
+const webdavSymmetricAlgo = ref<SymmetricAlgorithm>('aes-256-gcm')
+const webdavAsymmetricAlgo = ref<AsymmetricAlgorithm>('rsa-2048')
+const webdavPbkdf2Iterations = ref(600000)
+const webdavSymmetricKey = ref('')
+const webdavPublicKey = ref('')
+const webdavPrivateKey = ref('')
 
 const webdavConfigured = computed(() => !!webdavUrl.value && !!webdavUsername.value && !!webdavPassword.value)
 
@@ -2898,7 +3009,6 @@ async function loadWebdavConfig() {
       webdavUrl.value = cfg.url || ''
       webdavUsername.value = cfg.username || ''
       webdavAutoBackupInterval.value = cfg.autoBackupInterval || 'off'
-      webdavEncryption.value = cfg.encryption || 'aes-gcm'
       webdavLastBackupAt.value = cfg.lastBackupAt || 0
       if (cfg.passwordIv && cfg.passwordCipher) {
         try {
@@ -2916,6 +3026,12 @@ async function loadWebdavConfig() {
           webdavEncPassword.value = ''
         }
       }
+      const encConfig = cfg.encConfig || {}
+      webdavEncMode.value = encConfig.mode || 'none'
+      webdavPasswordAlgo.value = encConfig.passwordAlgorithm || 'pbkdf2-sha256'
+      webdavSymmetricAlgo.value = encConfig.symmetricAlgorithm || 'aes-256-gcm'
+      webdavAsymmetricAlgo.value = encConfig.asymmetricAlgorithm || 'rsa-2048'
+      webdavPbkdf2Iterations.value = encConfig.pbkdf2Iterations || 600000
     }
   } catch (e) { logger.error('加载 WebDAV 配置失败', e) }
 }
@@ -2935,13 +3051,47 @@ async function onWebdavConfigChange() {
       passwordCipher: passwordEncrypted?.ciphertext || '',
       encPasswordIv: encPasswordEncrypted?.iv || '',
       encPasswordCipher: encPasswordEncrypted?.ciphertext || '',
-      encryption: webdavEncryption.value,
       autoBackupInterval: webdavAutoBackupInterval.value,
-      lastBackupAt: webdavLastBackupAt.value
+      lastBackupAt: webdavLastBackupAt.value,
+      encConfig: {
+        mode: webdavEncMode.value,
+        passwordAlgorithm: webdavPasswordAlgo.value,
+        symmetricAlgorithm: webdavSymmetricAlgo.value,
+        asymmetricAlgorithm: webdavAsymmetricAlgo.value,
+        pbkdf2Iterations: webdavPbkdf2Iterations.value,
+      }
     }
     await api.cfg.put('webdavConfig', JSON.stringify(cfg))
   } catch (e) {
     logger.error('保存 WebDAV 配置失败', e)
+  }
+}
+
+function onEncModeChange() {
+  // 切换加密方式时自动保存配置
+  onWebdavConfigChange()
+}
+
+function generateSymmetricKey() {
+  const key = crypto.getRandomValues(new Uint8Array(32))
+  webdavSymmetricKey.value = btoa(String.fromCharCode(...key))
+  onWebdavConfigChange()
+}
+
+async function generateKeyPair() {
+  try {
+    const keyPair = await crypto.subtle.generateKey(
+      { name: 'RSA-OAEP', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
+      true,
+      ['encrypt', 'decrypt']
+    )
+    const pubKey = await crypto.subtle.exportKey('spki', keyPair.publicKey)
+    const privKey = await crypto.subtle.exportKey('pkcs8', keyPair.privateKey)
+    webdavPublicKey.value = btoa(String.fromCharCode(...new Uint8Array(pubKey)))
+    webdavPrivateKey.value = btoa(String.fromCharCode(...new Uint8Array(privKey)))
+    onWebdavConfigChange()
+  } catch (e) {
+    console.warn('密钥对生成失败', e)
   }
 }
 
