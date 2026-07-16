@@ -613,7 +613,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     }
     const idSet = new Set(ids)
     books.value = books.value.filter(b => !idSet.has(b.id))
-    totalBookCount.value = books.value.length
+    loadBookCount()
     for (const lib of libraries.value) { lib.bookCount = books.value.filter(b => b.libraryId === lib.id).length }
   }
 

@@ -461,7 +461,7 @@
         <v-toolbar color="surface" density="compact" class="border-b">
           <v-toolbar-title class="text-body-1">导入书籍</v-toolbar-title>
           <v-spacer />
-          <v-btn icon="mdi-close" size="small" variant="text" @click="showImportDialog = false" />
+          <v-btn icon="mdi-close" size="small" variant="text" @click="resetImportState(); showImportDialog = false" />
         </v-toolbar>
 
         <v-card-text class="pt-4">
@@ -637,7 +637,7 @@
 
         <v-card-actions class="border-t">
           <v-spacer />
-          <v-btn variant="text" @click="showImportDialog = false">取消</v-btn>
+          <v-btn variant="text" @click="resetImportState(); showImportDialog = false">取消</v-btn>
           <v-btn
             color="primary"
             :loading="dialogImporting"
