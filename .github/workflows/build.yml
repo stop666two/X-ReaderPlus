@@ -94,7 +94,7 @@ jobs:
           )
 
       - name: Upload portable exe
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: X-ReaderPlus-win-${{ matrix.arch }}
           if-no-files-found: error
@@ -159,7 +159,7 @@ jobs:
           echo "Binary found: $BIN"
           bash scripts/build-macos.sh "$BIN" "${{ matrix.arch == 'amd64' && 'intel' || 'apple' }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: X-ReaderPlus-mac-${{ matrix.arch == 'amd64' && 'intel' || 'apple' }}
           if-no-files-found: error
@@ -228,7 +228,7 @@ jobs:
 
       - name: Upload binary
         if: matrix.arch == 'amd64'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: X-ReaderPlus-linux-amd64
           if-no-files-found: error
@@ -236,7 +236,7 @@ jobs:
 
       - name: Upload AppImage
         if: matrix.arch == 'amd64' && steps.appimage.outputs.appimage_ok == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: X-ReaderPlus-linux-appimage
           if-no-files-found: error
