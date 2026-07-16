@@ -9,7 +9,7 @@
         </p>
       </div>
       <div class="d-flex ga-2">
-        <v-btn variant="tonal" prepend-icon="mdi-refresh" @click="refresh">刷新</v-btn>
+        <v-btn color="primary" variant="tonal" prepend-icon="mdi-refresh" :loading="refreshing" @click="refresh">刷新</v-btn>
         <v-btn color="primary" prepend-icon="mdi-plus" @click="showCreateDialog = true">新建书库</v-btn>
       </div>
     </div>
@@ -248,6 +248,7 @@ import type { Library } from '@/types'
 const bookshelf = useBookshelfStore()
 const router = useRouter()
 const searchQuery = ref('')
+const refreshing = ref(false)
 
 const PAGE_SIZE = 6
 
@@ -469,9 +470,17 @@ function importToLibrary(lib: Library) {
 }
 
 async function refresh() {
-  await bookshelf.loadLibraries()
-  if (bookshelf.books.length === 0) await bookshelf.loadBooks()
-  buildTagCache()
+  refreshing.value = true
+  try {
+    await bookshelf.loadLibraries()
+    await bookshelf.loadBookCount()
+    await bookshelf.loadBooks()
+    await bookshelf.ensureFullBooksLoaded()
+    await bookshelf.refreshTags()
+    buildTagCache()
+  } finally {
+    refreshing.value = false
+  }
 }
 
 watch([() => bookshelf.libraries, () => bookshelf.books, () => bookshelf.totalBookCount], () => {

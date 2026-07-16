@@ -8,6 +8,14 @@
         <v-icon size="14" class="mx-1" color="medium-emphasis">mdi-chevron-right</v-icon>
         <span class="text-caption text-medium-emphasis">{{ localFilteredBooks.length }} 本书</span>
       </div>
+      <v-btn
+        size="x-small"
+        variant="tonal"
+        icon="mdi-refresh"
+        title="刷新"
+        :loading="refreshing"
+        @click="refreshBooks"
+      />
       <v-spacer />
       <!-- Library switcher -->
       <v-menu>
@@ -783,6 +791,7 @@ const router = useRouter()
 
 // ========== Local State ==========
 const isDragOver = ref(false)
+const refreshing = ref(false)
 
 // Export progress
 const exportingBook = ref(false)
@@ -993,6 +1002,18 @@ const sortModel = computed({
     if (order) store.sortOrder = order
   },
 })
+
+async function refreshBooks() {
+  refreshing.value = true
+  try {
+    await store.loadBookCount()
+    await store.loadBooks()
+    await store.ensureFullBooksLoaded()
+    await store.refreshTags()
+  } finally {
+    refreshing.value = false
+  }
+}
 
 function toggleSortOrder() {
   store.sortOrder = store.sortOrder === 'desc' ? 'asc' : 'desc'

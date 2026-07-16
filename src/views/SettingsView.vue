@@ -1509,7 +1509,7 @@
             <div>
               <v-text-field
                 v-model="webdavPassword"
-                label="密码"
+                label="服务器密码"
                 type="password"
                 density="compact"
                 variant="outlined"
@@ -1518,6 +1518,21 @@
                 @click:append-inner="webdavShowPwd = !webdavShowPwd"
                 @update:model-value="onWebdavConfigChange"
               />
+              <p class="text-caption text-medium-emphasis mt-1">用于连接 WebDAV 服务器（Basic Auth）</p>
+            </div>
+            <div>
+              <v-text-field
+                v-model="webdavEncPassword"
+                label="加密密码（可选）"
+                type="password"
+                density="compact"
+                variant="outlined"
+                hide-details
+                :append-inner-icon="webdavEncShowPwd ? 'mdi-eye-off' : 'mdi-eye'"
+                @click:append-inner="webdavEncShowPwd = !webdavEncShowPwd"
+                @update:model-value="onWebdavConfigChange"
+              />
+              <p class="text-caption text-medium-emphasis mt-1">用于 AES 加密备份文件，留空则不加密</p>
             </div>
             <div>
               <label class="text-caption">自动备份</label>
@@ -1576,7 +1591,7 @@
 
           <p class="text-caption text-medium-emphasis mt-3">
             <v-icon size="14">mdi-information</v-icon>
-            密码使用 AES-256-GCM 加密存储。备份文件为加密的阅读数据JSON。
+            服务器密码用于 WebDAV Basic Auth 认证。加密密码用于 AES 加密备份内容，留空则不加密。
           </p>
         </v-card-text>
       </v-card>
@@ -2862,6 +2877,8 @@ const webdavUrl = ref('')
 const webdavUsername = ref('')
 const webdavPassword = ref('')
 const webdavShowPwd = ref(false)
+const webdavEncPassword = ref('')
+const webdavEncShowPwd = ref(false)
 const webdavAutoBackupInterval = ref('off')
 const webdavEncryption = ref('aes-gcm')
 const webdavLastBackupAt = ref(0)
@@ -2891,6 +2908,14 @@ async function loadWebdavConfig() {
           webdavPassword.value = ''
         }
       }
+      if (cfg.encPasswordIv && cfg.encPasswordCipher) {
+        try {
+          webdavEncPassword.value = await decryptPassword(cfg.encPasswordIv, cfg.encPasswordCipher)
+        } catch (e) {
+          logger.warn('WebDAV 加密密码解密失败', e)
+          webdavEncPassword.value = ''
+        }
+      }
     }
   } catch (e) { logger.error('加载 WebDAV 配置失败', e) }
 }
@@ -2900,11 +2925,16 @@ async function onWebdavConfigChange() {
     const passwordEncrypted = webdavPassword.value
       ? await encryptPassword(webdavPassword.value)
       : null
+    const encPasswordEncrypted = webdavEncPassword.value
+      ? await encryptPassword(webdavEncPassword.value)
+      : null
     const cfg = {
       url: webdavUrl.value,
       username: webdavUsername.value,
       passwordIv: passwordEncrypted?.iv || '',
       passwordCipher: passwordEncrypted?.ciphertext || '',
+      encPasswordIv: encPasswordEncrypted?.iv || '',
+      encPasswordCipher: encPasswordEncrypted?.ciphertext || '',
       encryption: webdavEncryption.value,
       autoBackupInterval: webdavAutoBackupInterval.value,
       lastBackupAt: webdavLastBackupAt.value
