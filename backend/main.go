@@ -42,15 +42,15 @@ func securityHeaders(next http.Handler) http.Handler {
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		allowedOrigins := map[string]bool{
-			"http://127.0.0.1:34123": true,
-			"http://localhost:5173":  true,
-		}
 		origin := r.Header.Get("Origin")
-		if allowedOrigins[origin] {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
+		// Allow requests with no Origin (Wails desktop, curl, etc.) or known dev origins
+		if origin == "" || origin == "http://127.0.0.1:34123" || origin == "http://localhost:5173" {
+			if origin != "" {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+			}
 		} else {
-			w.Header().Set("Access-Control-Allow-Origin", "null")
+			// For unknown origins (Wails WebView2, etc.), reflect the origin
+			w.Header().Set("Access-Control-Allow-Origin", origin)
 		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")

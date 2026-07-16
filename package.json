@@ -28,7 +28,7 @@
     "dev:go": "cd backend && go run .",
     "dev:wails": "wails dev",
     "build": "vite build",
-    "build:go": "node scripts/copy-frontend.js && cd backend && wails build -o ../dist/X-ReaderPlus.exe && cd ..",
+    "build:go": "vite build && node scripts/copy-frontend.js && cd backend && wails build -o ../dist/X-ReaderPlus.exe && cd ..",
     "build:go:dev": "cd backend && wails build -devtools && copy /y build\\dist\\X-ReaderPlus.exe ..\\dist\\X-ReaderPlus-dev.exe >nul 2>&1",
     "build:all": "vite build && node scripts/copy-frontend.js && cd backend && wails build && (if exist build\\bin\\X-ReaderPlus.exe (copy /y build\\bin\\X-ReaderPlus.exe ..\\dist\\X-ReaderPlus.exe >nul) else (copy /y build\\dist\\X-ReaderPlus.exe ..\\dist\\X-ReaderPlus.exe >nul)) && cd ..",
     "build:wails": "cd backend && wails build",
