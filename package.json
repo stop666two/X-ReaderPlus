@@ -42,7 +42,7 @@
   "dependencies": {
     "@mdi/font": "^7.4.47",
     "dayjs": "^1.11.13",
-    "dompurify": "^3.2.4",
+    "dompurify": "^3.4.12",
     "jszip": "^3.10.1",
     "mammoth": "^1.11.0",
     "marked": "^15.0.12",
