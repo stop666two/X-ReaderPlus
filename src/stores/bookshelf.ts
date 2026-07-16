@@ -195,6 +195,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
       return loadBooks(1, 50)
     }
     _dataLoaded.value = true
+    _dataVersion.value++
     for (const lib of libraries.value) { lib.bookCount = books.value.filter(b => b.libraryId === lib.id).length }
   }
 
@@ -742,7 +743,17 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     }
   }
 
+  async function refreshTags() {
+    try {
+      _tagCache.value = await db().tags.getAll()
+    } catch (e) {
+      logger.warn('refresh tags failed', e)
+    }
+  }
+
 // generateId imported from @/services/base64 (L-8)
+
+  const _dataVersion = ref(0)
 
   return {
     books, libraries, activeLibraryId, viewMode, searchQuery, filterTag, sortField, sortOrder,
@@ -752,9 +763,10 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     loadLibraries, createLibrary, deleteLibrary, renameLibrary, setActiveLibrary,
     loadBooks, loadAllData, clearAllData, importFiles, deleteBooks, updateBook, ensureFullBooksLoaded,
     updateBookProgress, updateBookReadingTime, getChapterCount,
-    createTag,
+    createTag, refreshTags,
     toggleSelect, selectAll, clearSelection, invertSelection,
     tagCache: _tagCache,
+    dataVersion: _dataVersion,
     importResult: _importResult,
     clearImportResult: () => { _importResult.value = null },
   }

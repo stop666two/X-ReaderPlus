@@ -62,7 +62,7 @@
             />
           </template>
         </v-tooltip>
-        <v-select v-model="store.filterTag" :items="tagItems" item-title="title" item-value="value" density="compact" variant="outlined" hide-details clearable placeholder="标签" class="tag-select" />
+        <v-autocomplete v-model="store.filterTag" :items="tagItems" item-title="title" item-value="value" density="compact" variant="outlined" hide-details clearable placeholder="标签" class="tag-select" />
         <v-spacer />
         <div class="d-flex align-center gap-2">
           <v-btn-toggle v-model="viewModeToggle" mandatory density="compact" variant="outlined" divided class="view-toggle-group">

@@ -326,8 +326,16 @@ function getTagColor(name: string): string {
 // ── Computed tag list with counts ──
 const tagCountMap = computed(() => {
   const map = new Map<string, number>()
-  for (const t of bookshelf.tagCache) {
-    map.set(t.name, t.count)
+  if (bookshelf.tagCache.length > 0) {
+    for (const t of bookshelf.tagCache) {
+      map.set(t.name, t.count)
+    }
+  } else {
+    bookshelf.books.forEach(b => {
+      b.tags.forEach(t => {
+        map.set(t, (map.get(t) || 0) + 1)
+      })
+    })
   }
   return map
 })
@@ -496,6 +504,7 @@ function onCoverError(e: Event) {
 // ── Lifecycle ──
 onMounted(async () => {
   if (bookshelf.books.length === 0) await bookshelf.loadBooks()
+  await bookshelf.refreshTags()
 })
 </script>
 

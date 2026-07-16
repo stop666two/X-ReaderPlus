@@ -306,6 +306,7 @@ const pwdError = ref('')
 const lockedLibs = ref<Set<string>>(new Set())
 
 const libraryStats = computed(() => {
+  void bookshelf.dataVersion
   const stats: Record<string, { files: string; hours: string; percent: string }> = {}
   for (const lib of bookshelf.libraries) {
     const libBooks = bookshelf.books.filter(b => b.libraryId === lib.id)

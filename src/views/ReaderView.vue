@@ -221,8 +221,6 @@
       @mousemove="resetToolbarTimer"
       @click="onReaderClick"
     >
-      <div v-if="settings.focusMode" class="focus-spotlight" />
-
       <v-progress-linear
         v-if="isChapterLoading"
         indeterminate
@@ -1278,55 +1276,33 @@ function onScroll() {
 
 // ---- Focus mode ----
 
-let _focusParagraphs: HTMLElement[] = []
-let _focusCacheKey = ''
 let _focusIndex = 0
-let _focusLoopId: number | null = null
-
-function clearFocusCache() {
-  _focusParagraphs = []
-  _focusCacheKey = ''
-  _focusIndex = 0
-}
 
 function getFocusableParagraphs(): HTMLElement[] {
   const contentEl = readerContainer.value?.querySelector<HTMLElement>('.reader-content')
   if (!contentEl) return []
-  const key = String(reader.currentChapterIndex)
-  if (_focusCacheKey === key && _focusParagraphs.length > 0) return _focusParagraphs
-  _focusParagraphs = Array.from(contentEl.querySelectorAll<HTMLElement>(
-    'p, h1, h2, h3, h4, h5, h6, blockquote, li, div, td, th, pre, section'
-  )).filter(el => el.textContent?.trim() && el.offsetHeight > 0)
-  _focusCacheKey = key
-  return _focusParagraphs
+  return Array.from(contentEl.querySelectorAll<HTMLElement>('p, h1, h2, h3, h4, h5, h6, blockquote, li'))
+    .filter(el => el.textContent?.trim() && el.offsetHeight > 0)
 }
 
 function centerFocusParagraph(index: number) {
-  if (!readerContainer.value) return
-  if (index < 0) index = 0
-  if (_focusParagraphs.length > 0 && index >= _focusParagraphs.length) index = _focusParagraphs.length - 1
-  if (index < 0) return
-  _focusIndex = index
-  const all = getFocusableParagraphs()
-  if (all.length === 0) return
-  const el = all[index]
-  const container = readerContainer.value
-  const targetTop = el.offsetTop - container.clientHeight / 2 + el.offsetHeight / 2
-  container.scrollTo({ top: Math.max(0, targetTop), behavior: 'auto' })
-  container.querySelectorAll('.focus-active').forEach(e => e.classList.remove('focus-active'))
+  const paragraphs = getFocusableParagraphs()
+  if (paragraphs.length === 0) return
+  const idx = Math.max(0, Math.min(index, paragraphs.length - 1))
+  _focusIndex = idx
+  paragraphs.forEach(p => p.classList.remove('focus-active'))
+  const el = paragraphs[idx]
   el.classList.add('focus-active')
-  _focusParagraphs = all
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
 let _focusWheelTimer: ReturnType<typeof setTimeout> | null = null
 
 function onFocusWheel(e: WheelEvent) {
+  e.preventDefault()
   if (_focusWheelTimer) return
-  _focusWheelTimer = setTimeout(() => { _focusWheelTimer = null }, 50)
-  const newIndex = _focusIndex + (e.deltaY > 0 ? 1 : -1)
-  if (newIndex >= 0 && newIndex < _focusParagraphs.length) {
-    centerFocusParagraph(newIndex)
-  }
+  _focusWheelTimer = setTimeout(() => { _focusWheelTimer = null }, 100)
+  centerFocusParagraph(_focusIndex + (e.deltaY > 0 ? 1 : -1))
 }
 
 function onFocusKeydown(e: KeyboardEvent) {
@@ -1347,31 +1323,26 @@ function onFocusKeydown(e: KeyboardEvent) {
 
 watch(() => settings.focusMode, (val) => {
   const container = readerContainer.value
-  const wrapper = container?.querySelector<HTMLElement>('.reader-content-wrapper')
   if (!container) return
   if (val) {
-    // Add padding to allow centering first/last paragraphs
-    const pad = Math.floor(container.clientHeight / 2)
-    if (wrapper) { wrapper.style.paddingTop = pad + 'px'; wrapper.style.paddingBottom = pad + 'px' }
-    // Enable focus mode: use paragraph navigation
-    _focusParagraphs = getFocusableParagraphs()
-    const vpCenter = container.getBoundingClientRect().top + container.clientHeight / 2
-    let bestIdx = 0
-    let bestDist = Infinity
-    for (let i = 0; i < _focusParagraphs.length; i++) {
-      const rect = _focusParagraphs[i].getBoundingClientRect()
-      const dist = Math.abs(rect.top + rect.height / 2 - vpCenter)
-      if (dist < bestDist) { bestDist = dist; bestIdx = i }
-    }
-    centerFocusParagraph(bestIdx)
-    container.addEventListener('wheel', onFocusWheel, { passive: true })
+    container.addEventListener('wheel', onFocusWheel, { passive: false })
     document.addEventListener('keydown', onFocusKeydown)
+    nextTick(() => {
+      const paragraphs = getFocusableParagraphs()
+      if (paragraphs.length === 0) return
+      const center = container.scrollTop + container.clientHeight / 2
+      let best = 0
+      let bestDist = Infinity
+      paragraphs.forEach((p, i) => {
+        const dist = Math.abs(p.offsetTop - center)
+        if (dist < bestDist) { bestDist = dist; best = i }
+      })
+      centerFocusParagraph(best)
+    })
   } else {
     container.removeEventListener('wheel', onFocusWheel)
     document.removeEventListener('keydown', onFocusKeydown)
-    if (wrapper) { wrapper.style.paddingTop = ''; wrapper.style.paddingBottom = '' }
     container.querySelectorAll('.focus-active').forEach(el => el.classList.remove('focus-active'))
-    _focusParagraphs = []
     _focusIndex = 0
   }
 })
@@ -1384,7 +1355,6 @@ watch(() => reader.currentChapterIndex, (newIdx) => {
   sliderValue.value = newIdx
   // Restore scroll after content renders (deferred to lazyContent watcher)
   nextTick(() => {
-    clearFocusCache()
     applyChapterAnnotations()
     isChapterLoading.value = false
     if (settings.focusMode) { centerFocusParagraph(_focusIndex) }
@@ -1402,9 +1372,7 @@ watch(() => settings.readingSettings.autoSaveInterval, () => {
   startAutoSave()
 })
 
-// Watch for focus mode toggle
 onUnmounted(() => {
-  if (_focusLoopId !== null) cancelAnimationFrame(_focusLoopId)
   if (readerContainer.value) {
     readerContainer.value.removeEventListener('wheel', onFocusWheel)
     document.removeEventListener('keydown', onFocusKeydown)
@@ -2483,21 +2451,7 @@ onBeforeRouteLeave(async (_to, _from) => {
   width: 100%;
 }
 
-/* ---- Focus mode — spotlight dim + bold + shadow on active paragraph ---- */
-.focus-mode {
-  position: relative;
-}
-.focus-spotlight {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  pointer-events: none;
-  z-index: 1;
-}
-.focus-mode .reader-content-wrapper {
-  position: relative;
-  z-index: 1;
-}
+/* ---- Focus mode — dim content, highlight active paragraph ---- */
 .focus-mode .reader-content :deep(p),
 .focus-mode .reader-content :deep(h1),
 .focus-mode .reader-content :deep(h2),
@@ -2505,16 +2459,16 @@ onBeforeRouteLeave(async (_to, _from) => {
 .focus-mode .reader-content :deep(h4),
 .focus-mode .reader-content :deep(blockquote),
 .focus-mode .reader-content :deep(li) {
-  opacity: 0.22;
+  opacity: 0.25;
   transition: opacity 0.3s ease;
 }
 .focus-mode .reader-content :deep(.focus-active) {
   opacity: 1;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+  box-shadow: 0 0 0 4px rgba(var(--v-theme-primary), 0.15);
   border-radius: 6px;
-  background: rgba(var(--v-theme-on-surface), 0.03);
-  position: relative;
-  z-index: 2;
+  padding: 4px 8px;
+  margin: -4px -8px;
+  background: rgba(var(--v-theme-primary), 0.04);
 }
 /* Search highlight */
 :deep(.search-highlight) {
