@@ -1404,6 +1404,14 @@
             </v-btn>
           </div>
 
+          <v-divider class="my-3" />
+          <div class="text-subtitle-2 mb-2">备份与恢复</div>
+          <div class="d-flex flex-wrap gap-2">
+            <v-btn size="small" variant="tonal" prepend-icon="mdi-download" @click="downloadLocalBackup">下载备份</v-btn>
+            <v-btn size="small" variant="tonal" prepend-icon="mdi-upload" @click="importLocalBackup">恢复备份</v-btn>
+            <v-btn size="small" variant="tonal" prepend-icon="mdi-export-variant" @click="exportAnnotations">导出标注</v-btn>
+          </div>
+
           <!-- Progress indicator -->
           <div v-if="dataOpInProgress" class="mt-2 mb-3">
             <v-progress-linear
@@ -1717,6 +1725,31 @@
             </v-btn>
           </div>
 
+          <v-divider class="my-4" />
+          <div class="text-subtitle-2 mb-2">本地备份</div>
+          <div class="d-flex flex-wrap gap-2">
+            <v-btn
+              color="primary"
+              variant="tonal"
+              size="small"
+              prepend-icon="mdi-download"
+              @click="downloadLocalBackup"
+              :loading="localBackingUp"
+            >
+              下载备份 (.json)
+            </v-btn>
+            <v-btn
+              color="secondary"
+              variant="tonal"
+              size="small"
+              prepend-icon="mdi-upload"
+              @click="importLocalBackup"
+              :loading="localRestoring"
+            >
+              恢复备份
+            </v-btn>
+          </div>
+
           <p class="text-caption text-medium-emphasis mt-3">
             <v-icon size="14">mdi-information</v-icon>
             服务器密码用于 WebDAV Basic Auth 认证。<br>
@@ -1899,6 +1932,7 @@
         <v-card-text>
           <p class="text-caption mb-3">选择导出格式</p>
           <v-radio-group v-model="exportAnnotationFormat" hide-details class="mb-3">
+            <v-radio label="JSON" value="json" />
             <v-radio label="Markdown" value="markdown" />
             <v-radio label="CSV" value="csv" />
           </v-radio-group>
@@ -2561,7 +2595,7 @@ const dataOpIndeterminate = ref(false)
 
 // ---- Annotation Export ----
 const showExportAnnotations = ref(false)
-const exportAnnotationFormat = ref<'markdown' | 'csv'>('markdown')
+const exportAnnotationFormat = ref<'json' | 'markdown' | 'csv'>('json')
 const exportingAnnotations = ref(false)
 const dataOpLabel = ref('')
 
@@ -2903,7 +2937,10 @@ async function exportAnnotations() {
     let content = ''
     let defaultName = ''
 
-    if (exportAnnotationFormat.value === 'markdown') {
+    if (exportAnnotationFormat.value === 'json') {
+      content = JSON.stringify({ annotations, bookmarks: [] }, null, 2)
+      defaultName = `x-reader-plus-annotations-${new Date().toISOString().slice(0, 10)}.json`
+    } else if (exportAnnotationFormat.value === 'markdown') {
       // Markdown format: grouped by book
       const lines: string[] = ['# 标注导出', '', `导出日期：${new Date().toLocaleString('zh-CN')}`, `标注总数：${annotations.length} 条`, '']
       for (const [bid, anns] of grouped) {
@@ -2953,12 +2990,11 @@ async function exportAnnotations() {
 
     // Save file
     if (window.electronAPI) {
-      const ext = exportAnnotationFormat.value === 'markdown' ? 'md' : 'csv'
+      const ext = exportAnnotationFormat.value === 'json' ? 'json' : exportAnnotationFormat.value === 'markdown' ? 'md' : 'csv'
+      const filterName = exportAnnotationFormat.value === 'json' ? 'JSON' : exportAnnotationFormat.value === 'markdown' ? 'Markdown' : 'CSV'
       const result = await window.electronAPI.saveFile({
         defaultPath: `x-reader-plus-annotations-${new Date().toISOString().slice(0, 10)}.${ext}`,
-        filters: exportAnnotationFormat.value === 'markdown'
-          ? [{ name: 'Markdown', extensions: ['md'] }]
-          : [{ name: 'CSV', extensions: ['csv'] }]
+        filters: [{ name: filterName, extensions: [ext] }]
       })
       if (!result.canceled && result.filePath) {
         const encoder = new TextEncoder()
@@ -2995,6 +3031,183 @@ function csvEscape(value: string): string {
     return `"${value.replace(/"/g, '""')}"`
   }
   return value
+}
+
+// ---- Local Backup ----
+const localBackingUp = ref(false)
+const localRestoring = ref(false)
+
+async function createBackupData(): Promise<BackupData> {
+  const [metaRecords, chRecords, bmRecords, annRecords, cfgRecords] = await Promise.all([
+    api.meta.toArray(),
+    api.ch.toArray(),
+    api.bm.toArray(),
+    api.ann.toArray(),
+    db.cfg.toArray()
+  ])
+
+  const allIds = metaRecords.map((r: any) => {
+    const m = typeof r.data === 'string' ? JSON.parse(r.data) : r
+    return m.bid
+  })
+  const libExtrasRecs = await api.lib.bulkGet(allIds)
+  const libExtrasMap = new Map<string, any>()
+  for (const rec of libExtrasRecs) {
+    if (rec) {
+      try { libExtrasMap.set(rec.id, typeof rec.data === 'string' ? JSON.parse(rec.data) : rec.data || rec) } catch { /* skip */ }
+    }
+  }
+  const books = metaRecords.map((r: any) => {
+    const m = typeof r.data === 'string' ? JSON.parse(r.data) : r
+    const extras = libExtrasMap.get(m.bid) || {}
+    return {
+      id: m.bid, title: m.title, author: m.author, cover: m.cover,
+      format: m.format, size: m.size, chapterCount: m.chapterCount,
+      tags: m.tags, rating: m.rating, contentHash: m.contentHash,
+      path: m.path, libraryId: m.libraryId, addedAt: m.addedAt,
+      lastReadAt: m.lastReadAt, progress: m.progress, wordCount: m.wordCount,
+      review: extras.review || '',
+      chapterIndex: extras.chapterIndex || 0,
+      chapterProgress: extras.chapterProgress || 0,
+      totalReadingTime: extras.totalReadingTime || 0
+    }
+  })
+
+  const backup: BackupData = {
+    version: APP_VERSION,
+    exportedAt: Date.now(),
+    books,
+    chapters: {},
+    bookmarks: bmRecords.map((r: any) => typeof r.data === 'string' ? JSON.parse(r.data) : r),
+    annotations: annRecords.map((r: any) => typeof r.data === 'string' ? JSON.parse(r.data) : r),
+    settings: {},
+    pinState: null,
+    libraries: []
+  }
+
+  chRecords.forEach((r: any) => {
+    backup.chapters[r.bid] = typeof r.data === 'string' ? JSON.parse(r.data) : r
+  })
+
+  cfgRecords.forEach((r: any) => {
+    if (r.k !== 'encryptionKey' && r.k !== 'pinState' && r.k !== 'securityAnswerHash' && r.k !== 'securityAnswerSalt' && r.k !== 'webdavEncKey') {
+      backup.settings[r.k] = r.v
+    }
+  })
+
+  const state = await getPinState()
+  if (state) {
+    const ek = await api.cfg.get('encryptionKey')
+    if (ek) state.encryptionKey = ek
+  }
+  backup.pinState = state
+
+  return backup
+}
+
+async function restoreBackupData(backup: BackupData) {
+  const total = backup.books.length + Object.keys(backup.chapters).length + backup.bookmarks.length + backup.annotations.length + Object.keys(backup.settings).length
+  let done = 0
+
+  for (const book of backup.books) {
+    await api.lib.put(book.id, JSON.stringify({ review: book.review || '', chapterIndex: book.chapterIndex || 0, chapterProgress: book.chapterProgress || 0, totalReadingTime: book.totalReadingTime || 0 }))
+    await upsertMeta(book)
+    done++
+  }
+  for (const [bid, chapters] of Object.entries(backup.chapters)) {
+    await api.ch.put(bid, JSON.stringify(chapters))
+    done++
+  }
+  for (const bm of backup.bookmarks) {
+    await api.bm.put(bm.id, JSON.stringify(bm))
+    done++
+  }
+  for (const ann of backup.annotations) {
+    await api.ann.put(ann.id, JSON.stringify(ann))
+    done++
+  }
+  for (const [key, value] of Object.entries(backup.settings)) {
+    await api.cfg.put(key, String(value))
+    done++
+  }
+  if (backup.pinState) {
+    const { encryptionKey, ...pinStateOnly } = backup.pinState as any
+    await api.cfg.put('pinState', JSON.stringify(pinStateOnly))
+    if (encryptionKey) {
+      await api.cfg.put('encryptionKey', encryptionKey)
+    }
+  }
+
+  await bookshelf.loadBooks()
+  await settings.load()
+  await checkPinStatus()
+  await loadSecurityQuestion()
+}
+
+async function downloadLocalBackup() {
+  localBackingUp.value = true
+  try {
+    const backup = await createBackupData()
+    const json = JSON.stringify(backup, null, 2)
+    const encoder = new TextEncoder()
+    const bytes = encoder.encode(json)
+    let bin = ''
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+    if (window.electronAPI?.saveFile) {
+      await window.electronAPI.saveFile({
+        defaultPath: `x-readerplus-backup-${new Date().toISOString().slice(0, 10)}.json`,
+        data: bin,
+        type: 'application/json'
+      })
+    } else {
+      const blob = new Blob([bin], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `x-readerplus-backup-${new Date().toISOString().slice(0, 10)}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+    }
+  } catch (e) {
+    console.warn('备份失败', e)
+  }
+  localBackingUp.value = false
+}
+
+async function importLocalBackup() {
+  localRestoring.value = true
+  try {
+    let data: BackupData | null = null
+    if (window.electronAPI?.openFile) {
+      const result = await window.electronAPI.openFile()
+      if (result.canceled || !result.filePaths?.[0]) return
+      const readResult = await window.electronAPI.readFile(result.filePaths[0])
+      if (!readResult.success) return
+      const decoder = new TextDecoder()
+      data = JSON.parse(decoder.decode(readResult.data))
+    } else {
+      const result = await new Promise<{ canceled: boolean; filePaths: string[]; data: BackupData | null }>((resolve) => {
+        const input = document.createElement('input')
+        input.type = 'file'
+        input.accept = '.json'
+        input.onchange = async (e: any) => {
+          const file = e.target.files?.[0]
+          if (!file) { resolve({ canceled: true, filePaths: [], data: null }); return }
+          const text = await file.text()
+          resolve({ canceled: false, filePaths: [file.name], data: JSON.parse(text) })
+        }
+        input.click()
+      })
+      if (result.canceled || !result.data) return
+      data = result.data
+    }
+    if (data?.version) {
+      await restoreBackupData(data)
+    }
+  } catch (e) {
+    console.warn('恢复备份失败', e)
+  }
+  localRestoring.value = false
 }
 
 // ---- WebDAV Backup ----

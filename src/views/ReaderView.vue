@@ -1042,28 +1042,36 @@ function highlightAnnotationInDom(text: string) {
 function applyChapterAnnotations() {
   if (!readerContainer.value) return
   const anns = reader.currentChapterAnnotations
-  anns.forEach(ann => {
-    if (ann.type !== 'highlight') return
+  if (!anns.length) return
+
+  const walker = document.createTreeWalker(readerContainer.value!, NodeFilter.SHOW_TEXT)
+  const textNodes: Text[] = []
+  let n: Text | null
+  while ((n = walker.nextNode() as Text | null)) textNodes.push(n)
+
+  for (const ann of anns) {
+    if (ann.type !== 'highlight') continue
     const colorCfg = HIGHLIGHT_COLORS.find(c => c.value === ann.color)
     const bg = colorCfg?.bg || 'rgba(255,235,59,0.35)'
-    const walker = document.createTreeWalker(readerContainer.value!, NodeFilter.SHOW_TEXT)
-    let node: Text | null
-    while ((node = walker.nextNode() as Text | null)) {
-      const idx = (node.textContent || '').indexOf(ann.text)
-      if (idx >= 0) {
-        try {
-          const r = document.createRange()
-          r.setStart(node, idx)
-          r.setEnd(node, idx + ann.text.length)
-          const span = document.createElement('span')
-          span.style.backgroundColor = bg
-          span.style.borderRadius = '2px'
-          r.surroundContents(span)
-        } catch { /* surroundContents fails when range spans multiple elements */ }
-        break
-      }
+    const text = ann.text
+    if (!text) continue
+    for (const node of textNodes) {
+      const idx = node.textContent?.indexOf(text) ?? -1
+      if (idx < 0) continue
+      try {
+        const r = document.createRange()
+        r.setStart(node, idx)
+        r.setEnd(node, idx + text.length)
+        const span = document.createElement('span')
+        span.style.backgroundColor = bg
+        span.style.borderRadius = '2px'
+        span.style.padding = '0 2px'
+        if (ann.note) span.title = ann.note
+        r.surroundContents(span)
+      } catch { /* surroundContents fails when range spans multiple elements */ }
+      break
     }
-  })
+  }
 }
 
 // ---- Book loading & position restore ----
