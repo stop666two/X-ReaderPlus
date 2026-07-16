@@ -1303,17 +1303,18 @@ function getFocusableParagraphs(): HTMLElement[] {
 
 function centerFocusParagraph(index: number) {
   if (!readerContainer.value) return
+  if (index < 0) index = 0
+  if (_focusParagraphs.length > 0 && index >= _focusParagraphs.length) index = _focusParagraphs.length - 1
+  if (index < 0) return
+  _focusIndex = index
   const all = getFocusableParagraphs()
   if (all.length === 0) return
-  const idx = Math.max(0, Math.min(index, all.length - 1))
-  const el = all[idx]
+  const el = all[index]
   const container = readerContainer.value
   const targetTop = el.offsetTop - container.clientHeight / 2 + el.offsetHeight / 2
   container.scrollTo({ top: Math.max(0, targetTop), behavior: 'auto' })
-  // Update highlight
   container.querySelectorAll('.focus-active').forEach(e => e.classList.remove('focus-active'))
   el.classList.add('focus-active')
-  _focusIndex = idx
   _focusParagraphs = all
 }
 
@@ -1322,8 +1323,10 @@ let _focusWheelTimer: ReturnType<typeof setTimeout> | null = null
 function onFocusWheel(e: WheelEvent) {
   if (_focusWheelTimer) return
   _focusWheelTimer = setTimeout(() => { _focusWheelTimer = null }, 50)
-  const delta = e.deltaY > 0 ? 1 : -1
-  centerFocusParagraph(_focusIndex + delta)
+  const newIndex = _focusIndex + (e.deltaY > 0 ? 1 : -1)
+  if (newIndex >= 0 && newIndex < _focusParagraphs.length) {
+    centerFocusParagraph(newIndex)
+  }
 }
 
 function onFocusKeydown(e: KeyboardEvent) {
@@ -2489,7 +2492,7 @@ onBeforeRouteLeave(async (_to, _from) => {
   inset: 0;
   background: rgba(0, 0, 0, 0.55);
   pointer-events: none;
-  z-index: 0;
+  z-index: 1;
 }
 .focus-mode .reader-content-wrapper {
   position: relative;
@@ -2510,6 +2513,8 @@ onBeforeRouteLeave(async (_to, _from) => {
   box-shadow: 0 2px 12px rgba(0,0,0,0.1);
   border-radius: 6px;
   background: rgba(var(--v-theme-on-surface), 0.03);
+  position: relative;
+  z-index: 2;
 }
 /* Search highlight */
 :deep(.search-highlight) {

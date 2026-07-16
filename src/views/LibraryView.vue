@@ -78,17 +78,17 @@
               </div>
               <div class="stat-divider" />
               <div class="stat-item">
-                <span class="stat-value">{{ formatFiles(lib) }}</span>
+                <span class="stat-value">{{ libraryStats[lib.id]?.files || '0' }}</span>
                 <span class="stat-label">格式</span>
               </div>
               <div class="stat-divider" />
               <div class="stat-item">
-                <span class="stat-value">{{ formatHours(lib) }}</span>
+                <span class="stat-value">{{ libraryStats[lib.id]?.hours || '0' }}</span>
                 <span class="stat-label">小时</span>
               </div>
               <div class="stat-divider" />
               <div class="stat-item">
-                <span class="stat-value">{{ formatPercent(lib) }}</span>
+                <span class="stat-value">{{ libraryStats[lib.id]?.percent || '—' }}</span>
                 <span class="stat-label">进度</span>
               </div>
             </div>
@@ -305,6 +305,24 @@ const privacyLoading = ref(false)
 const pwdError = ref('')
 const lockedLibs = ref<Set<string>>(new Set())
 
+const libraryStats = computed(() => {
+  const stats: Record<string, { files: string; hours: string; percent: string }> = {}
+  for (const lib of bookshelf.libraries) {
+    const libBooks = bookshelf.books.filter(b => b.libraryId === lib.id)
+    const fmts = new Set(libBooks.map(b => b.format))
+    const totalHours = Math.round(libBooks.reduce((s, b) => s + (b.totalReadingTime || 0), 0) / 3600000)
+    const avgProgress = libBooks.length > 0
+      ? Math.round(libBooks.reduce((s, b) => s + (b.progress || 0), 0) / libBooks.length * 100) + '%'
+      : '—'
+    stats[lib.id] = {
+      files: `${fmts.size}`,
+      hours: totalHours.toString(),
+      percent: avgProgress
+    }
+  }
+  return stats
+})
+
 const tagCache = ref<Map<string, Array<{ name: string; count: number }>>>(new Map())
 
 function buildTagCache() {
@@ -332,25 +350,6 @@ function getLibraryTags(libId: string) {
 function formatDate(ts: number): string {
   if (!ts) return '未知'
   return dayjs(ts).format('YYYY-MM-DD')
-}
-
-function formatFiles(lib: Library): string {
-  const fmts = new Set(bookshelf.books.filter(b => b.libraryId === lib.id).map(b => b.format))
-  return `${fmts.size}`
-}
-
-function formatHours(lib: Library): string {
-  const total = bookshelf.books
-    .filter(b => b.libraryId === lib.id)
-    .reduce((sum, b) => sum + (b.totalReadingTime || 0), 0)
-  return Math.round(total / 3600000).toString()
-}
-
-function formatPercent(lib: Library): string {
-  const libBooks = bookshelf.books.filter(b => b.libraryId === lib.id)
-  if (libBooks.length === 0) return '—'
-  const avg = libBooks.reduce((s, b) => s + (b.progress || 0), 0) / libBooks.length
-  return `${Math.round(avg * 100)}%`
 }
 
 function viewLibrary(id: string) {

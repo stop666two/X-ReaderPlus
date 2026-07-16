@@ -58,7 +58,6 @@ export default {
   bookshelf: {
     searchPlaceholder: 'Search by title or author...',
     importLabel: 'Import',
-    importRecords: 'Import Records',
     importDialog: 'Import Books',
     importMethod: 'Import Method',
     importTarget: 'Import to Library',

@@ -90,17 +90,7 @@
             <v-btn size="small" color="error" variant="tonal" prepend-icon="mdi-delete" @click="showConfirm = true">删除({{ crossPageSelectedIds.size }})</v-btn>
           </template>
           <v-btn color="primary" size="small" variant="tonal" prepend-icon="mdi-plus" @click="showImportDialog = true">导入</v-btn>
-          <v-btn
-            v-if="importHistory.length > 0"
-            size="small"
-            variant="text"
-            :color="showImportHistory ? 'primary' : ''"
-            prepend-icon="mdi-history"
-            @click="showImportHistory = !showImportHistory"
-          >
-            导入记录
-            <v-badge :content="importHistory.length" inline color="primary" class="ml-1" />
-          </v-btn>
+
         </div>
       </div>
     </div>
@@ -128,31 +118,6 @@
         <v-progress-circular indeterminate size="16" class="mr-2" />
         <span class="text-caption">{{ exportLabel }}</span>
       </div>
-    </div>
-
-    <!-- ========== Import History Panel ========== -->
-    <div v-if="showImportHistory && importHistory.length > 0" class="import-history-panel border-b">
-      <div class="d-flex align-center px-3 py-1">
-        <v-icon size="16" color="medium-emphasis" class="mr-1">mdi-history</v-icon>
-        <span class="text-caption font-weight-medium">导入记录 ({{ importHistory.length }})</span>
-        <v-spacer />
-        <v-btn size="x-small" variant="text" icon="mdi-close" @click="showImportHistory = false" />
-      </div>
-      <v-list density="compact" max-height="160" class="py-0">
-        <v-list-item
-          v-for="entry in importHistory.slice().reverse()"
-          :key="entry.id"
-          density="compact"
-          :title="entry.name"
-          :subtitle="formatDate(entry.timestamp) + ' · ' + entry.statusText"
-        >
-          <template #prepend>
-            <v-icon size="16" :color="entry.statusIconColor">
-              {{ entry.statusIcon }}
-            </v-icon>
-          </template>
-        </v-list-item>
-      </v-list>
     </div>
 
     <!-- ========== Empty State / Drop Zone ========== -->
@@ -816,17 +781,6 @@ import type { Book, ImportMode, SortField, SortOrder } from '@/types'
 const store = useBookshelfStore()
 const router = useRouter()
 
-// ========== Import History Entry ==========
-interface ImportHistoryEntry {
-  id: string
-  name: string
-  status: 'success' | 'failed' | 'duplicate'
-  timestamp: number
-  statusText: string
-  statusIcon: string
-  statusIconColor: string
-}
-
 // ========== Local State ==========
 const isDragOver = ref(false)
 
@@ -857,10 +811,6 @@ const gridSize = ref<'small' | 'medium' | 'large'>('medium')
 watch(gridSizeToggle, (v) => {
   gridSize.value = (['small', 'medium', 'large'] as const)[v]
 })
-
-// Import history
-const importHistory = ref<ImportHistoryEntry[]>([])
-const showImportHistory = ref(false)
 
 // View toggle
 const viewModeToggle = ref(store.viewMode === 'grid' ? 0 : 1)
@@ -1245,74 +1195,28 @@ async function pickFolder() {
 
 async function startImport() {
   dialogImporting.value = true
-  const beforeBookIds = new Set(store.books.map(b => b.id))
-  const importedFiles: { name: string; path: string }[] = []
 
   try {
     if (importMode.value === 'copy') {
       const paths = pendingFiles.value.map(f => f.path)
-      importedFiles.push(...pendingFiles.value.map(f => ({ name: f.name, path: f.path })))
       await store.importFiles(paths, importTargetLibId.value)
     } else {
-      // Folder mode: create library then import files into it
       const lib = await store.createLibrary(newLibraryName.value.trim(), newLibraryPath.value)
       store.setActiveLibrary(lib.id)
-      // Open file picker so user can import batch files into this new folder library
       if (window.electronAPI) {
         const result = await window.electronAPI.openFiles()
         if (!result.canceled && result.filePaths.length > 0) {
-          importedFiles.push(...result.filePaths.map((p: string) => ({
-            name: p.split(/[\\/]/).pop() || p,
-            path: p,
-          })))
           await store.importFiles(result.filePaths, lib.id, 'folder')
         }
       }
     }
 
-    // Build import history from results
-    const newBookIds = new Set(store.books.map(b => b.id))
-    const newIds = [...newBookIds].filter(id => !beforeBookIds.has(id))
-    const newBooks = store.books.filter(b => newIds.includes(b.id))
-
-    for (const file of importedFiles) {
-      const matched = newBooks.find(b => {
-        const bn = b.path.split(/[\\/]/).pop() || ''
-        return bn === file.name || file.name === (b.path.split(/[\\/]/).pop() || '')
-      })
-      let status: ImportHistoryEntry['status']
-      if (matched) {
-        status = 'success'
-      } else {
-        // Check if it was a duplicate
-        status = store.importProgress.skippedDuplicates > 0 ? 'duplicate' : 'failed'
-      }
-      const entry = createHistoryEntry(file.name, status)
-      importHistory.value.push(entry)
-    }
-
-    // If no per-file info available, check skippedDuplicates count
-    if (store.importProgress.skippedDuplicates > 0 && importedFiles.length === 0) {
-      // Folder mode without file picker; skip history tracking
-    }
-
-    // Show the history panel if any entries
-    if (importHistory.value.length > 0) {
-      showImportHistory.value = true
-    }
-
-    // Reset
     pendingFiles.value = []
     newLibraryName.value = ''
     newLibraryPath.value = ''
     showImportDialog.value = false
   } catch (e) {
     logger.error('Import failed:', e)
-    // Record failures for pending files
-    for (const file of importedFiles.length > 0 ? importedFiles : pendingFiles.value.map(f => ({ name: f.name, path: f.path }))) {
-      importHistory.value.push(createHistoryEntry(file.name, 'failed'))
-    }
-    if (importHistory.value.length > 0) showImportHistory.value = true
   } finally {
     dialogImporting.value = false
   }
@@ -1336,32 +1240,14 @@ async function handleDrop(e: DragEvent) {
   if (!files || files.length === 0) return
 
   const filePaths: string[] = []
-  const fileNames: string[] = []
   for (const file of files) {
     if ((file as any).path) {
       filePaths.push((file as any).path)
-      fileNames.push(file.name)
     }
   }
 
   if (filePaths.length > 0) {
-    const beforeBookIds = new Set(store.books.map(b => b.id))
     await store.importFiles(filePaths)
-
-    // Track import history
-    const newBookIds = new Set(store.books.map(b => b.id))
-    const newIds = [...newBookIds].filter(id => !beforeBookIds.has(id))
-    const newBooks = store.books.filter(b => newIds.includes(b.id))
-
-    for (const name of fileNames) {
-      const matched = newBooks.find(b => {
-        const bn = b.path.split(/[\\/]/).pop() || ''
-        return bn === name || name === (b.path.split(/[\\/]/).pop() || '')
-      })
-      const status: ImportHistoryEntry['status'] = matched ? 'success' : 'duplicate'
-      importHistory.value.push(createHistoryEntry(name, status))
-    }
-    if (importHistory.value.length > 0) showImportHistory.value = true
   }
 }
 
@@ -1400,24 +1286,6 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return (bytes / 1024 / 1024).toFixed(1) + ' MB'
-}
-
-function createHistoryEntry(name: string, status: ImportHistoryEntry['status']): ImportHistoryEntry {
-  const statusMap = {
-    success:   { text: '导入成功', icon: 'mdi-check-circle', color: 'success' },
-    failed:    { text: '导入失败', icon: 'mdi-alert-circle', color: 'error' },
-    duplicate: { text: '已存在（重复）', icon: 'mdi-content-duplicate', color: 'warning' },
-  }
-  const s = statusMap[status]
-  return {
-    id: `${Date.now()}-${crypto.randomUUID?.()?.slice(0,8) || Math.random().toString(36).slice(2, 10)}`,
-    name,
-    status,
-    timestamp: Date.now(),
-    statusText: s.text,
-    statusIcon: s.icon,
-    statusIconColor: s.color,
-  }
 }
 
 // ========== Cover Color ==========
@@ -1837,16 +1705,6 @@ onUnmounted(() => {
 }
 .bg-surface-variant {
   background: rgb(var(--v-theme-surface-variant));
-}
-
-/* ========== Import History Panel ========== */
-.import-history-panel {
-  flex-shrink: 0;
-  background: rgb(var(--v-theme-surface));
-  border-bottom: 1px solid rgb(var(--v-theme-border));
-}
-.import-history-panel .v-list {
-  background: transparent;
 }
 
 /* ========== Pagination Nav ========== */

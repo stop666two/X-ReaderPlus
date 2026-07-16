@@ -58,7 +58,6 @@ export default {
   bookshelf: {
     searchPlaceholder: '搜索书名或作者...',
     importLabel: '导入',
-    importRecords: '导入记录',
     importDialog: '导入书籍',
     importMethod: '导入方式',
     importTarget: '导入到书库',
