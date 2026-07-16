@@ -467,9 +467,10 @@
         <v-card-text class="pt-4">
           <!-- Import mode selection -->
           <label class="text-caption font-weight-medium d-block mb-1">导入方式</label>
-          <v-radio-group v-model="importMode" density="compact" hide-details class="mb-3" inline>
-            <v-radio label="复制导入" value="copy" />
-            <v-radio label="文件夹引用" value="folder" />
+          <v-radio-group v-model="importMode" density="compact" hide-details class="mb-3">
+            <v-radio label="复制到现有书库" value="copy" />
+            <v-radio label="新建书库 + 选择文件导入" value="new-lib-files" />
+            <v-radio label="新建书库 + 导入文件夹" value="new-lib-folder" />
           </v-radio-group>
 
           <!-- Copy mode: drag zone + file picker -->
@@ -514,14 +515,17 @@
               </v-btn>
             </div>
 
-            <!-- Selected files list -->
+            <!-- Selected files list (show first 20) -->
             <div v-if="pendingFiles.length > 0" class="mt-3">
-              <div class="text-caption font-weight-medium mb-1">
-                待导入 {{ pendingFiles.length }} 个文件
+              <div class="text-caption font-weight-medium mb-1 d-flex align-center">
+                <span>待导入 {{ pendingFiles.length }} 个文件</span>
+                <v-chip v-if="pendingFiles.length > 20" size="x-small" variant="flat" class="ml-2">
+                  仅显示前 20 个
+                </v-chip>
               </div>
-              <v-list density="compact" max-height="140" class="border rounded">
+              <v-list density="compact" max-height="200" class="border rounded">
                 <v-list-item
-                  v-for="(f, i) in pendingFiles"
+                  v-for="(f, i) in pendingFiles.slice(0, 20)"
                   :key="i"
                   :title="f.name"
                   density="compact"
@@ -530,32 +534,86 @@
                     <v-icon size="16" color="medium-emphasis">mdi-file-outline</v-icon>
                   </template>
                 </v-list-item>
+                <v-list-item v-if="pendingFiles.length > 20" density="compact">
+                  <v-list-item-title class="text-caption text-medium-emphasis text-center">
+                    ... 还有 {{ pendingFiles.length - 20 }} 个文件 ...
+                  </v-list-item-title>
+                </v-list-item>
               </v-list>
             </div>
           </template>
 
-          <!-- Folder mode: folder picker + library name -->
-          <template v-else>
-            <div class="mb-3">
-              <label class="text-caption font-weight-medium d-block mb-1">书库名称</label>
-              <v-text-field
-                v-model="newLibraryName"
-                placeholder="输入书库名称..."
-                density="compact"
-                variant="outlined"
-                hide-details
-              />
-            </div>
-
-            <v-btn
+          <!-- New lib + files mode -->
+          <template v-else-if="importMode === 'new-lib-files'">
+            <v-text-field
+              v-model="newLibraryName"
+              label="新书库名称"
               variant="outlined"
-              prepend-icon="mdi-folder-open"
-              block
-              @click="pickFolder"
+              density="compact"
+              hide-details
+              placeholder="输入书库名称..."
+              class="mb-3"
+            />
+            <div
+              class="import-drop-zone"
+              :class="{ 'import-drop-zone-active': importDragOver }"
+              @drop.prevent="handleImportDrop"
+              @dragover.prevent
+              @dragenter="importDragOver = true"
+              @dragleave="importDragOver = false"
+              @drop="importDragOver = false"
             >
+              <v-icon size="40" color="medium-emphasis" class="mb-1">mdi-file-document-multiple-outline</v-icon>
+              <p class="text-body-2 text-medium-emphasis mb-1">拖拽文件到此处</p>
+              <p class="text-caption text-medium-emphasis">
+                或点击下方按钮选择文件
+              </p>
+            </div>
+            <div class="text-center mt-3">
+              <v-btn variant="outlined" prepend-icon="mdi-file-plus" @click="pickFiles">选择文件</v-btn>
+            </div>
+            <!-- Selected files list (show first 20) -->
+            <div v-if="pendingFiles.length > 0" class="mt-3">
+              <div class="text-caption font-weight-medium mb-1 d-flex align-center">
+                <span>待导入 {{ pendingFiles.length }} 个文件</span>
+                <v-chip v-if="pendingFiles.length > 20" size="x-small" variant="flat" class="ml-2">
+                  仅显示前 20 个
+                </v-chip>
+              </div>
+              <v-list density="compact" max-height="200" class="border rounded">
+                <v-list-item
+                  v-for="(f, i) in pendingFiles.slice(0, 20)"
+                  :key="i"
+                  :title="f.name"
+                  density="compact"
+                >
+                  <template #prepend>
+                    <v-icon size="16" color="medium-emphasis">mdi-file-outline</v-icon>
+                  </template>
+                </v-list-item>
+                <v-list-item v-if="pendingFiles.length > 20" density="compact">
+                  <v-list-item-title class="text-caption text-medium-emphasis text-center">
+                    ... 还有 {{ pendingFiles.length - 20 }} 个文件 ...
+                  </v-list-item-title>
+                </v-list-item>
+              </v-list>
+            </div>
+          </template>
+
+          <!-- New lib + folder mode -->
+          <template v-else-if="importMode === 'new-lib-folder'">
+            <v-text-field
+              v-model="newLibraryName"
+              label="新书库名称"
+              variant="outlined"
+              density="compact"
+              hide-details
+              placeholder="输入书库名称..."
+              class="mb-3"
+            />
+            <v-btn variant="outlined" prepend-icon="mdi-folder-open" block @click="pickFolder">
               {{ newLibraryPath ? '重新选择文件夹' : '选择文件夹' }}
             </v-btn>
-
             <div v-if="newLibraryPath" class="mt-2 pa-2 bg-surface-variant rounded text-caption">
               <v-icon size="14" color="medium-emphasis" class="mr-1">mdi-folder</v-icon>
               {{ newLibraryPath }}
@@ -846,7 +904,6 @@ const showConfirm = ref(false)
 
 // Import dialog
 const showImportDialog = ref(false)
-const showNewLibDialog = ref(false)
 const importMode = ref<ImportMode>('copy')
 const importDragOver = ref(false)
 const pendingFiles = ref<{ name: string; path: string }[]>([])
@@ -1027,7 +1084,13 @@ const canStartImport = computed(() => {
   if (importMode.value === 'copy') {
     return pendingFiles.value.length > 0
   }
-  return newLibraryPath.value.length > 0 && newLibraryName.value.trim().length > 0
+  if (importMode.value === 'new-lib-files') {
+    return newLibraryName.value.trim().length > 0 && pendingFiles.value.length > 0
+  }
+  if (importMode.value === 'new-lib-folder') {
+    return newLibraryName.value.trim().length > 0 && newLibraryPath.value.length > 0
+  }
+  return false
 })
 
 // ========== Navigation ==========
@@ -1158,10 +1221,15 @@ async function pickFiles() {
   if (window.electronAPI) {
     const result = await window.electronAPI.openFiles()
     if (!result.canceled && result.filePaths.length > 0) {
-      pendingFiles.value = result.filePaths.map((p: string) => ({
+      const newFiles = result.filePaths.map((p: string) => ({
         name: p.split(/[\\/]/).pop() || p,
         path: p,
       }))
+      for (const f of newFiles) {
+        if (!pendingFiles.value.some(ex => ex.path === f.path)) {
+          pendingFiles.value.push(f)
+        }
+      }
     }
   } else {
     // Browser fallback — wrap in a Promise so the caller can await
@@ -1172,10 +1240,15 @@ async function pickFiles() {
       input.accept = '.epub,.txt,.md,.markdown,.html,.htm,.fb2,.djvu,.docx,.rtf,.odt,.pdf,.cbr,.cbz,.cbt,.cb7,.chm,.lit,.lrf'
       input.onchange = () => {
         if (input.files) {
-          pendingFiles.value = Array.from(input.files).map(f => ({
+          const newFiles = Array.from(input.files).map(f => ({
             name: f.name,
             path: (f as any).path || f.name,
           }))
+          for (const f of newFiles) {
+            if (!pendingFiles.value.some(ex => ex.path === f.path)) {
+              pendingFiles.value.push(f)
+            }
+          }
         }
         resolve()
       }
@@ -1214,14 +1287,29 @@ async function pickFolder() {
   }
 }
 
-async function startImport() {
-  dialogImporting.value = true
+function resetImportState() {
+  pendingFiles.value = []
+  newLibraryName.value = ''
+  newLibraryPath.value = ''
+  importMode.value = 'copy'
+  importTargetLibId.value = DEFAULT_LIBRARY_ID
+}
 
+async function startImport() {
+  if (dialogImporting.value) return
+  dialogImporting.value = true
   try {
     if (importMode.value === 'copy') {
       const paths = pendingFiles.value.map(f => f.path)
       await store.importFiles(paths, importTargetLibId.value)
-    } else {
+    } else if (importMode.value === 'new-lib-files') {
+      if (!newLibraryName.value.trim()) return
+      await store.createLibrary(newLibraryName.value.trim(), '')
+      const newLib = store.libraries[store.libraries.length - 1]
+      store.setActiveLibrary(newLib.id)
+      await store.importFiles(pendingFiles.value.map(f => f.path), newLib.id)
+    } else if (importMode.value === 'new-lib-folder') {
+      if (!newLibraryName.value.trim() || !newLibraryPath.value) return
       const lib = await store.createLibrary(newLibraryName.value.trim(), newLibraryPath.value)
       store.setActiveLibrary(lib.id)
       if (window.electronAPI) {
@@ -1231,15 +1319,12 @@ async function startImport() {
         }
       }
     }
-
-    pendingFiles.value = []
-    newLibraryName.value = ''
-    newLibraryPath.value = ''
     showImportDialog.value = false
   } catch (e) {
     logger.error('Import failed:', e)
   } finally {
     dialogImporting.value = false
+    resetImportState()
   }
 }
 
@@ -1248,10 +1333,15 @@ function handleImportDrop(e: DragEvent) {
   const files = e.dataTransfer?.files
   if (!files || files.length === 0) return
 
-  pendingFiles.value = Array.from(files).map(f => ({
+  const newFiles = Array.from(files).map(f => ({
     name: f.name,
     path: (f as any).path || f.name,
   }))
+  for (const f of newFiles) {
+    if (!pendingFiles.value.some(ex => ex.path === f.path)) {
+      pendingFiles.value.push(f)
+    }
+  }
 }
 
 // ========== Drag & Drop (Main Area) ==========

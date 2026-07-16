@@ -376,22 +376,23 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
       }
 
       try {
-        const batchData = await window.electronAPI.readBatchFiles(filePaths)
         for (let i = 0; i < filePaths.length; i++) {
-          const r = batchData[i]
-          if (!r || r.error || !r.data || r.data.byteLength === 0) {
-            const readErr = r?.error || '未知错误'
-            logger.warn(`读取失败: ${filePaths[i]} — ${readErr}`)
-            importErrors.push({ file: r?.name || filePaths[i], type: '读取失败', detail: readErr })
+          const fp = filePaths[i]
+          const readResult = await window.electronAPI.readFile(fp)
+          if (!readResult.success || readResult.error || !readResult.data || readResult.data.byteLength === 0) {
+            const readErr = readResult.error || '未知错误'
+            logger.warn(`读取失败: ${fp} — ${readErr}`)
+            importErrors.push({ file: readResult.name || fp, type: '读取失败', detail: readErr })
             continue
           }
+          const r = { name: readResult.name || fp.split(/[/\\]/).pop() || fp, data: readResult.data, error: readResult.error }
 
           // 路径去重
-          if (importedPaths.has(filePaths[i])) {
+          if (importedPaths.has(fp)) {
             skippedCount++
             continue
           }
-          importedPaths.add(filePaths[i])
+          importedPaths.add(fp)
 
           bytesProcessed += r.data.byteLength
           importProgress.value = {
@@ -434,7 +435,6 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
           let contentHash: string
           let isDuplicate = false
 
-          // 快速 MD5 预检（比 SHA-256 快）
           let md5Hash: string
           try {
             const md5Buffer = await crypto.subtle.digest('MD5', data)
@@ -484,17 +484,14 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
           try {
             const bookId = generateId()
 
-            // Save original file BEFORE parsing (workerParse transfers the ArrayBuffer, neutering it)
             const rawFilePromise = db().rawFile && data.byteLength < 5 * 1024 * 1024
               ? db().rawFile.save(bookId, r.name, data).catch(() => {})
               : Promise.resolve()
 
-            // Offload heavy parsing to Worker thread
-            const parsed = await workerParse(worker, filePaths[i] || r.name, r.name, data, dataSize, workerProgress)
+            const parsed = await workerParse(worker, fp || r.name, r.name, data, dataSize, workerProgress)
 
             const chapterJson = JSON.stringify({ chapters: parsed.chapters, rawToc: parsed.rawToc })
 
-            // Auto-detect tags from parsed content
             const fullText = parsed.chapters.map((c: any) => c.content.replace(/<[^>]+>/g, ' ')).join('\n')
             const autoTags = detectTags(fullText)
             const book: Book = {
@@ -502,7 +499,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
               title: parsed.metadata.title.replace(/<[^>]+>/g, ''),
               author: parsed.metadata.author.replace(/<[^>]+>/g, ''),
               cover: await compressCover(parsed.metadata.cover || ''),
-              path: filePaths[i] || r.name,
+              path: fp || r.name,
               format: parsed.metadata.format,
               size: dataSize,
               addedAt: Date.now(),
@@ -520,13 +517,11 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
               contentHash
             }
 
-            // Critical writes first (book + chapters)
             await Promise.all([
               db().books.insert(book),
               db().chapters.set(bookId, chapterJson),
               rawFilePromise,
             ])
-            // Non-critical side effects (best-effort, errors are logged not thrown)
             upsertHistoryEntry({
               bookId, title: book.title, author: book.author,
               cover: book.cover, format: book.format, addedAt: book.addedAt,

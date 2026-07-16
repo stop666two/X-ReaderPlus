@@ -5,7 +5,7 @@ export type SortField = 'addedAt' | 'title' | 'author' | 'libraryName' | 'chapte
 export type SortOrder = 'asc' | 'desc'
 export type AnnotationType = 'highlight' | 'note'
 export type HighlightColor = 'yellow' | 'green' | 'blue' | 'pink' | 'orange' | 'purple'
-export type ImportMode = 'copy' | 'folder'
+export type ImportMode = 'copy' | 'folder' | 'new-lib-files' | 'new-lib-folder'
 
 export type BookFormat =
   | 'epub' | 'txt' | 'markdown' | 'html'
