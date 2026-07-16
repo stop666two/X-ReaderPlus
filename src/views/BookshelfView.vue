@@ -759,8 +759,11 @@
         </v-toolbar>
         <div class="pa-4">
           <div class="text-body-2 mb-3">
-            成功导入 <strong>{{ importResultData.imported }}</strong> 本
-            <template v-if="importResultData.failed > 0">，<strong class="text-error">{{ importResultData.failed }}</strong> 本失败</template>
+            共 <strong>{{ importResultData.imported + importResultData.failed + (importResultData.skipped || 0) }}</strong> 个文件
+            <br>
+            ✓ 成功 <strong>{{ importResultData.imported }}</strong> 本
+            <template v-if="importResultData.skipped > 0"> | ⏭ 跳过 <strong>{{ importResultData.skipped }}</strong> 本（重复）</template>
+            <template v-if="importResultData.failed > 0"> | ✗ 失败 <strong class="text-error">{{ importResultData.failed }}</strong> 本</template>
           </div>
           <v-textarea
             v-if="importResultData.errors.length > 0"
@@ -899,7 +902,7 @@ const importLibOptions = computed(() => [
 
 // ========== Import Result ==========
 const showImportResult = ref(false)
-const importResultData = ref<{ imported: number; failed: number; errors: Array<{ file: string; type: string; detail: string }> }>({ imported: 0, failed: 0, errors: [] })
+const importResultData = ref<{ imported: number; failed: number; skipped: number; errors: Array<{ file: string; type: string; detail: string }> }>({ imported: 0, failed: 0, skipped: 0, errors: [] })
 
 watch(() => store.importResult, (val) => {
   if (val && val.timestamp > 0) {

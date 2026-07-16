@@ -474,7 +474,7 @@ async function refresh() {
   buildTagCache()
 }
 
-watch([() => bookshelf.libraries, () => bookshelf.books.length, () => bookshelf.totalBookCount], () => {
+watch([() => bookshelf.libraries, () => bookshelf.books, () => bookshelf.totalBookCount], () => {
   lockedLibs.value = new Set()
   buildTagCache()
 }, { deep: true })

@@ -63,7 +63,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
   const _knownTags = ref<string[]>([])
   const _tagCache = ref<Array<{ name: string; count: number }>>([])
   const _contentHashIndex = ref<Set<string>>(new Set())
-  const _importResult = ref<{ imported: number; failed: number; errors: Array<{ file: string; type: string; detail: string }>; timestamp: number } | null>(null)
+  const _importResult = ref<{ imported: number; failed: number; skipped: number; errors: Array<{ file: string; type: string; detail: string }>; timestamp: number } | null>(null)
 
   const activeLibrary = computed(() => {
     if (activeLibraryId.value === ALL_LIBRARY_ID) {
@@ -307,6 +307,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     let importedCount = 0
     const names = customNames || filePaths.map(p => p.split(/[\\/]/).pop() || 'unknown')
     const importErrors: Array<{ file: string; type: string; detail: string }> = []
+    let skippedCount = 0
     const importedPaths = new Set<string>()
 
     try {
@@ -386,7 +387,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
 
           // 路径去重
           if (importedPaths.has(filePaths[i])) {
-            logger.info(`跳过重复路径: ${r.name}`)
+            skippedCount++
             continue
           }
           importedPaths.add(filePaths[i])
@@ -473,11 +474,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
               bytesTotal: totalBytes,
               skippedDuplicates
             }
-            if (contentHash) {
-              logger.info(`跳过重复内容: ${r.name}`)
-            } else {
-              logger.info(`跳过重复内容: ${r.name}`)
-            }
+            skippedCount++
             continue
           }
 
@@ -578,10 +575,11 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
         }
         ensureFullBooksLoaded().catch(() => {})
       }
-      if (importErrors.length > 0) {
+      if (importErrors.length > 0 || skippedCount > 0) {
         _importResult.value = {
           imported: importedCount,
           failed: importErrors.length,
+          skipped: skippedCount,
           errors: importErrors,
           timestamp: Date.now()
         }
@@ -589,6 +587,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
         _importResult.value = {
           imported: importedCount,
           failed: 0,
+          skipped: 0,
           errors: [],
           timestamp: Date.now()
         }

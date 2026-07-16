@@ -117,6 +117,7 @@
                 <v-chip size="x-small" variant="flat" color="primary">
                   {{ getBookTitle(ann.bookId) }}
                 </v-chip>
+                <v-chip v-if="ann.bookDeleted" size="x-small" color="warning" variant="tonal">原文件已删除</v-chip>
                 <v-chip size="x-small" variant="text" class="text-medium-emphasis">
                   {{ getChapterTitle(ann) }}
                 </v-chip>
@@ -400,6 +401,7 @@ const deletedAnnotations = computed(() =>
 const trashTabCount = computed(() => deletedAnnotations.value.length)
 
 const filteredAnnotations = computed(() => {
+  const bookMap = new Map(bookshelf.books.map(b => [b.id, b]))
   let result = activeAnnotations.value.slice()
 
   if (searchQuery.value) {
@@ -415,7 +417,10 @@ const filteredAnnotations = computed(() => {
   }
 
   result.sort((a, b) => b.createdAt - a.createdAt)
-  return result
+  return result.map(n => ({
+    ...n,
+    bookDeleted: !bookMap.has(n.bookId)
+  }))
 })
 
 // ---- Pagination (active) ----
