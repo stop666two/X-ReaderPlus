@@ -263,7 +263,7 @@ jobs:
       - name: Generate release body
         run: |
           cp CHANGELOG.md release_body.md
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: X-ReaderPlus ${{ github.ref_name }}
