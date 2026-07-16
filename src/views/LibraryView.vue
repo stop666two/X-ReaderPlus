@@ -474,14 +474,10 @@ async function refresh() {
   buildTagCache()
 }
 
-watch(() => bookshelf.libraries, () => {
+watch([() => bookshelf.libraries, () => bookshelf.books.length, () => bookshelf.totalBookCount], () => {
   lockedLibs.value = new Set()
   buildTagCache()
 }, { deep: true })
-
-watch(() => bookshelf.books.length, () => {
-  buildTagCache()
-})
 
 onMounted(refresh)
 </script>

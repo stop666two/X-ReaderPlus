@@ -209,6 +209,8 @@ export interface PinState {
   encryptionKey?: string
 }
 
+export type EncryptionMethod = 'aes-gcm' | 'aes-cbc' | 'chacha20'
+
 export interface BackupData {
   version: string
   exportedAt: number

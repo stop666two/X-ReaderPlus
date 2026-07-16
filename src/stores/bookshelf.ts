@@ -386,7 +386,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
 
           // 路径去重
           if (importedPaths.has(filePaths[i])) {
-            importErrors.push({ file: r.name, type: '重复文件', detail: '本次导入中已选择相同路径' })
+            logger.info(`跳过重复路径: ${r.name}`)
             continue
           }
           importedPaths.add(filePaths[i])
@@ -474,9 +474,9 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
               skippedDuplicates
             }
             if (contentHash) {
-              importErrors.push({ file: r.name, type: '重复内容', detail: 'SHA-256 哈希与已有书籍相同' })
+              logger.info(`跳过重复内容: ${r.name}`)
             } else {
-              importErrors.push({ file: r.name, type: '重复内容', detail: 'MD5 哈希与已有书籍相同' })
+              logger.info(`跳过重复内容: ${r.name}`)
             }
             continue
           }

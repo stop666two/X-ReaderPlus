@@ -1491,6 +1491,22 @@
               />
             </div>
             <div>
+              <v-select
+                v-model="webdavEncryption"
+                :items="[
+                  { title: 'AES-256-GCM（推荐）', value: 'aes-gcm' },
+                  { title: 'AES-256-CBC', value: 'aes-cbc' },
+                  { title: 'ChaCha20-Poly1305', value: 'chacha20' }
+                ]"
+                label="加密方式"
+                variant="outlined"
+                density="compact"
+                hide-details
+                class="mb-2"
+                @update:model-value="onWebdavConfigChange"
+              />
+            </div>
+            <div>
               <v-text-field
                 v-model="webdavPassword"
                 label="密码"
@@ -2847,6 +2863,7 @@ const webdavUsername = ref('')
 const webdavPassword = ref('')
 const webdavShowPwd = ref(false)
 const webdavAutoBackupInterval = ref('off')
+const webdavEncryption = ref('aes-gcm')
 const webdavLastBackupAt = ref(0)
 const webdavMessage = ref('')
 const webdavMessageType = ref<'success' | 'error' | 'warning' | 'info'>('info')
@@ -2864,6 +2881,7 @@ async function loadWebdavConfig() {
       webdavUrl.value = cfg.url || ''
       webdavUsername.value = cfg.username || ''
       webdavAutoBackupInterval.value = cfg.autoBackupInterval || 'off'
+      webdavEncryption.value = cfg.encryption || 'aes-gcm'
       webdavLastBackupAt.value = cfg.lastBackupAt || 0
       if (cfg.passwordIv && cfg.passwordCipher) {
         try {
@@ -2887,6 +2905,7 @@ async function onWebdavConfigChange() {
       username: webdavUsername.value,
       passwordIv: passwordEncrypted?.iv || '',
       passwordCipher: passwordEncrypted?.ciphertext || '',
+      encryption: webdavEncryption.value,
       autoBackupInterval: webdavAutoBackupInterval.value,
       lastBackupAt: webdavLastBackupAt.value
     }
