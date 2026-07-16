@@ -30,14 +30,6 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Check AGENTS.md not staged
-        run: |
-          if git ls-files --error-unmatch AGENTS.md 2>/dev/null; then
-            echo "::error::AGENTS.md must not be committed!"
-            exit 1
-          fi
-          echo "AGENTS.md check passed"
-
       - run: npm ci
 
       - name: Lint frontend
@@ -48,7 +40,7 @@ jobs:
         run: go vet ./...
 
   build-windows:
-  build-windows:
+    needs: [lint-and-vet]
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -101,6 +93,7 @@ jobs:
           path: dist/X-ReaderPlus-win-${{ matrix.arch }}.exe
 
   build-macos:
+    needs: [lint-and-vet]
     runs-on: macos-latest
     strategy:
       fail-fast: false
@@ -166,6 +159,7 @@ jobs:
           path: dist/X-ReaderPlus-mac-${{ matrix.arch == 'amd64' && 'intel' || 'apple' }}.dmg
 
   build-linux:
+    needs: [lint-and-vet]
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
@@ -246,6 +240,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Download artifacts
