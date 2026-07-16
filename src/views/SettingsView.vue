@@ -1334,46 +1334,21 @@
           数据与缓存
         </v-card-title>
         <v-card-text>
-          <!-- 数据管理操作 -->
-          <p class="text-caption font-weight-bold mb-2">数据管理</p>
+          <!-- 区域A: 数据维护 -->
+          <p class="text-caption font-weight-bold mb-2">数据维护</p>
           <div class="d-flex flex-wrap gap-2 mb-3">
             <v-btn
-              color="primary"
-              variant="outlined"
-              size="small"
-              prepend-icon="mdi-export"
-              @click="exportData"
-              :loading="exporting"
-            >
-              导出备份
-              <template v-if="exporting" #loader>
-                <v-progress-circular indeterminate size="14" width="2" />
-              </template>
-            </v-btn>
-
-            <v-btn
-              color="secondary"
-              variant="outlined"
-              size="small"
-              prepend-icon="mdi-format-annotation-plus"
-              @click="showExportAnnotations = true"
-            >
-              导出标注
-            </v-btn>
-
-            <v-btn
-              color="primary"
-              variant="outlined"
-              size="small"
-              prepend-icon="mdi-import"
-              @click="importData"
-              :loading="importing"
-            >
-              导入恢复
-            </v-btn>
-
-            <v-btn
               color="warning"
+              variant="outlined"
+              size="small"
+              prepend-icon="mdi-delete-sweep"
+              @click="showCacheClearDialog = true"
+              :disabled="cacheSize === 0"
+            >
+              清除缓存
+            </v-btn>
+            <v-btn
+              color="primary"
               variant="outlined"
               size="small"
               prepend-icon="mdi-refresh"
@@ -1382,7 +1357,6 @@
             >
               刷新元数据
             </v-btn>
-
             <v-btn
               color="warning"
               variant="outlined"
@@ -1391,7 +1365,7 @@
               :loading="dataOpInProgress"
               @click="cleanupOrphanedData"
             >
-              清理失效数据
+              清理无效数据
             </v-btn>
             <v-btn
               color="error"
@@ -1400,17 +1374,53 @@
               prepend-icon="mdi-delete-sweep"
               @click="showClearAll = true"
             >
-              清除全部数据
+              清除所有数据
             </v-btn>
           </div>
 
           <v-divider class="my-3" />
+
+          <!-- 区域B: 备份与恢复 -->
           <div class="text-subtitle-2 mb-2">备份与恢复</div>
-          <div class="d-flex flex-wrap gap-2">
-            <v-btn size="small" variant="tonal" prepend-icon="mdi-download" @click="downloadLocalBackup">下载备份</v-btn>
-            <v-btn size="small" variant="tonal" prepend-icon="mdi-upload" @click="importLocalBackup">恢复备份</v-btn>
-            <v-btn size="small" variant="tonal" prepend-icon="mdi-export-variant" @click="exportAnnotations">导出标注</v-btn>
+          <div class="d-flex flex-wrap gap-2 mb-2">
+            <v-btn color="primary" variant="tonal" size="small" prepend-icon="mdi-backup-restore" @click="showBackupConfig = !showBackupConfig">
+              创建备份
+            </v-btn>
+            <v-btn color="secondary" variant="tonal" size="small" prepend-icon="mdi-restore" @click="executeRestore">
+              恢复备份
+            </v-btn>
           </div>
+
+          <!-- 备份配置面板 -->
+          <v-expand-transition>
+            <v-card v-if="showBackupConfig" variant="outlined" class="pa-3 mt-2">
+              <div class="text-subtitle-2 mb-2">选择备份内容</div>
+              <v-checkbox v-model="backupOpts.books" label="所有书籍" hide-details density="compact" />
+              <v-checkbox v-model="backupOpts.tags" label="标签" hide-details density="compact" />
+              <v-checkbox v-model="backupOpts.annotations" label="笔记与标注" hide-details density="compact" />
+              <v-checkbox v-model="backupOpts.dictionary" label="词典记录" hide-details density="compact" />
+              <v-checkbox v-model="backupOpts.history" label="阅读历史" hide-details density="compact" />
+              <v-checkbox v-model="backupOpts.stats" label="统计记录" hide-details density="compact" />
+              <v-checkbox v-model="backupOpts.trash" label="回收站内容" hide-details density="compact" />
+              <v-checkbox v-model="backupOpts.includeOrphaned" label="保存已删除文章的附属数据（阅读历史、统计、笔记等）" hide-details density="compact" class="mt-2" />
+              <v-divider class="my-2" />
+              <v-select
+                v-model="backupOpts.selectedLibraries"
+                :items="libraryOptions"
+                label="指定书库（不选则备份所有）"
+                multiple
+                clearable
+                variant="outlined"
+                density="compact"
+                hide-details
+              />
+              <div class="d-flex ga-2 mt-3">
+                <v-btn color="primary" variant="tonal" @click="executeBackup" :loading="backingUp">开始备份</v-btn>
+                <v-btn variant="text" @click="showBackupConfig = false">取消</v-btn>
+              </div>
+              <p class="text-caption text-medium-emphasis mt-2">文件名格式: X-ReaderPlus-{type}-data.db.json5</p>
+            </v-card>
+          </v-expand-transition>
 
           <!-- Progress indicator -->
           <div v-if="dataOpInProgress" class="mt-2 mb-3">
@@ -2599,6 +2609,25 @@ const exportAnnotationFormat = ref<'json' | 'markdown' | 'csv'>('json')
 const exportingAnnotations = ref(false)
 const dataOpLabel = ref('')
 
+// ---- Backup & Restore ----
+const showBackupConfig = ref(false)
+const backingUp = ref(false)
+const backupOpts = ref({
+  books: true,
+  tags: true,
+  annotations: true,
+  dictionary: false,
+  history: true,
+  stats: true,
+  trash: false,
+  includeOrphaned: false,
+  selectedLibraries: [] as string[]
+})
+
+const libraryOptions = computed(() => [
+  ...bookshelf.libraries.map(l => ({ title: l.name, value: l.id }))
+])
+
 // ---- Page Sizes ----
 const PAGE_SIZES_KEY = 'pageSizes'
 const pageSizes = reactive({
@@ -3142,6 +3171,160 @@ async function restoreBackupData(backup: BackupData) {
   await settings.load()
   await checkPinStatus()
   await loadSecurityQuestion()
+}
+
+async function executeBackup() {
+  backingUp.value = true
+  try {
+    const data: any = {
+      manifest: { version: 1, createdAt: new Date().toISOString(), appVersion: APP_VERSION, sections: [] }
+    }
+
+    if (backupOpts.value.books || backupOpts.value.selectedLibraries.length > 0) {
+      let libFilter = backupOpts.value.selectedLibraries
+      let allBooks = bookshelf.books
+      if (libFilter.length > 0) allBooks = allBooks.filter(b => libFilter.includes(b.libraryId))
+
+      const fullBooks: any[] = []
+      for (const b of allBooks) {
+        try {
+          const chRecord = await api.ch.get(b.id)
+          const chapters = typeof chRecord === 'string' ? chRecord : (chRecord as any)?.data
+          fullBooks.push({
+            ...b,
+            libraryId: b.libraryId || 'default',
+            libraryName: bookshelf.libraries.find(l => l.id === (b.libraryId || 'default'))?.name || '',
+            chapters
+          })
+        } catch {}
+      }
+      data.books = fullBooks
+      data.manifest.sections.push('books')
+    }
+
+    if (backupOpts.value.tags) {
+      data.tags = bookshelf.tagCache
+      data.manifest.sections.push('tags')
+    }
+
+    if (backupOpts.value.annotations) {
+      const annRecords = await api.ann.toArray()
+      const bmRecords = await api.bm.toArray()
+      data.annotations = annRecords.map((r: any) => typeof r.data === 'string' ? JSON.parse(r.data) : r)
+      data.bookmarks = bmRecords.map((r: any) => typeof r.data === 'string' ? JSON.parse(r.data) : r)
+      data.manifest.sections.push('annotations')
+    }
+
+    if (backupOpts.value.history) {
+      try {
+        const api = window.electronAPI as any
+        if (api.history?.getAll) data.history = await api.history.getAll()
+      } catch {}
+      data.manifest.sections.push('history')
+    }
+
+    if (backupOpts.value.stats) {
+      const metaRecords = await api.meta.toArray()
+      data.stats = metaRecords.map((r: any) => typeof r.data === 'string' ? JSON.parse(r.data) : r)
+      data.manifest.sections.push('stats')
+    }
+
+    if (backupOpts.value.trash) {
+      const tRecords = await db.trash?.toArray().catch(() => []) || []
+      data.trash = tRecords
+      data.manifest.sections.push('trash')
+    }
+
+    const type = backupOpts.value.selectedLibraries.length > 0 ? 'partial' : 'full'
+
+    const json = JSON.stringify(data, null, 2)
+    if (window.electronAPI?.saveFile) {
+      const result = await window.electronAPI.saveFile({
+        defaultPath: `X-ReaderPlus-${type}-data.db.json5`,
+        data: json,
+        type: 'application/json'
+      })
+      if (!result.canceled) {
+        showSnackbar('备份创建成功', 'success')
+      }
+    } else {
+      const blob = new Blob([json], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `X-ReaderPlus-${type}-data.db.json5`
+      a.click()
+      URL.revokeObjectURL(url)
+    }
+  } catch (e: any) {
+    showSnackbar('备份失败: ' + (e.message || ''), 'error')
+  }
+  backingUp.value = false
+  showBackupConfig.value = false
+}
+
+async function executeRestore() {
+  try {
+    let data: any = null
+    if (window.electronAPI?.openFile) {
+      const result = await window.electronAPI.openFile()
+      if (result.canceled || !result.filePaths?.[0]) return
+      const readResult = await window.electronAPI.readFile(result.filePaths[0])
+      if (!readResult.success) return
+      const decoder = new TextDecoder()
+      data = JSON.parse(decoder.decode(readResult.data))
+    } else {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = '.json,.json5'
+      const text = await new Promise<string>((resolve, reject) => {
+        input.onchange = async (e: any) => {
+          const file = e.target.files?.[0]
+          if (!file) { reject(new Error('未选择文件')); return }
+          resolve(await file.text())
+        }
+        input.click()
+      })
+      data = JSON.parse(text)
+    }
+
+    if (!data.manifest) {
+      showSnackbar('无效的备份文件', 'error')
+      return
+    }
+
+    if (data.books) {
+      for (const book of data.books) {
+        const libId = book.libraryId || 'default'
+        const libExists = bookshelf.libraries.some(l => l.id === libId)
+        if (!libExists && libId !== 'default') {
+          await bookshelf.createLibrary(book.libraryName || libId, 'copy')
+        }
+        const { chapters, ...bookData } = book
+        await api.lib.put(book.id, JSON.stringify({ review: bookData.review || '', chapterIndex: bookData.chapterIndex || 0, chapterProgress: bookData.chapterProgress || 0, totalReadingTime: bookData.totalReadingTime || 0 }))
+        await upsertMeta(bookData)
+        if (chapters) {
+          await api.ch.put(book.id, typeof chapters === 'string' ? chapters : JSON.stringify(chapters))
+        }
+      }
+    }
+
+    if (data.annotations) {
+      for (const ann of data.annotations) {
+        await api.ann.put(ann.id, JSON.stringify(ann)).catch(() => {})
+      }
+    }
+    if (data.bookmarks) {
+      for (const bm of data.bookmarks) {
+        await api.bm.put(bm.id, JSON.stringify(bm)).catch(() => {})
+      }
+    }
+
+    await bookshelf.loadBooks()
+    showSnackbar('恢复完成', 'success')
+  } catch (e: any) {
+    showSnackbar('恢复失败: ' + String(e), 'error')
+  }
 }
 
 async function downloadLocalBackup() {
