@@ -5,7 +5,7 @@
 **完全脱机 · 隐私至上 · 多格式 · 高性能**
 
 [![Build](https://github.com/stop666two/X-ReaderPlus/actions/workflows/build.yml/badge.svg)](https://github.com/stop666two/X-ReaderPlus/actions/workflows/build.yml)
-[![Version](https://img.shields.io/badge/version-0.4.1-blue)](https://github.com/stop666two/X-ReaderPlus/releases)
+[![Version](https://img.shields.io/badge/version-0.5.0-blue)](https://github.com/stop666two/X-ReaderPlus/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
 [![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vue.js)](https://vuejs.org)
