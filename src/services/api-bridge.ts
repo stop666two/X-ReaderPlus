@@ -89,6 +89,7 @@ function toSnake(obj: any): any {
 // File dialog + read cache (LRU, max 50 entries)
 const MAX_CACHED_FILES = 500
 let _cachedFiles: Array<{ name: string; data: ArrayBuffer; error?: string }> = []
+let _browserFiles: Array<{ name: string; file: File; path: string }> = []
 
 function addToCache(file: { name: string; data: ArrayBuffer; error?: string }) {
   const idx = _cachedFiles.findIndex(f => f.name === file.name)
@@ -122,6 +123,7 @@ async function pickAndReadFiles(multiple: boolean): Promise<{ canceled: boolean;
   return new Promise(resolve => {
     const input = document.createElement('input')
     input.type = 'file'
+    input.accept = '.epub,.pdf,.txt,.md,.markdown,.html,.htm,.fb2,.djvu,.docx,.rtf,.odt,.cbz,.cbt,.chm,.lit,.lrf'
     input.multiple = multiple
     input.style.position = 'fixed'
     input.style.top = '-100px'
@@ -136,27 +138,20 @@ async function pickAndReadFiles(multiple: boolean): Promise<{ canceled: boolean;
       resolve({ canceled, filePaths: paths })
     }
 
-    input.onchange = async () => {
+    input.onchange = () => {
       const files = Array.from(input.files || [])
       if (files.length === 0) { finish(true, []); return }
-      _cachedFiles = []
+      _browserFiles = []
       for (const f of files) {
-        try {
-          const data = await readFileAsArrayBuffer(f)
-          addToCache({ name: f.name, data })
-        } catch (e) {
-          addToCache({ name: f.name, data: new ArrayBuffer(0), error: String(e) })
-        }
+        _browserFiles.push({ name: f.name, file: f, path: (f as any).path || f.name })
       }
-      finish(false, files.map(f => (f as any).path || f.name))
+      finish(false, _browserFiles.map(f => f.path))
     }
 
-    // Fallback: if dialog closes without change (user clicked cancel)
+    // 取消检测
     window.addEventListener('focus', function onFocus() {
       window.removeEventListener('focus', onFocus)
-      setTimeout(() => {
-        if (!settled) finish(true, [])
-      }, 500)
+      setTimeout(() => { if (!settled) finish(true, []) }, 2000)
     }, { once: true })
 
     input.click()
@@ -248,9 +243,8 @@ const apiObj: any = {
   openFiles: async () => wailsOrFallback(
     async () => {
       const files = await window.go!.main.App.OpenFiles()
-      _cachedFiles = files
-        .filter(f => !f.error && f.data)
-        .map(f => ({ name: f.name, data: wailsBytesToBuffer(f.data!) }))
+      // Go 不再返回文件数据（仅路径），所以不缓存
+      _cachedFiles = []
       return { canceled: false, filePaths: files.map(f => f.path) }
     },
     async () => pickAndReadFiles(true),
@@ -317,6 +311,17 @@ const apiObj: any = {
       if (info.error) return { success: false, data: new ArrayBuffer(0), name: '', error: info.error }
       return { success: true, data: wailsBytesToBuffer(info.data!), name: info.name }
     }
+    // 浏览器模式：从 _browserFiles 查找并读取
+    const bf = _browserFiles.find(f => f.path === filePath || f.name === filePath.split(/[/\\]/).pop())
+    if (bf) {
+      try {
+        const data = await readFileAsArrayBuffer(bf.file)
+        return { success: true, data, name: bf.name }
+      } catch (e) {
+        return { success: false, data: new ArrayBuffer(0), name: bf.name, error: String(e) }
+      }
+    }
+    // 回退到缓存
     const name = filePath.split(/[/\\]/).pop() || filePath
     const f = findInCache(name)
     if (f) return { success: true, data: f.data, name: f.name }
@@ -335,10 +340,22 @@ const apiObj: any = {
       }
       return results
     }
-    return paths.map(p => {
-      const n = p.split(/[/\\]/).pop() || p
-      return findInCache(n) || findInCache(p) || { name: n, data: new ArrayBuffer(0), error: 'Not found' }
-    })
+    // 浏览器模式：逐个从 _browserFiles 读取
+    const results: Array<{ name: string; data: ArrayBuffer; error?: string }> = []
+    for (const p of paths) {
+      const bf = _browserFiles.find(f => f.path === p || f.name === p.split(/[/\\]/).pop())
+      if (bf) {
+        try {
+          const data = await readFileAsArrayBuffer(bf.file)
+          results.push({ name: bf.name, data })
+        } catch (e) {
+          results.push({ name: bf.name, data: new ArrayBuffer(0), error: String(e) })
+        }
+      } else {
+        results.push({ name: p.split(/[/\\]/).pop() || p, data: new ArrayBuffer(0), error: 'Not found' })
+      }
+    }
+    return results
   },
   fileStats: async (paths: string[]) => {
     if (useWails()) {

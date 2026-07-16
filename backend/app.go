@@ -129,7 +129,15 @@ func (a *App) OpenFiles() ([]FileInfo, error) {
 		trustedPathsMu.Lock()
 		trustedPaths[p] = struct{}{}
 		trustedPathsMu.Unlock()
-		results = append(results, readFileInfoSafe(p))
+		info, statErr := os.Stat(p)
+		fi := FileInfo{Path: p}
+		if statErr == nil {
+			fi.Name = info.Name()
+			fi.Size = info.Size()
+		} else {
+			fi.Error = statErr.Error()
+		}
+		results = append(results, fi)
 	}
 	return results, nil
 }
@@ -144,7 +152,14 @@ func (a *App) OpenFile() (*FileInfo, error) {
 	trustedPathsMu.Lock()
 	trustedPaths[path] = struct{}{}
 	trustedPathsMu.Unlock()
-	fi := readFileInfoSafe(path)
+	info, statErr := os.Stat(path)
+	fi := FileInfo{Path: path}
+	if statErr == nil {
+		fi.Name = info.Name()
+		fi.Size = info.Size()
+	} else {
+		fi.Error = statErr.Error()
+	}
 	return &fi, nil
 }
 
