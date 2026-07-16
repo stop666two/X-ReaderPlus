@@ -38,6 +38,7 @@ export default [
         confirm: 'readonly',
         AbortController: 'readonly',
         cancelAnimationFrame: 'readonly',
+        atob: 'readonly',
         HTMLElement: 'readonly',
         HTMLInputElement: 'readonly',
         HTMLTextAreaElement: 'readonly',

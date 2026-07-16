@@ -1530,7 +1530,7 @@
               v-model="webdavEncMode"
               :items="[
                 { title: '不加密', value: 'none' },
-                { title: '密码加密', value: 'password' },
+                { title: '密码加密（推荐）', value: 'password' },
                 { title: '对称密钥', value: 'symmetric' },
                 { title: '非对称加密', value: 'asymmetric' }
               ]"
@@ -1549,7 +1549,7 @@
                 type="password"
                 variant="outlined"
                 density="compact"
-                hint="用于派生加密密钥，建议 8 位以上"
+                hint="用于派生加密密钥，建议 8 位以上混合大小写和数字"
                 persistent-hint
                 class="mt-2"
                 @update:model-value="onWebdavConfigChange"
@@ -1557,9 +1557,9 @@
               <v-select
                 v-model="webdavPasswordAlgo"
                 :items="[
-                  { title: 'PBKDF2-SHA256（推荐）', value: 'pbkdf2-sha256' },
-                  { title: 'PBKDF2-SHA512', value: 'pbkdf2-sha512' },
-                  { title: 'Argon2id', value: 'argon2id' }
+                  { title: 'PBKDF2-SHA256（推荐·平衡安全与性能）', value: 'pbkdf2-sha256' },
+                  { title: 'PBKDF2-SHA512（更高安全·稍慢）', value: 'pbkdf2-sha512' },
+                  { title: 'Argon2id（抗GPU·最安全但最慢）', value: 'argon2id' }
                 ]"
                 label="密钥派生算法"
                 variant="outlined"
@@ -1576,33 +1576,48 @@
                 density="compact"
                 :min="10000"
                 :max="10000000"
-                hint="越大越安全，默认为 600000"
+                hint="越大越安全，默认为 600000（PBKDF2-SHA256 推荐 60万次）"
                 persistent-hint
                 class="mt-2"
                 @update:model-value="onWebdavConfigChange"
               />
+              <v-btn size="small" color="primary" variant="tonal" class="mt-2" @click="deriveKeyFromPassword">
+                <v-icon start>mdi-key-chain</v-icon>
+                从密码派生为对称密钥并切换到对称加密
+              </v-btn>
+              <p class="text-caption text-medium-emphasis mt-1">点击后将使用当前密码和算法派生出 AES-256 密钥，自动切换到对称密钥模式</p>
             </template>
 
             <!-- 对称密钥选项 -->
             <template v-if="webdavEncMode === 'symmetric'">
               <v-textarea
                 v-model="webdavSymmetricKey"
-                label="对称密钥（Base64）"
+                label="对称密钥（Base64 编码）"
                 variant="outlined"
                 density="compact"
                 rows="2"
-                hint="输入 Base64 编码的 AES 密钥，或留空自动生成"
+                hint="32 字节（256 位）密钥经 Base64 编码后约 44 字符"
                 persistent-hint
                 class="mt-2"
                 @update:model-value="onWebdavConfigChange"
               />
-              <v-btn size="small" variant="tonal" class="mt-1" @click="generateSymmetricKey">生成随机密钥</v-btn>
+              <div class="d-flex ga-2 mt-1">
+                <v-btn size="small" color="primary" variant="tonal" @click="generateSymmetricKey">
+                  <v-icon start>mdi-autorenew</v-icon>
+                  生成随机密钥
+                </v-btn>
+                <v-btn size="small" variant="text" @click="copySymmetricKey" v-if="webdavSymmetricKey">
+                  <v-icon start>mdi-content-copy</v-icon>
+                  复制
+                </v-btn>
+              </div>
+              <p class="text-caption text-success mt-1" v-if="webdavSymmetricKey">✅ 密钥已就绪，长度：{{ base64Length(webdavSymmetricKey) }} 字节</p>
               <v-select
                 v-model="webdavSymmetricAlgo"
                 :items="[
-                  { title: 'AES-256-GCM（推荐）', value: 'aes-256-gcm' },
-                  { title: 'AES-256-CBC', value: 'aes-256-cbc' },
-                  { title: 'ChaCha20-Poly1305', value: 'chacha20-poly1305' }
+                  { title: 'AES-256-GCM（推荐·认证加密·防篡改）', value: 'aes-256-gcm' },
+                  { title: 'AES-256-CBC（传统块加密·无认证）', value: 'aes-256-cbc' },
+                  { title: 'ChaCha20-Poly1305（流加密·移动端友好）', value: 'chacha20-poly1305' }
                 ]"
                 label="加密算法"
                 variant="outlined"
@@ -1615,40 +1630,50 @@
 
             <!-- 非对称加密选项 -->
             <template v-if="webdavEncMode === 'asymmetric'">
-              <v-textarea
-                v-model="webdavPublicKey"
-                label="公钥（PEM 格式）"
-                variant="outlined"
-                density="compact"
-                rows="3"
-                class="mt-2"
-                @update:model-value="onWebdavConfigChange"
-              />
-              <v-textarea
-                v-model="webdavPrivateKey"
-                label="私钥（PEM 格式）"
-                variant="outlined"
-                density="compact"
-                rows="3"
-                class="mt-2"
-                @update:model-value="onWebdavConfigChange"
-              />
-              <v-btn size="small" variant="tonal" class="mt-1" @click="generateKeyPair">生成密钥对</v-btn>
               <v-select
                 v-model="webdavAsymmetricAlgo"
                 :items="[
-                  { title: 'RSA-2048', value: 'rsa-2048' },
-                  { title: 'RSA-4096', value: 'rsa-4096' },
-                  { title: 'ECC-P256', value: 'ecc-p256' },
-                  { title: 'ECC-P384', value: 'ecc-p384' }
+                  { title: 'RSA-2048（推荐·广泛兼容）', value: 'rsa-2048' },
+                  { title: 'RSA-4096（更高安全·加解密更慢）', value: 'rsa-4096' },
+                  { title: 'ECC-P256（高效·安全等同RSA-3072）', value: 'ecc-p256' },
+                  { title: 'ECC-P384（更高安全·适合长期密钥）', value: 'ecc-p384' }
                 ]"
                 label="非对称算法"
                 variant="outlined"
                 density="compact"
                 hide-details
                 class="mt-2"
-                @update:model-value="onWebdavConfigChange"
+                @update:model-value="(v: any) => { webdavAsymmetricAlgo = v; onWebdavConfigChange(); generateKeyPair() }"
               />
+              <v-textarea
+                v-model="webdavPublicKey"
+                label="公钥（Base64 编码 SPKI）"
+                variant="outlined"
+                density="compact"
+                rows="2"
+                readonly
+                class="mt-2"
+              />
+              <v-textarea
+                v-model="webdavPrivateKey"
+                label="私钥（Base64 编码 PKCS8）"
+                variant="outlined"
+                density="compact"
+                rows="2"
+                readonly
+                class="mt-2"
+              />
+              <div class="d-flex ga-2 mt-1">
+                <v-btn size="small" color="primary" variant="tonal" @click="generateKeyPair">
+                  <v-icon start>mdi-key-chain-variant</v-icon>
+                  生成密钥对
+                </v-btn>
+                <v-btn size="small" variant="text" @click="copyAsymmetricKeys" v-if="webdavPublicKey">
+                  <v-icon start>mdi-content-copy</v-icon>
+                  复制密钥
+                </v-btn>
+              </div>
+              <p class="text-caption text-success mt-1" v-if="webdavPublicKey">✅ 密钥对已生成，公钥长度：{{ base64Length(webdavPublicKey) }} 字节</p>
             </template>
           </div>
 
@@ -1694,7 +1719,11 @@
 
           <p class="text-caption text-medium-emphasis mt-3">
             <v-icon size="14">mdi-information</v-icon>
-            服务器密码用于 WebDAV Basic Auth 认证。可选择密码/对称密钥/非对称加密方式保护备份文件。
+            服务器密码用于 WebDAV Basic Auth 认证。<br>
+            <strong>密码加密</strong>：用密码派生密钥，易记但需记住密码。<br>
+            <strong>对称密钥</strong>：使用固定密钥，可导出备份密钥文件。<br>
+            <strong>非对称加密</strong>：公钥加密私钥解密，适合多设备共享。<br>
+            推荐：日常使用选<strong>密码加密</strong>（PBKDF2-SHA256 + 60万次迭代）。
           </p>
         </v-card-text>
       </v-card>
@@ -3078,12 +3107,50 @@ function generateSymmetricKey() {
   onWebdavConfigChange()
 }
 
+function copySymmetricKey() {
+  navigator.clipboard?.writeText(webdavSymmetricKey.value).catch(() => {})
+}
+
+function base64Length(b64: string): number {
+  try { return atob(b64).length } catch { return 0 }
+}
+
+function copyAsymmetricKeys() {
+  const text = `公钥:\n${webdavPublicKey.value}\n\n私钥:\n${webdavPrivateKey.value}`
+  navigator.clipboard?.writeText(text).catch(() => {})
+}
+
+async function deriveKeyFromPassword() {
+  if (!webdavEncPassword.value) return
+  const enc = new TextEncoder()
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(webdavEncPassword.value), 'PBKDF2', false, ['deriveBits'])
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations: webdavPbkdf2Iterations.value, hash: webdavPasswordAlgo.value === 'pbkdf2-sha512' ? 'SHA-512' : 'SHA-256' },
+    keyMaterial,
+    256
+  )
+  webdavSymmetricKey.value = btoa(String.fromCharCode(...new Uint8Array(bits)))
+  webdavSymmetricAlgo.value = 'aes-256-gcm'
+  webdavEncMode.value = 'symmetric'
+  onWebdavConfigChange()
+}
+
 async function generateKeyPair() {
   try {
+    const algoMap: Record<string, any> = {
+      'rsa-2048': { name: 'RSA-OAEP', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
+      'rsa-4096': { name: 'RSA-OAEP', modulusLength: 4096, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
+      'ecc-p256': { name: 'ECDSA', namedCurve: 'P-256' },
+      'ecc-p384': { name: 'ECDSA', namedCurve: 'P-384' }
+    }
+    const isRSA = webdavAsymmetricAlgo.value.startsWith('rsa')
+    const algo = algoMap[webdavAsymmetricAlgo.value]
+    if (!algo) return
     const keyPair = await crypto.subtle.generateKey(
-      { name: 'RSA-OAEP', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
+      algo,
       true,
-      ['encrypt', 'decrypt']
+      isRSA ? ['encrypt', 'decrypt'] : ['sign', 'verify']
     )
     const pubKey = await crypto.subtle.exportKey('spki', keyPair.publicKey)
     const privKey = await crypto.subtle.exportKey('pkcs8', keyPair.privateKey)
