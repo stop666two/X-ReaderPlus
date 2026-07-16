@@ -744,6 +744,53 @@
       </v-card>
     </v-dialog>
 
+    <!-- ========== Import Result Dialog ========== -->
+    <v-dialog v-model="showImportResult" max-width="640">
+      <v-card>
+        <v-toolbar density="compact" color="surface">
+          <v-toolbar-title>
+            <v-icon class="mr-2" :color="importResultData.failed > 0 ? 'warning' : 'success'">
+              {{ importResultData.failed > 0 ? 'mdi-alert-circle' : 'mdi-check-circle' }}
+            </v-icon>
+            导入完成
+          </v-toolbar-title>
+          <v-spacer />
+          <v-btn icon="mdi-close" size="small" variant="text" @click="showImportResult = false; store.clearImportResult()" />
+        </v-toolbar>
+        <div class="pa-4">
+          <div class="text-body-2 mb-3">
+            成功导入 <strong>{{ importResultData.imported }}</strong> 本
+            <template v-if="importResultData.failed > 0">，<strong class="text-error">{{ importResultData.failed }}</strong> 本失败</template>
+          </div>
+          <v-textarea
+            v-if="importResultData.errors.length > 0"
+            :model-value="importResultData.errors.map(e => `[${e.type}] ${e.file}\n  ${e.detail}`).join('\n\n')"
+            readonly
+            variant="outlined"
+            density="compact"
+            hide-details
+            rows="10"
+            class="import-error-log"
+            style="font-family: monospace; font-size: 12px;"
+          />
+        </div>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn
+            v-if="importResultData.errors.length > 0"
+            variant="text"
+            prepend-icon="mdi-content-copy"
+            @click="copyImportErrors"
+          >
+            复制
+          </v-btn>
+          <v-btn color="primary" @click="showImportResult = false; store.clearImportResult()">
+            确定
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- ========== Snackbar ========== -->
     <v-snackbar v-model="showSnackbar" :color="snackbarColor" location="bottom" timeout="3000">
       {{ snackbarText }}
@@ -849,6 +896,22 @@ const importTargetLibId = ref(DEFAULT_LIBRARY_ID)
 const importLibOptions = computed(() => [
   ...store.libraries.map(l => ({ text: l.name + (l.id === DEFAULT_LIBRARY_ID ? '（默认）' : ''), value: l.id }))
 ])
+
+// ========== Import Result ==========
+const showImportResult = ref(false)
+const importResultData = ref<{ imported: number; failed: number; errors: Array<{ file: string; type: string; detail: string }> }>({ imported: 0, failed: 0, errors: [] })
+
+watch(() => store.importResult, (val) => {
+  if (val && val.timestamp > 0) {
+    importResultData.value = val
+    showImportResult.value = true
+  }
+})
+
+function copyImportErrors() {
+  const text = importResultData.value.errors.map(e => `[${e.type}] ${e.file}\n  ${e.detail}`).join('\n\n')
+  navigator.clipboard?.writeText(text).catch(() => {})
+}
 
 // ========== Debounced Search ==========
 let debounceTimer: ReturnType<typeof setTimeout> | null = null

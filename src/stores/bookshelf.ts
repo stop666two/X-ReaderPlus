@@ -63,6 +63,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
   const _knownTags = ref<string[]>([])
   const _tagCache = ref<Array<{ name: string; count: number }>>([])
   const _contentHashIndex = ref<Set<string>>(new Set())
+  const _importResult = ref<{ imported: number; failed: number; errors: Array<{ file: string; type: string; detail: string }>; timestamp: number } | null>(null)
 
   const activeLibrary = computed(() => {
     if (activeLibraryId.value === ALL_LIBRARY_ID) {
@@ -578,13 +579,19 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
         ensureFullBooksLoaded().catch(() => {})
       }
       if (importErrors.length > 0) {
-        const errorSummary = importErrors.map(e => `• ${e.file}\n  类型: ${e.type}\n  详情: ${e.detail}`).join('\n\n')
-        try {
-          await window.electronAPI.showMessageBox({
-            title: `导入完成 — ${importedCount} 本成功，${importErrors.length} 本失败`,
-            message: errorSummary
-          })
-        } catch {}
+        _importResult.value = {
+          imported: importedCount,
+          failed: importErrors.length,
+          errors: importErrors,
+          timestamp: Date.now()
+        }
+      } else if (importedCount > 0) {
+        _importResult.value = {
+          imported: importedCount,
+          failed: 0,
+          errors: [],
+          timestamp: Date.now()
+        }
       }
     }
     return importedCount
@@ -749,5 +756,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     createTag,
     toggleSelect, selectAll, clearSelection, invertSelection,
     tagCache: _tagCache,
+    importResult: _importResult,
+    clearImportResult: () => { _importResult.value = null },
   }
 })
