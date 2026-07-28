@@ -35,7 +35,7 @@
       <v-col
         v-for="lib in pagedLibraries"
         :key="lib.id"
-        cols="12" sm="6" lg="4" xl="3"
+        cols="12" md="6" xl="4"
       >
         <v-card
           variant="outlined"
@@ -494,7 +494,6 @@ onMounted(refresh)
 <style scoped>
 .library-view {
   padding: 40px;
-  max-width: 1600px;
   margin: 0 auto;
   height: 100%;
   overflow-y: auto;
