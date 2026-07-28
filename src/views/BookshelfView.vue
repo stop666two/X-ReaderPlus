@@ -14,6 +14,7 @@
         icon="mdi-refresh"
         title="刷新"
         :loading="refreshing"
+        class="ml-2"
         @click="refreshBooks"
       />
       <v-spacer />

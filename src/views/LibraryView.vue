@@ -35,7 +35,7 @@
       <v-col
         v-for="lib in pagedLibraries"
         :key="lib.id"
-        cols="12"
+        cols="12" md="6"
       >
         <v-card
           variant="outlined"
