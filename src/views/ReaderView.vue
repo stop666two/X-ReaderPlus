@@ -1031,6 +1031,19 @@ async function persistScrollPositions(bookId: string) {
 
 const readChaptersSet = computed(() => bookshelf.readChapters)
 
+const RM_KEY = 'xrp_readingMode'
+
+async function restorePersistedReaderState() {
+  try {
+    const v = localStorage.getItem(RM_KEY)
+    if (v === 'pagination' || v === 'scroll') reader.setReadingMode(v)
+  } catch {}
+}
+
+watch(() => reader.readingMode, (mode) => {
+  try { localStorage.setItem(RM_KEY, mode) } catch {}
+})
+
 function scrollToAnnotation(ann: Annotation) {
   // If not in same chapter, navigate first
   if (ann.chapterIndex !== reader.currentChapterIndex) {
@@ -1112,6 +1125,7 @@ async function loadBook() {
   // Load persisted state FIRST (before any content renders)
   await loadPersistedScrollPositions(id)
   await loadPersistedReadChapters(id)
+  await restorePersistedReaderState()
 
   const book = bookshelf.books.find(b => b.id === id)
   await reader.loadBook(id)

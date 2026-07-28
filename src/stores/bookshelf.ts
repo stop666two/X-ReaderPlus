@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { Book, BookFormat, Library, SortField, SortOrder, ViewMode, TrashItem, ImportMode } from '@/types'
 import { DEFAULT_LIBRARY_ID, DEFAULT_LIBRARY_NAME } from '@/constants'
 import { detectFormat, countWords, detectTags, createParseWorker, workerParse } from '@/services/parser'
@@ -60,6 +60,29 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
   const filterTag = ref('')
   const sortField = ref<SortField>('addedAt')
   const sortOrder = ref<SortOrder>('desc')
+
+  const BS_KEY = 'bookshelfUI'
+
+  function persistUI() {
+    const state = { activeLibraryId: activeLibraryId.value, viewMode: viewMode.value, sortField: sortField.value, sortOrder: sortOrder.value, filterTag: filterTag.value }
+    db().config.set(BS_KEY, JSON.stringify(state)).catch(() => {})
+  }
+
+  function restoreUI() {
+    db().config.get(BS_KEY).then((raw) => {
+      if (!raw) return
+      try {
+        const state = JSON.parse(raw)
+        if (state.activeLibraryId) activeLibraryId.value = state.activeLibraryId
+        if (state.viewMode) viewMode.value = state.viewMode
+        if (state.sortField) sortField.value = state.sortField
+        if (state.sortOrder) sortOrder.value = state.sortOrder
+        if (state.filterTag) filterTag.value = state.filterTag
+      } catch {}
+    }).catch(() => {})
+  }
+
+  watch([activeLibraryId, viewMode, sortField, sortOrder, filterTag], () => { persistUI() })
   const selectedIds = ref<Set<string>>(new Set())
   const isLoading = ref(false)
   const importProgress = ref({ current: 0, total: 0, message: '', bytesProcessed: 0, bytesTotal: 0, skippedDuplicates: 0 })
@@ -242,6 +265,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
       loadingProgress.value = 40
       loadingMessage.value = '加载书籍...'
       await loadBooks()
+      restoreUI()
       ensureFullBooksLoaded().catch(e => logger.warn('后台全量加载失败', e))
 
       loadingProgress.value = 85

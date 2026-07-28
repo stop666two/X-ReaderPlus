@@ -850,8 +850,13 @@ function onCoverError(bookId: string) {
 // Grid size: 0=small, 1=medium(default), 2=large
 const gridSizeToggle = ref(2)
 const gridSize = ref<'small' | 'medium' | 'large'>('medium')
+try {
+  const saved = localStorage.getItem('xrp_gridSize')
+  if (saved) gridSizeToggle.value = parseInt(saved)
+} catch {}
 watch(gridSizeToggle, (v) => {
   gridSize.value = (['small', 'medium', 'large'] as const)[v]
+  try { localStorage.setItem('xrp_gridSize', String(v)) } catch {}
 })
 
 // View toggle
