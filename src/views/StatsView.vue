@@ -337,10 +337,10 @@ watch(() => bookshelf.books.length, () => loadRecent())
 /* Heatmap */
 .heatmap-wrapper { overflow-x: auto; }
 .heatmap-months { display: flex; gap: 0; margin-left: 32px; height: 18px; }
-.heatmap-month-label { width: 112px; font-size: 11px; color: rgb(var(--v-theme-on-surface)); opacity: 0.5; }
+.heatmap-month-label { width: 112px; font-size: 12px; color: rgb(var(--v-theme-on-surface)); opacity: 0.5; }
 .heatmap-body { display: flex; }
 .heatmap-day-labels { display: flex; flex-direction: column; gap: 3px; width: 24px; padding-right: 4px; }
-.day-label { height: 13px; font-size: 10px; line-height: 13px; color: rgb(var(--v-theme-on-surface)); opacity: 0.5; text-align: right; }
+.day-label { height: 13px; font-size: 11px; line-height: 13px; color: rgb(var(--v-theme-on-surface)); opacity: 0.5; text-align: right; }
 .heatmap-svg { flex-shrink: 0; }
 .heatmap-legend { display: flex; align-items: center; justify-content: flex-end; margin-top: 8px; }
 

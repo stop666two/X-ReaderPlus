@@ -557,10 +557,10 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 12px 16px;
   cursor: pointer;
   user-select: none;
-  min-height: 44px;
+  min-height: 48px;
   transition: filter 0.15s;
   position: relative;
 }
@@ -680,20 +680,20 @@ onMounted(async () => {
 }
 
 .book-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
 }
 
 .book-meta {
-  font-size: 11px;
+  font-size: 12px;
   color: rgba(var(--v-theme-on-surface), 0.6);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .format-chip {
-  font-size: 10px !important;
-  height: 18px !important;
+  font-size: 11px !important;
+  height: 20px !important;
 }
 </style>

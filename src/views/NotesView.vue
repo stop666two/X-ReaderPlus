@@ -714,6 +714,9 @@ onMounted(async () => {
   height: 100%;
   display: flex;
   flex-direction: column;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 24px;
 }
 
 .notes-content {

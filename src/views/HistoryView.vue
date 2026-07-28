@@ -378,9 +378,9 @@ watch(() => bookshelf.books.length, () => {
 
 .history-progress-bar {
   width: 100px;
-  height: 3px;
+  height: 6px;
   background: rgb(var(--v-theme-border));
-  border-radius: 2px;
+  border-radius: 3px;
   overflow: hidden;
 }
 
