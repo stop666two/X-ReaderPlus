@@ -934,12 +934,10 @@ function getChapterTitle(index: number): string {
 }
 
 function restoreScrollPosition(chapterIndex: number) {
-  nextTick(() => {
-    if (readerContainer.value) {
-      const saved = reader.getScrollPosition(chapterIndex)
-      readerContainer.value.scrollTop = saved
-    }
-  })
+  const saved = reader.getScrollPosition(chapterIndex)
+  if (readerContainer.value) {
+    readerContainer.value.scrollTop = saved
+  }
 }
 
 function saveScrollNow() {
@@ -949,17 +947,21 @@ function saveScrollNow() {
 }
 
 function markChapterRead(bookId: string, chapterIndex: number) {
-  // Only mark as read if user has scrolled past 90% of chapter
-  if (readerContainer.value) {
-    const { scrollTop, scrollHeight, clientHeight } = readerContainer.value
-    const scrollPercent = scrollHeight > clientHeight ? scrollTop / (scrollHeight - clientHeight) : 1
-    if (scrollPercent < 0.9) return
-  }
   const key = `${bookId}:${chapterIndex}`
+  if (bookshelf.readChapters.has(key)) return
   const s = new Set(bookshelf.readChapters)
   s.add(key)
   bookshelf.readChapters = s
   persistReadChapters(bookId)
+}
+
+async function unmarkChapterRead(bookId: string, chapterIndex: number) {
+  const key = `${bookId}:${chapterIndex}`
+  if (!bookshelf.readChapters.has(key)) return
+  const s = new Set(bookshelf.readChapters)
+  s.delete(key)
+  bookshelf.readChapters = s
+  await persistReadChapters(bookId)
 }
 
 async function loadPersistedReadChapters(bookId: string) {
@@ -1101,47 +1103,44 @@ function applyChapterAnnotations() {
 async function loadBook() {
   const id = route.params.id as string
 
-  // Look up the book to get saved chapterIndex
-  const book = bookshelf.books.find(b => b.id === id)
-
-  await reader.loadBook(id)
-
-  // Load persisted scroll positions and read chapters AFTER loadBook (which resets scrollPosition)
+  // Load persisted state FIRST (before any content renders)
   await loadPersistedScrollPositions(id)
   await loadPersistedReadChapters(id)
 
-  // Restore chapter index from book data
+  const book = bookshelf.books.find(b => b.id === id)
+  await reader.loadBook(id)
+
+  // Restore scroll positions lost by loadBook reset
+  await loadPersistedScrollPositions(id)
+
+  // Restore chapter index
   if (book && book.chapterIndex >= 0 && book.chapterIndex < reader.chapterCount) {
     reader.currentChapterIndex = book.chapterIndex
   } else {
     reader.currentChapterIndex = 0
   }
 
-  // Load content for the current chapter (fixes C-5 race condition)
+  // Load content for current chapter
   reader.loadChapterContent(reader.currentChapterIndex)
-
   sliderValue.value = reader.currentChapterIndex
 
-  // Restore scroll position for the saved chapter
+  // Restore scroll after content renders
   await nextTick()
-  if (readerContainer.value) {
-    const ciParam = route.query.ci
-    if (ciParam !== undefined) {
-      const targetCi = parseInt(ciParam as string)
-      if (targetCi >= 0 && targetCi < reader.chapterCount) {
-        reader.currentChapterIndex = targetCi; sliderValue.value = targetCi; await nextTick()
-      }
-    }
-    const saved = reader.getScrollPosition(reader.currentChapterIndex)
-    if (saved > 0) {
-      readerContainer.value.scrollTop = saved
-    } else {
-      readerContainer.value.scrollTop = 0
-    }
-  }
+  _pendingScrollRestore = true
+  doScrollRestore()
 
-  // Start reading time tracking
   startReadingTimer()
+}
+
+let _pendingScrollRestore = false
+let _restoreRetries = 0
+
+function doScrollRestore() {
+  if (!readerContainer.value) return
+  const saved = reader.getScrollPosition(reader.currentChapterIndex)
+  readerContainer.value.scrollTop = saved
+  _pendingScrollRestore = false
+  _restoreRetries = 0
 }
 
 // ---- Navigation ----
@@ -1189,7 +1188,6 @@ async function goBack() {
   const progress = scrollHeight > 0
     ? (readerContainer.value?.scrollTop || 0) / scrollHeight
     : 0
-  markChapterRead(reader.bookId, reader.currentChapterIndex)
   reader.stopAutoScroll()
   stopReadingTimer()
 
@@ -1256,7 +1254,6 @@ function goToChapterFromToc(tocItem: { chapterIndex: number; href?: string }) {
     return
   }
   internalNavStack.value = []
-  markChapterRead(reader.bookId, reader.currentChapterIndex)
   saveScrollNow()
   isChapterTransition = true
   isChapterLoading.value = true
@@ -1298,9 +1295,6 @@ function onScroll() {
     const progress = scrollRange > 0 ? Math.min(1, Math.max(0, st / scrollRange)) : 0
     readingProgress.value = Math.round(progress * 100)
     bookshelf.updateBookProgress(reader.bookId, reader.currentChapterIndex, progress)
-    if (progress >= 0.8) {
-      markChapterRead(reader.bookId, reader.currentChapterIndex)
-    }
   }, SCROLL_DEBOUNCE_MS)
 }
 
@@ -1419,18 +1413,15 @@ watch(() => reader.currentChapter, () => {
   if (readerContainer.value) readerContainer.value.scrollTop = 0
 })
 
-// Lazy content loads: restore saved position on chapter changes, just re-attach on lazy loads
+// Restore saved scroll position after content renders
 watch(lazyContent, () => {
-  const wasChapterChange = _isChapterChange
-  _isChapterChange = false
   const restoreScroll = () => {
     setupLazySentinel()
     if (isPdfBook.value) setupPdfPageObserver()
-    if (wasChapterChange) {
-      const saved = reader.getScrollPosition(reader.currentChapterIndex)
-      if (readerContainer.value && saved > 0 && readerContainer.value.scrollHeight > 0) {
-        readerContainer.value.scrollTop = Math.min(saved, readerContainer.value.scrollHeight - readerContainer.value.clientHeight)
-      }
+    const saved = reader.getScrollPosition(reader.currentChapterIndex)
+    if (readerContainer.value && readerContainer.value.scrollHeight > 0) {
+      const maxScroll = readerContainer.value.scrollHeight - readerContainer.value.clientHeight
+      readerContainer.value.scrollTop = Math.min(Math.max(saved, 0), maxScroll)
     }
   }
   requestAnimationFrame(() => requestAnimationFrame(restoreScroll))
@@ -1874,7 +1865,6 @@ function resetToolbarTimer() {
 
 function handleVisibilityChange() {
   if (document.hidden) {
-    // Save accumulated reading time before pausing
     if (readingSeconds.value > lastSavedSeconds) {
       bookshelf.updateBookReadingTime(reader.bookId, readingSeconds.value - lastSavedSeconds)
       lastSavedSeconds = readingSeconds.value
@@ -1883,6 +1873,14 @@ function handleVisibilityChange() {
   } else {
     startReadingTimer()
   }
+}
+
+function handleBeforeUnload() {
+  saveScrollNow()
+  const x = new XMLHttpRequest()
+  x.open('POST', `http://127.0.0.1:34123/api/config`, false)
+  x.setRequestHeader('Content-Type', 'application/json')
+  x.send(JSON.stringify({ key: `scroll:${reader.bookId}`, value: JSON.stringify(reader.scrollPosition) }))
 }
 
 function startReadingTimer() {
@@ -1981,6 +1979,7 @@ onMounted(async () => {
   setupLazySentinel()
   if (isPdfBook.value) setupPdfPageObserver()
   document.addEventListener('visibilitychange', handleVisibilityChange)
+  window.addEventListener('beforeunload', handleBeforeUnload)
 })
 
 onUnmounted(() => {
@@ -2002,6 +2001,7 @@ onUnmounted(() => {
   document.removeEventListener('wheel', onWheel)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   window.removeEventListener('click', handleContentClick, true)
+  window.removeEventListener('beforeunload', handleBeforeUnload)
   releasePdfCache()
 })
 
