@@ -1406,11 +1406,10 @@ onUnmounted(() => {
 // Track whether this is a chapter transition or lazy load
 let _isChapterChange = true
 
-// Chapter changes: save old position, reset scroll, set flag
+// On chapter change: set flag (scroll restoration handled by lazyContent watcher)
 watch(() => reader.currentChapter, () => {
   _isChapterChange = true
   isChapterTransition = true
-  if (readerContainer.value) readerContainer.value.scrollTop = 0
 })
 
 // Restore saved scroll position after content renders
