@@ -31,7 +31,7 @@
       <p class="text-caption text-medium-emphasis mt-2">尝试修改搜索条件或创建新书库</p>
     </div>
 
-    <v-row v-else class="mt-6" dense>
+    <v-row v-else class="mt-4" dense>
       <v-col
         v-for="lib in pagedLibraries"
         :key="lib.id"
@@ -516,6 +516,8 @@ onMounted(refresh)
 .v-row > :deep(.v-col) {
   display: flex;
   justify-content: center;
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
 }
 .empty-state {
   display: flex;
