@@ -35,6 +35,7 @@ export default [
         NodeFilter: 'readonly',
         Text: 'readonly',
         localStorage: 'readonly',
+        XMLHttpRequest: 'readonly',
         confirm: 'readonly',
         AbortController: 'readonly',
         cancelAnimationFrame: 'readonly',

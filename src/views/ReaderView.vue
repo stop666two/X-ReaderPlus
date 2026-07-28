@@ -974,7 +974,7 @@ async function loadPersistedReadChapters(bookId: string) {
   if (!window.electronAPI) { bookshelf.readChapters = new Set(); return }
   try {
     const v = await window.electronAPI.config.get(`readChapters:${bookId}`)
-    if (v != null) {
+    if (v) {
       let arr: string[]
       if (typeof v === 'string') {
         try { arr = JSON.parse(v) } catch { arr = v.split(',') }
@@ -1002,7 +1002,7 @@ async function loadPersistedScrollPositions(bookId: string) {
   if (!window.electronAPI) return
   try {
     const v = await window.electronAPI.config.get(`scroll:${bookId}`)
-    if (v != null) {
+    if (v) {
       const data = typeof v === 'string' ? JSON.parse(v) : v
       if (data && typeof data === 'object') {
         for (const [key, val] of Object.entries(data)) {

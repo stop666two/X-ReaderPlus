@@ -603,7 +603,7 @@ async function parseDocx(fileData: ArrayBuffer, fileName: string): Promise<Parse
 function rtfToText(data: ArrayBuffer): string {
   const text = decodeTextBest(new Uint8Array(data))
   // Strip RTF control words and groups
-  let result = text
+  const result = text
     .replace(/\\[a-z]+\d*/gi, '')  // control words
     .replace(/\\'[0-9a-f]{2}/gi, '') // hex escapes
     .replace(/\\[\\{}\\]/g, '')  // escaped special chars
@@ -1358,7 +1358,7 @@ async function embedImages(html: string, chapterDir: string, rootDir: string, zi
   }
 
   // Process CSS background-image: url(...)
-  const cssUrlRe = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^"'\s\)]+))\s*\)/gi
+  const cssUrlRe = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^"'\s)]+))\s*\)/gi
   while ((tagMatch = cssUrlRe.exec(html)) !== null) {
     const fullMatch = tagMatch[0]
     const url = tagMatch[1] || tagMatch[2] || tagMatch[3]
