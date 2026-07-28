@@ -890,7 +890,7 @@ const sanitizedContent = computed(() => {
       'table','thead','tbody','tr','th','td','figure','figcaption',
       'picture','source','svg','image','video','audio'
     ],
-    ALLOWED_ATTR: ['href','src','alt','title','class','id','width','height','style'],
+    ALLOWED_ATTR: ['href','src','alt','title','class','id','width','height','style','xlink:href','xmlns','xmlns:xlink','version','viewBox','preserveAspectRatio'],
     ALLOW_DATA_ATTR: false,
     ADD_DATA_URI_TAGS: ['img', 'source', 'image'],
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
