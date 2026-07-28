@@ -221,7 +221,7 @@ function wailsBytesToBuffer(data: number[] | string): ArrayBuffer {
   return bytes.buffer as ArrayBuffer
 }
 
-const apiObj: ElectronAPI = {
+const apiObj: Window['electronAPI'] = {
   minimize: () => wailsOrFallback(
     () => { window.go!.main.App.Minimize() },
     () => {},
@@ -295,6 +295,15 @@ const apiObj: ElectronAPI = {
     a.href = url; a.download = opts?.defaultPath || 'export.json'
     a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
     return { canceled: false, filePath: opts?.defaultPath || '' }
+  },
+  openExternal: async (url: string) => {
+    if (useWails()) return await window.go!.main.App.OpenExternal(url)
+    window.open(url, '_blank')
+    return ''
+  },
+  showMessage: async (title: string, message: string) => {
+    if (useWails()) { await window.go!.main.App.ShowMessage(title, message); return }
+    alert(`${title}\n${message}`)
   },
   showMessageBox: async (opts: any) => {
     if (useWails()) {
@@ -390,10 +399,10 @@ const apiObj: ElectronAPI = {
     if (useWails()) return await window.go!.main.App.GetAppDir()
     return ''
   },
-  setAutoStart: async () => false,
+  setAutoStart: async () => {},
   getAutoStart: async () => false,
   getStartMinimized: async () => false,
-  setStartMinimized: async () => false,
+  setStartMinimized: async () => {},
   clearCache: async () => { _cachedFiles = [] },
   getShortcuts: async () => ({}),
   setShortcut: async () => false,

@@ -82,7 +82,6 @@ func pathAllowed(path string) bool {
 	if !filepath.IsAbs(path) {
 		return false
 	}
-	clean := filepath.Clean(path)
 	dataDir := appDataDir()
 	if strings.HasPrefix(strings.ToLower(clean), strings.ToLower(dataDir)) {
 		return true
