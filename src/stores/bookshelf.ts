@@ -68,18 +68,17 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     db().config.set(BS_KEY, JSON.stringify(state)).catch(() => {})
   }
 
-  function restoreUI() {
-    db().config.get(BS_KEY).then((raw) => {
+  async function restoreUI() {
+    try {
+      const raw = await db().config.get(BS_KEY)
       if (!raw) return
-      try {
-        const state = JSON.parse(raw)
-        if (state.activeLibraryId) activeLibraryId.value = state.activeLibraryId
-        if (state.viewMode) viewMode.value = state.viewMode
-        if (state.sortField) sortField.value = state.sortField
-        if (state.sortOrder) sortOrder.value = state.sortOrder
-        if (state.filterTag) filterTag.value = state.filterTag
-      } catch {}
-    }).catch(() => {})
+      const state = JSON.parse(raw)
+      if (state.activeLibraryId) activeLibraryId.value = state.activeLibraryId
+      if (state.viewMode) viewMode.value = state.viewMode
+      if (state.sortField) sortField.value = state.sortField
+      if (state.sortOrder) sortOrder.value = state.sortOrder
+      if (state.filterTag) filterTag.value = state.filterTag
+    } catch {}
   }
 
   watch([activeLibraryId, viewMode, sortField, sortOrder, filterTag], () => { persistUI() })
@@ -265,7 +264,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
       loadingProgress.value = 40
       loadingMessage.value = '加载书籍...'
       await loadBooks()
-      restoreUI()
+      await restoreUI()
       ensureFullBooksLoaded().catch(e => logger.warn('后台全量加载失败', e))
 
       loadingProgress.value = 85

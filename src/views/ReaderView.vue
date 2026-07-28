@@ -1031,17 +1031,16 @@ async function persistScrollPositions(bookId: string) {
 
 const readChaptersSet = computed(() => bookshelf.readChapters)
 
-const RM_KEY = 'xrp_readingMode'
-
 async function restorePersistedReaderState() {
+  if (!window.electronAPI) return
   try {
-    const v = localStorage.getItem(RM_KEY)
+    const v = await window.electronAPI.config.get('readingMode')
     if (v === 'pagination' || v === 'scroll') reader.setReadingMode(v)
   } catch {}
 }
 
 watch(() => reader.readingMode, (mode) => {
-  try { localStorage.setItem(RM_KEY, mode) } catch {}
+  if (window.electronAPI) window.electronAPI.config.set('readingMode', mode).catch(() => {})
 })
 
 function scrollToAnnotation(ann: Annotation) {

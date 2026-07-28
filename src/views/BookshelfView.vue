@@ -257,12 +257,12 @@
           </template>
 
           <!-- Title -->
-          <v-list-item-title class="text-body-2 font-weight-medium">
+          <v-list-item-title class="text-body-2 font-weight-medium ml-2">
             {{ book.title }}
           </v-list-item-title>
 
           <!-- Subtitle -->
-          <v-list-item-subtitle>
+          <v-list-item-subtitle class="ml-2">
             <span>{{ book.author || '未知作者' }}</span>
             <span class="mx-1">·</span>
             <span>{{ formatDate(book.addedAt) }}</span>
@@ -848,25 +848,28 @@ function onCoverError(bookId: string) {
 }
 
 // Grid size: 0=small, 1=medium(default), 2=large
+// Grid size: 0=small, 1=medium(default), 2=large
 const gridSizeToggle = ref(2)
 const gridSize = ref<'small' | 'medium' | 'large'>('medium')
-try {
-  const saved = localStorage.getItem('xrp_gridSize')
-  if (saved) gridSizeToggle.value = parseInt(saved)
-} catch {}
+async function restoreGridSize() {
+  try {
+    const v = await window.electronAPI?.config.get('gridSize')
+    if (v) { const n = parseInt(v); if (n >= 0 && n <= 2) gridSizeToggle.value = n }
+  } catch {}
+}
+restoreGridSize()
 watch(gridSizeToggle, (v) => {
   gridSize.value = (['small', 'medium', 'large'] as const)[v]
-  try { localStorage.setItem('xrp_gridSize', String(v)) } catch {}
+  window.electronAPI?.config.set('gridSize', String(v)).catch(() => {})
 })
 
-// View toggle
-const viewModeToggle = ref(store.viewMode === 'grid' ? 0 : 1)
-watch(viewModeToggle, (v) => {
-  store.viewMode = v === 0 ? 'grid' : 'list'
-})
-// Sync from store
+// View toggle: initialize from store AFTER restoreUI has completed
+const viewModeToggle = ref(0)
 watch(() => store.viewMode, (v) => {
   viewModeToggle.value = v === 'grid' ? 0 : 1
+}, { immediate: true })
+watch(viewModeToggle, (v) => {
+  store.viewMode = v === 0 ? 'grid' : 'list'
 })
 
 // Context menu
