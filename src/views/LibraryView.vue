@@ -3,14 +3,14 @@
     <div class="library-header">
       <div>
         <h2 class="library-title">书库管理</h2>
-        <p class="text-caption text-medium-emphasis mt-1">
+        <p class="text-body-2 text-medium-emphasis mt-2">
           {{ libraries.length }} 个书库 · {{ totalBooks }} 本书 ·
           {{ totalReadingHours }} 小时阅读
         </p>
       </div>
-      <div class="d-flex ga-2">
+      <div class="d-flex ga-3">
         <v-btn color="primary" variant="tonal" prepend-icon="mdi-refresh" :loading="refreshing" @click="refresh">刷新</v-btn>
-        <v-btn color="primary" prepend-icon="mdi-plus" @click="showCreateDialog = true">新建书库</v-btn>
+        <v-btn color="primary" prepend-icon="mdi-plus" size="large" @click="showCreateDialog = true">新建书库</v-btn>
       </div>
     </div>
 
@@ -19,23 +19,23 @@
       prepend-inner-icon="mdi-magnify"
       placeholder="搜索书库..."
       variant="outlined"
-      density="compact"
+      density="comfortable"
       hide-details
       clearable
-      class="mt-4"
+      class="mt-4 search-field"
     />
 
     <div v-if="filteredLibraries.length === 0" class="empty-state">
       <v-icon size="64" color="grey-lighten-1">mdi-bookshelf</v-icon>
       <p class="text-body-1 mt-3">没有匹配的书库</p>
-      <p class="text-caption text-medium-emphasis mt-1">尝试修改搜索条件或创建新书库</p>
+      <p class="text-caption text-medium-emphasis mt-2">尝试修改搜索条件或创建新书库</p>
     </div>
 
-    <v-row v-else class="mt-4" dense>
+    <v-row v-else class="mt-6" dense>
       <v-col
         v-for="lib in pagedLibraries"
         :key="lib.id"
-        cols="12" sm="6" xl="4"
+        cols="12" sm="6" lg="4" xl="3"
       >
         <v-card
           variant="outlined"
@@ -45,7 +45,7 @@
           <div class="lib-card-body">
             <div class="lib-card-top">
               <div class="lib-icon-wrap" :class="lib.id === 'default' ? 'lib-icon-default' : 'lib-icon-normal'">
-                <v-icon size="28">
+                <v-icon size="32">
                   {{ lib.mode === 'folder' ? 'mdi-folder-outline' : 'mdi-content-copy' }}
                 </v-icon>
               </div>
@@ -95,7 +95,7 @@
 
             <div class="lib-tags" v-if="getLibraryTags(lib.id).length > 0">
               <v-chip
-                v-for="tag in getLibraryTags(lib.id).slice(0, 6)"
+                v-for="tag in getLibraryTags(lib.id).slice(0, 8)"
                 :key="tag.name"
                 size="x-small"
                 variant="tonal"
@@ -105,16 +105,16 @@
                 {{ tag.name }}
                 <span class="tag-count">({{ tag.count }})</span>
               </v-chip>
-              <span v-if="getLibraryTags(lib.id).length > 6" class="text-caption text-medium-emphasis ml-1">
-                +{{ getLibraryTags(lib.id).length - 6 }}
+              <span v-if="getLibraryTags(lib.id).length > 8" class="text-caption text-medium-emphasis ml-1">
+                +{{ getLibraryTags(lib.id).length - 8 }}
               </span>
             </div>
 
-            <div class="lib-created text-caption text-medium-emphasis">
-              <v-icon size="12" class="mr-1">mdi-calendar</v-icon>
+            <div class="lib-created text-body-2 text-medium-emphasis">
+              <v-icon size="14" class="mr-1">mdi-calendar</v-icon>
               {{ formatDate(lib.createdAt) }}
               <template v-if="lib.mode === 'folder'">
-                <v-icon size="12" class="mx-1">mdi-circle-small</v-icon>
+                <v-icon size="14" class="mx-1">mdi-circle-small</v-icon>
                 文件夹链接
               </template>
             </div>
@@ -167,12 +167,12 @@
         density="comfortable"
         size="small"
       />
-      <span class="text-caption text-medium-emphasis ml-3">
+      <span class="text-body-2 text-medium-emphasis ml-3">
         {{ filteredLibraries.length }} 个书库
       </span>
     </div>
 
-    <v-dialog v-model="showCreateDialog" max-width="420">
+    <v-dialog v-model="showCreateDialog" max-width="480">
       <v-card>
         <v-toolbar density="compact" color="surface">
           <v-toolbar-title>新建书库</v-toolbar-title>
@@ -493,8 +493,8 @@ onMounted(refresh)
 
 <style scoped>
 .library-view {
-  padding: 32px;
-  max-width: 1400px;
+  padding: 40px;
+  max-width: 1600px;
   margin: 0 auto;
   height: 100%;
   overflow-y: auto;
@@ -504,50 +504,53 @@ onMounted(refresh)
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 16px;
 }
 .library-title {
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 700;
   margin: 0;
+}
+.search-field {
+  max-width: 480px;
 }
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 64px 0;
+  padding: 80px 0;
 }
 .lib-card {
-  border-radius: 14px !important;
+  border-radius: 16px !important;
   transition: box-shadow .2s, transform .2s;
   display: flex;
   flex-direction: column;
 }
 .lib-card:hover {
-  box-shadow: 0 4px 24px rgba(0,0,0,.08);
-  transform: translateY(-2px);
+  box-shadow: 0 6px 28px rgba(0,0,0,.1);
+  transform: translateY(-3px);
 }
 .lib-card-default {
   border-color: rgb(var(--v-theme-primary)) !important;
   border-width: 2px !important;
 }
 .lib-card-body {
-  padding: 20px;
+  padding: 24px;
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 .lib-card-top {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
 }
 .lib-icon-wrap {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -566,7 +569,7 @@ onMounted(refresh)
   min-width: 0;
 }
 .lib-name {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
   line-height: 1.3;
 }
@@ -577,7 +580,7 @@ onMounted(refresh)
   display: flex;
   align-items: center;
   gap: 0;
-  padding: 10px 0;
+  padding: 14px 0;
   border-top: 1px solid rgba(0,0,0,0.06);
   border-bottom: 1px solid rgba(0,0,0,0.06);
 }
@@ -586,32 +589,32 @@ onMounted(refresh)
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
 }
 .stat-value {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 700;
   line-height: 1.2;
 }
 .stat-label {
-  font-size: 11px;
+  font-size: 12px;
   color: rgba(0,0,0,0.45);
   text-transform: uppercase;
   letter-spacing: .5px;
 }
 .stat-divider {
   width: 1px;
-  height: 28px;
+  height: 32px;
   background: rgba(0,0,0,0.08);
 }
 .lib-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
   align-items: center;
 }
 .tag-chip :deep(.v-chip__content) {
-  font-size: 11px;
+  font-size: 12px;
 }
 .tag-count {
   opacity: .6;
@@ -620,19 +623,20 @@ onMounted(refresh)
 .lib-created {
   display: flex;
   align-items: center;
+  font-size: 14px;
 }
 .lib-card-actions {
   display: flex;
   align-items: center;
-  padding: 4px 8px;
-  gap: 2px;
+  padding: 8px 12px;
+  gap: 4px;
 }
 .pagination-bar {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px 0 8px;
+  padding: 32px 0 16px;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 12px;
 }
 </style>
