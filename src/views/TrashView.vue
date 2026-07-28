@@ -322,8 +322,8 @@ async function batchRestore() {
 
 // ---- Delete ----
 
-async function permanentlyDelete(id: string) {
-  await getApi().trash.permanentDelete(id)
+function permanentlyDelete(id: string) {
+  return getApi().trash.permanentDelete(id)
 }
 
 function confirmSingleDelete(id: string) {

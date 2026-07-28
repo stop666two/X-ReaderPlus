@@ -1,4 +1,4 @@
-import { ref, computed, watch, type Ref } from 'vue'
+import { ref, computed, watch, onUnmounted, type Ref } from 'vue'
 
 const PAGE_SIZES_KEY = 'pageSizes'
 
@@ -91,20 +91,26 @@ export function usePagination<T>(
     return pages
   })
 
-  watch(resolvedPageSize, () => {
+  const stopPageSizeWatch = watch(resolvedPageSize, () => {
     if (currentPage.value > totalPages.value) {
       currentPage.value = Math.max(1, totalPages.value)
     }
   })
 
-  watch(() => items.value.length, () => {
+  const stopItemsWatch = watch(() => items.value.length, () => {
     if (currentPage.value > totalPages.value) {
       currentPage.value = Math.max(1, totalPages.value)
     }
   })
 
-  watch(currentPage, () => {
+  const stopPageWatch = watch(currentPage, () => {
     if (opts?.onPageChange) opts.onPageChange()
+  })
+
+  onUnmounted(() => {
+    stopPageSizeWatch()
+    stopItemsWatch()
+    stopPageWatch()
   })
 
   function prevPage() { if (hasPrev.value) currentPage.value-- }

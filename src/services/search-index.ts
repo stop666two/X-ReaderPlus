@@ -109,9 +109,6 @@ const mutex = new AsyncMutex()
 // ---------------------------------------------------------------------------
 
 const CFG_KEY = 'searchIndex'
-const _saveTimer: ReturnType<typeof setTimeout> | null = null
-const _dirty = false
-const _pendingData: SearchIndexData | null = null
 
 async function loadIndex(): Promise<SearchIndexData | null> {
   const v = await configGet(CFG_KEY)

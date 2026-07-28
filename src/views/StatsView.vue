@@ -265,7 +265,9 @@ async function loadReadingCalendar() {
         }
       }
     }
-  } catch {}
+  } catch (e) {
+    console.warn('加载阅读日历失败', e)
+  }
 }
 
 // ── Recent Items ──

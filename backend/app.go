@@ -72,8 +72,9 @@ func appDataDir() string {
 }
 
 func pathAllowed(path string) bool {
+	clean := filepath.Clean(path)
 	trustedPathsMu.RLock()
-	_, ok := trustedPaths[path]
+	_, ok := trustedPaths[clean]
 	trustedPathsMu.RUnlock()
 	if ok {
 		return true

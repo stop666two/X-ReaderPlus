@@ -221,7 +221,7 @@ function wailsBytesToBuffer(data: number[] | string): ArrayBuffer {
   return bytes.buffer as ArrayBuffer
 }
 
-const apiObj: any = {
+const apiObj: ElectronAPI = {
   minimize: () => wailsOrFallback(
     () => { window.go!.main.App.Minimize() },
     () => {},
