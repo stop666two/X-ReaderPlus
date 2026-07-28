@@ -967,12 +967,15 @@ async function loadPersistedReadChapters(bookId: string) {
   try {
     const v = await window.electronAPI.config.get(`readChapters:${bookId}`)
     if (v) {
-      const arr: string[] = JSON.parse(v)
+      let arr: string[]
+      if (typeof v === 'string') { arr = JSON.parse(v) }
+      else if (Array.isArray(v)) { arr = v }
+      else { bookshelf.readChapters = new Set(); return }
       bookshelf.readChapters = new Set(arr)
     } else {
       bookshelf.readChapters = new Set()
     }
-  } catch { logger.error('加载已读章节失败'); bookshelf.readChapters = new Set() }
+  } catch { bookshelf.readChapters = new Set() }
 }
 
 async function persistReadChapters(bookId: string) {
@@ -988,13 +991,12 @@ async function loadPersistedScrollPositions(bookId: string) {
   try {
     const v = await window.electronAPI.config.get(`scroll:${bookId}`)
     if (v) {
-      const data: Record<number, number> = JSON.parse(v)
-      // Populate reader's in-memory scroll positions
+      const data = typeof v === 'string' ? JSON.parse(v) : v
       for (const [key, val] of Object.entries(data)) {
-        reader.saveScrollPosition(Number(key), val)
+        reader.saveScrollPosition(Number(key), val as number)
       }
     }
-  } catch { logger.error('加载滚动位置失败') }
+  } catch { /* scroll positions are optional */ }
 }
 
 async function persistScrollPositions(bookId: string) {

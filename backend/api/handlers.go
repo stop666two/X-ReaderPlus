@@ -76,7 +76,7 @@ func jsonErr(w http.ResponseWriter, msg string, code int) {
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 func decode(w http.ResponseWriter, r *http.Request, v any) error {
-	r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // 10MB body limit
+	r.Body = http.MaxBytesReader(w, r.Body, 30<<20) // 30MB body limit
 	err := json.NewDecoder(r.Body).Decode(v)
 	var maxBytesErr *http.MaxBytesError
 	if errors.As(err, &maxBytesErr) {

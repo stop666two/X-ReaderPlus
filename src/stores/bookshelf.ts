@@ -466,8 +466,8 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
           try {
             const bookId = generateId()
 
-            const rawFilePromise = db().rawFile && data.byteLength < 5 * 1024 * 1024
-              ? db().rawFile.save(bookId, r.name, data).catch(() => {})
+            const rawFilePromise = db().rawFile && data.byteLength < 20 * 1024 * 1024
+              ? db().rawFile.save(bookId, r.name, data).catch((e: any) => { logger.warn(`raw file save failed: ${r.name}`, e) })
               : Promise.resolve()
 
             const parsed = await workerParse(worker, fp || r.name, r.name, data, dataSize, workerProgress)
