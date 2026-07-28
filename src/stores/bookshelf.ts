@@ -46,6 +46,14 @@ export async function batchProcess<T>(
 export const useBookshelfStore = defineStore('bookshelf', () => {
   const books = ref<Book[]>([])
   const libraries = ref<Library[]>([])
+
+  function updateBooks(newBooks: Book[]) {
+    books.value = newBooks
+    _dataVersion.value++
+    const counts: Record<string, number> = {}
+    for (const b of newBooks) { counts[b.libraryId] = (counts[b.libraryId] || 0) + 1 }
+    for (const lib of libraries.value) { lib.bookCount = counts[lib.id] || 0 }
+  }
   const activeLibraryId = ref(ALL_LIBRARY_ID)
   const viewMode = ref<ViewMode>('grid')
   const searchQuery = ref('')
@@ -181,19 +189,17 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
       const result = await db().books.getAll({ limit: pageSize, offset })
       if (result && !Array.isArray(result) && (result as any).success === false) {
         logger.error('加载书籍失败:', (result as any).error)
-        books.value = []
-        totalBookCount.value = 0
+      updateBooks([])
+      totalBookCount.value = 0
         return
       }
       const rows = (result as any).rows || result
       totalBookCount.value = (result as any).total ?? rows.length
-      books.value = mapBookRows(Array.isArray(rows) ? rows : [])
+      updateBooks(mapBookRows(Array.isArray(rows) ? rows : []))
     } else {
       return loadBooks(1, 50)
     }
     _dataLoaded.value = true
-    _dataVersion.value++
-    for (const lib of libraries.value) { lib.bookCount = books.value.filter(b => b.libraryId === lib.id).length }
   }
 
   function mapBookRows(rows: any[]) {
@@ -285,12 +291,11 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
         if (rows.length < BATCH_SIZE) break
         p++
       }
-      books.value = mapBookRows(allRows)
+      updateBooks(mapBookRows(allRows))
       _contentHashIndex.value = new Set()
       for (const b of books.value) {
         if (b.contentHash) _contentHashIndex.value.add(b.contentHash)
       }
-      for (const lib of libraries.value) { lib.bookCount = books.value.filter(b => b.libraryId === lib.id).length }
       try {
         _tagCache.value = await db().tags.getAll()
       } catch {}
@@ -596,9 +601,8 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
       logger.error(`删除书籍失败: ${result.failed} 本`)
     }
     const idSet = new Set(deleteIds)
-    books.value = books.value.filter(b => !idSet.has(b.id))
+    updateBooks(books.value.filter(b => !idSet.has(b.id)))
     await loadBookCount()
-    for (const lib of libraries.value) { lib.bookCount = books.value.filter(b => b.libraryId === lib.id).length }
   }
 
   async function updateBook(id: string, updates: Partial<Book>) {

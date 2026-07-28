@@ -870,14 +870,20 @@ const lazyContent = computed(() => {
   return segments.slice(0, renderedSegmentCount.value).join('')
 })
 
-const _sanitizedContent = ref('')
-
 // DOMPurify — static import so it's available synchronously
 import DOMPurify, { type Config as DOMPurifyConfig } from 'dompurify'
 
+let _lastSanitizedChapter = -1
+let _lastSanitizedResult = ''
+
 const sanitizedContent = computed(() => {
+  const chapterIdx = reader.currentChapterIndex
   const raw = lazyContent.value
   if (!raw) return ''
+
+  if (_lastSanitizedChapter === chapterIdx && _lastSanitizedResult) return _lastSanitizedResult
+  _lastSanitizedChapter = chapterIdx
+
   if (import.meta.env.DEV && raw.includes('data:image')) {
     console.log('[Reader] chapter has data:image URIs')
   }
@@ -902,7 +908,6 @@ const sanitizedContent = computed(() => {
   if (import.meta.env.DEV && raw.includes('data:image') && !result.includes('data:image')) {
     console.warn('[Reader] DOMPurify STRIPPED all data:image URIs!', { before: raw.substring(0, 500), after: result.substring(0, 500) })
   }
-  // Second pass: rewrite links for safe in-app navigation
   let count = 0
   result = result
     .replace(/<a\b([^>]*?)href\s*=\s*"([^"]*)"([^>]*)>/gi, (_, pre, val, post) => {
@@ -912,6 +917,7 @@ const sanitizedContent = computed(() => {
       count++; return `<a${pre}data-href='${val}'${post}>`
     })
   if (count > 0) { logger.info(`Rewrote ${count} links in chapter`) }
+  _lastSanitizedResult = result
   return result
 })
 
