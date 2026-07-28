@@ -59,6 +59,8 @@ export const useReaderStore = defineStore('reader', () => {
     bookmarks.value.filter(b => b.chapterIndex === currentChapterIndex.value)
   )
 
+  let _chapterLoadVersion = 0
+
   /** Load chapter content on demand, with neighbor preloading and cache eviction */
   async function loadChapterContent(index: number): Promise<void> {
     if (!_allChapterData || index < 0 || index >= _allChapterData.length) return
@@ -66,17 +68,16 @@ export const useReaderStore = defineStore('reader', () => {
     chapterContents.value.set(index, data.content)
     triggerRef(chapterContents)
 
-    // Preload adjacent chapters in background, then evict distant ones
+    const currentVersion = ++_chapterLoadVersion
+
     setTimeout(() => {
-      // Guard: _allChapterData may have been set to null by loadBook() in the meantime
-      if (!_allChapterData) return
+      if (!_allChapterData || currentVersion !== _chapterLoadVersion) return
       if (index + 1 < _allChapterData.length) {
         chapterContents.value.set(index + 1, _allChapterData[index + 1].content)
       }
       if (index - 1 >= 0) {
         chapterContents.value.set(index - 1, _allChapterData[index - 1].content)
       }
-      // Evict chapters more than 3 away from current
       for (const [i] of chapterContents.value) {
         if (Math.abs(i - index) > 3) {
           chapterContents.value.delete(i)

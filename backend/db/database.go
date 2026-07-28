@@ -157,22 +157,19 @@ func Init() error {
 
 // migrateV1toV2: Add content_hash column to books table (v1 → v2)
 func migrateV1toV2(db *sql.DB) error {
-	// Check if column already exists
 	var count int
 	err := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('books') WHERE name='content_hash'").Scan(&count)
 	if err != nil {
-		// pragma_table_info might not exist on older sqlite — try ALTER TABLE directly
 		_, err = db.Exec("ALTER TABLE books ADD COLUMN content_hash TEXT DEFAULT ''")
 		if err != nil {
-			// If column already exists or table doesn't exist yet, that's OK
-			log.Printf("migrateV1toV2 ALTER TABLE (optional): %v", err)
+			return fmt.Errorf("migrateV1toV2 failed: %w", err)
 		}
 		return nil
 	}
 	if count == 0 {
 		_, err = db.Exec("ALTER TABLE books ADD COLUMN content_hash TEXT DEFAULT ''")
 		if err != nil {
-			log.Printf("migrateV1toV2: %v", err)
+			return fmt.Errorf("migrateV1toV2 ALTER TABLE failed: %w", err)
 		}
 	}
 	return nil

@@ -575,27 +575,32 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
   }
 
   async function deleteBooks(ids: string[]) {
-    // Insert into trash first — abort if any trash insert fails
+    const failedIds: string[] = []
     for (const id of ids) {
       const book = books.value.find(b => b.id === id)
       if (book) {
         try {
           await db().trash.insert(id, JSON.stringify({ id, book, deletedAt: Date.now() }))
         } catch (e) {
-          logger.error('移入回收站失败，已取消删除', e)
-          return // Abort entire deletion if trash backup fails
+          logger.error(`移入回收站失败: ${id}`, e)
+          failedIds.push(id)
+          continue
         }
       }
       selectedIds.value.delete(id)
     }
     selectedIds.value = new Set(selectedIds.value)
-    const result: any = await db().books.delete(ids)
+
+    const deleteIds = ids.filter(id => !failedIds.includes(id))
+    if (deleteIds.length === 0) return
+
+    const result: any = await db().books.delete(deleteIds)
     if (result && !result.success) {
       logger.error(`删除书籍失败: ${result.failed} 本`)
     }
-    const idSet = new Set(ids)
+    const idSet = new Set(deleteIds)
     books.value = books.value.filter(b => !idSet.has(b.id))
-    loadBookCount()
+    await loadBookCount()
     for (const lib of libraries.value) { lib.bookCount = books.value.filter(b => b.libraryId === lib.id).length }
   }
 

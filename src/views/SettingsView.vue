@@ -1652,9 +1652,7 @@
                 v-model="webdavAsymmetricAlgo"
                 :items="[
                   { title: 'RSA-2048（推荐·广泛兼容）', value: 'rsa-2048' },
-                  { title: 'RSA-4096（更高安全·加解密更慢）', value: 'rsa-4096' },
-                  { title: 'ECC-P256（高效·安全等同RSA-3072）', value: 'ecc-p256' },
-                  { title: 'ECC-P384（更高安全·适合长期密钥）', value: 'ecc-p384' }
+                  { title: 'RSA-4096（更高安全·加解密更慢）', value: 'rsa-4096' }
                 ]"
                 label="非对称算法"
                 variant="outlined"
@@ -3536,17 +3534,14 @@ async function generateKeyPair() {
   try {
     const algoMap: Record<string, any> = {
       'rsa-2048': { name: 'RSA-OAEP', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
-      'rsa-4096': { name: 'RSA-OAEP', modulusLength: 4096, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
-      'ecc-p256': { name: 'ECDSA', namedCurve: 'P-256' },
-      'ecc-p384': { name: 'ECDSA', namedCurve: 'P-384' }
+      'rsa-4096': { name: 'RSA-OAEP', modulusLength: 4096, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }
     }
-    const isRSA = webdavAsymmetricAlgo.value.startsWith('rsa')
     const algo = algoMap[webdavAsymmetricAlgo.value]
     if (!algo) return
     const keyPair = await crypto.subtle.generateKey(
       algo,
       true,
-      isRSA ? ['encrypt', 'decrypt'] : ['sign', 'verify']
+      ['encrypt', 'decrypt']
     )
     const pubKey = await crypto.subtle.exportKey('spki', keyPair.publicKey)
     const privKey = await crypto.subtle.exportKey('pkcs8', keyPair.privateKey)

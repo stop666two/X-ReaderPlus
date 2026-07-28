@@ -735,8 +735,12 @@ func deleteBooks(ids []string) error {
 		if _, err := contentTx.Exec("DELETE FROM chapters WHERE book_id = ?", id); err != nil { metaTx.Rollback(); contentTx.Rollback(); return fmt.Errorf("delete chapters %s failed: %w", id, err) }
 		if _, err := contentTx.Exec("DELETE FROM raw_files WHERE book_id = ?", id); err != nil { metaTx.Rollback(); contentTx.Rollback(); return fmt.Errorf("delete raw_files %s failed: %w", id, err) }
 	}
-	if err := metaTx.Commit(); err != nil { contentTx.Rollback(); return fmt.Errorf("meta tx commit failed: %w", err) }
-	if err := contentTx.Commit(); err != nil { return fmt.Errorf("content tx commit failed: %w", err) }
+	// Commit content first: if it fails, meta tx can still roll back cleanly
+	if err := contentTx.Commit(); err != nil { metaTx.Rollback(); return fmt.Errorf("content tx commit failed: %w", err) }
+	if err := metaTx.Commit(); err != nil {
+		log.Printf("CRITICAL: meta tx commit succeeded but content tx failed — data may be inconsistent")
+		return fmt.Errorf("meta tx commit failed: %w", err)
+	}
 	return nil
 }
 
