@@ -34,9 +34,9 @@ cat > "${BUNDLE}/Contents/Info.plist" << 'PLIST'
 	<key>CFBundleIdentifier</key>
 	<string>com.stop666.x-reader-plus</string>
 	<key>CFBundleVersion</key>
-	<string>0.4.1</string>
+	<string>0.5.0</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.4.1</string>
+	<string>0.5.0</string>
 	<key>CFBundleExecutable</key>
 	<string>X-ReaderPlus</string>
 	<key>CFBundlePackageType</key>

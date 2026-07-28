@@ -6,9 +6,9 @@ Unicode true
 !include "FileFunc.nsh"
 
 !define APP_NAME "X-ReaderPlus"
-!define APP_EXE "X-ReaderPlus-win-x64.exe"
+!define APP_EXE "X-ReaderPlus.exe"
 !define PUBLISHER "stop666"
-!define VERSION "0.4.1"
+!define VERSION "0.5.0"
 !define INSTALL_DIR "$LOCALAPPDATA\Programs\${APP_NAME}"
 
 Name "${APP_NAME} ${VERSION}"
@@ -18,6 +18,7 @@ RequestExecutionLevel user
 SetCompressor /SOLID lzma
 
 !insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_LICENSE "${NSISDIR}\Docs\Modern UI\License.txt"
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
@@ -36,7 +37,7 @@ Section "${APP_NAME} (required)" SecMain
   File "dist\${APP_EXE}"
 
   CreateDirectory "$SMPROGRAMS\${APP_NAME}"
-  CreateShortCut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}"
+  CreateShortCut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\${APP_EXE}" 0
 
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
@@ -53,23 +54,24 @@ Section "${APP_NAME} (required)" SecMain
 SectionEnd
 
 Section "Desktop Shortcut" SecDesktop
-  CreateShortCut "$DESKTOP\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}"
+  CreateShortCut "$DESKTOP\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\${APP_EXE}" 0
 SectionEnd
 
 Section "Start with Windows" SecAutoStart
-  CreateShortCut "$SMSTARTUP\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}"
+  CreateShortCut "$SMSTARTUP\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\${APP_EXE}" 0
 SectionEnd
 
 Section "Uninstall"
   Delete "$INSTDIR\${APP_EXE}"
   Delete "$INSTDIR\uninstall.exe"
-  RMDir "$INSTDIR"
 
   Delete "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk"
   RMDir "$SMPROGRAMS\${APP_NAME}"
 
   Delete "$DESKTOP\${APP_NAME}.lnk"
   Delete "$SMSTARTUP\${APP_NAME}.lnk"
+
+  RMDir "$INSTDIR"
 
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
 SectionEnd
