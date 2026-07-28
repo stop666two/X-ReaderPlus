@@ -215,10 +215,7 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 		var val sql.NullString
 		if err := db.Settings.QueryRow("SELECT value FROM config WHERE key = ?", key).Scan(&val); err != nil && err != sql.ErrNoRows { jsonErr(w, "query failed: "+err.Error(), 500); return }
 		if val.Valid {
-			raw := val.String
-			if len(raw) > 0 && (raw[0] == '{' || raw[0] == '[' || raw[0] == '"') {
-				w.Header().Set("Content-Type", "application/json"); w.Write([]byte(raw))
-			} else { jsonOK(w, raw) }
+			jsonOK(w, val.String)
 		} else { jsonOK(w, nil) }
 	case "DELETE":
 		if _, err := db.Settings.Exec("DELETE FROM config WHERE key = ?", key); err != nil { jsonErr(w, "delete failed: "+err.Error(), 500); return }
