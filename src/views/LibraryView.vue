@@ -31,7 +31,7 @@
       <p class="text-caption text-medium-emphasis mt-2">尝试修改搜索条件或创建新书库</p>
     </div>
 
-    <v-row v-else class="mt-4" dense>
+    <v-row v-else class="mt-2" dense>
       <v-col
         v-for="lib in pagedLibraries"
         :key="lib.id"
@@ -514,10 +514,8 @@ onMounted(refresh)
   max-width: 520px;
 }
 .v-row > :deep(.v-col) {
-  display: flex;
-  justify-content: center;
-  padding-top: 4px !important;
-  padding-bottom: 4px !important;
+  padding-top: 2px !important;
+  padding-bottom: 2px !important;
 }
 .empty-state {
   display: flex;
@@ -527,12 +525,10 @@ onMounted(refresh)
   padding: 100px 0;
 }
 .lib-card {
-  border-radius: 18px !important;
+  border-radius: 12px !important;
   transition: box-shadow .2s, transform .2s;
   display: flex;
   flex-direction: column;
-  max-width: 720px;
-  margin: 0 auto;
 }
 .lib-card:hover {
   box-shadow: 0 8px 32px rgba(0,0,0,.12);
@@ -543,11 +539,11 @@ onMounted(refresh)
   border-width: 2px !important;
 }
 .lib-card-body {
-  padding: 28px;
+  padding: 18px 20px;
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 10px;
 }
 .lib-card-top {
   display: flex;
@@ -587,7 +583,7 @@ onMounted(refresh)
   display: flex;
   align-items: center;
   gap: 0;
-  padding: 16px 0;
+  padding: 8px 0;
   border-top: 1px solid rgba(0,0,0,0.06);
   border-bottom: 1px solid rgba(0,0,0,0.06);
 }
@@ -635,8 +631,8 @@ onMounted(refresh)
 .lib-card-actions {
   display: flex;
   align-items: center;
-  padding: 10px 16px;
-  gap: 6px;
+  padding: 6px 12px;
+  gap: 4px;
 }
 .pagination-bar {
   display: flex;
