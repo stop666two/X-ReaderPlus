@@ -878,6 +878,9 @@ import DOMPurify, { type Config as DOMPurifyConfig } from 'dompurify'
 const sanitizedContent = computed(() => {
   const raw = lazyContent.value
   if (!raw) return ''
+  if (import.meta.env.DEV && raw.includes('data:image')) {
+    console.log('[Reader] chapter has data:image URIs')
+  }
   let result: string = raw
   const config: DOMPurifyConfig & { MAX_ALLOWED_ATTRIBUTES_LENGTH?: number } = {
     ALLOWED_TAGS: [
@@ -896,6 +899,9 @@ const sanitizedContent = computed(() => {
     MAX_ALLOWED_ATTRIBUTES_LENGTH: 0
   }
   result = String(DOMPurify.sanitize(result, config))
+  if (import.meta.env.DEV && raw.includes('data:image') && !result.includes('data:image')) {
+    console.warn('[Reader] DOMPurify STRIPPED all data:image URIs!', { before: raw.substring(0, 500), after: result.substring(0, 500) })
+  }
   // Second pass: rewrite links for safe in-app navigation
   let count = 0
   result = result

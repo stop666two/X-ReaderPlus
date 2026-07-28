@@ -1274,18 +1274,15 @@ async function embedImages(html: string, chapterDir: string, rootDir: string, zi
     const hasQuote = !!(srcMatch[1] || srcMatch[2])
 
     const dataUri = await embedOne(src)
-    if (hasQuote) {
-      const q = srcMatch[1] ? '"' : "'"
-      const newTag = dataUri
-        ? tag.replace(new RegExp(`(\\bsrc\\s*=\\s*${q})[^${q}]*${q}`), `$1${dataUri}${q}`)
-        : tag.replace(new RegExp(`(\\bsrc\\s*=\\s*${q})[^${q}]*${q}`), `$1${q}`)
-      imgRefs.push({ start: tagStart, end: tagEnd, newAttr: newTag })
-    } else {
-      const newTag = dataUri
-        ? tag.replace(/(\bsrc\s*=\s*)\S+/, `$1"${dataUri}"`)
-        : tag.replace(/(\bsrc\s*=\s*)\S+/, '$1""')
-      imgRefs.push({ start: tagStart, end: tagEnd, newAttr: newTag })
+    if (dataUri) {
+      if (hasQuote) {
+        const q = srcMatch[1] ? '"' : "'"
+        imgRefs.push({ start: tagStart, end: tagEnd, newAttr: tag.replace(new RegExp(`(\\bsrc\\s*=\\s*${q})[^${q}]*${q}`), `$1${dataUri}${q}`) })
+      } else {
+        imgRefs.push({ start: tagStart, end: tagEnd, newAttr: tag.replace(/(\bsrc\s*=\s*)\S+/, `$1"${dataUri}"`) })
+      }
     }
+    // If embed fails, keep original src (degrade gracefully)
   }
 
   // Process SVG <image> elements
