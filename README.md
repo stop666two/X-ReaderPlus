@@ -26,7 +26,7 @@ X-ReaderPlus 是一款**完全脱机**的桌面多格式电子书阅读器。不
 |------|------|
 | 🔒 **完全脱机** | 除词典 API 外零网络请求，断网环境完美运行 |
 | 🛡️ **隐私至上** | 3 数据库分离，AES-256-GCM 加密可选，PIN 锁保护 |
-| 📚 **17 种格式** | EPUB / PDF / TXT / FB2 / DJVU / CHM / LIT / LRF / DOCX / RTF / ODT / Markdown / HTML / CBZ / CBT |
+| 📚 **17 种格式** | EPUB / PDF / TXT / FB2 / DJVU / CHM / LIT / LRF / DOCX / RTF / ODT / Markdown / HTML / CBZ / CBT / CBR / CB7 |
 | ⚡ **极速编译** | Wails 构建，二进制 ~24 MB，单文件发布 |
 | 🎨 **Material Design 3** | Vuetify 3 组件，亮/暗/护眼三主题 |
 | 📖 **三阅读模式** | 滚动 / 翻页（点击+键盘←→） / 自动滚屏（可调速度） |
@@ -50,9 +50,8 @@ X-ReaderPlus 是一款**完全脱机**的桌面多格式电子书阅读器。不
 |------|------|
 | EPUB / PDF / TXT / Markdown / HTML / FB2 | ✅ 完整支持 |
 | DJVU / DOCX / RTF / ODT / CHM / LIT / LRF | ✅ 完整支持 |
-| CBZ / CBT | ✅ 图片提取 50-200 页 |
-| CBR / CB7 | ⚠️ 不可用（专有格式，请转 CBZ） |
-| MOBI / AZW3 / PRC / PDB | ❌ 已禁用（解析不稳定） |
+| CBZ / CBT / CBR / CB7 | ✅ 图片提取（CBR/CB7 建议转 CBZ） |
+| MOBI / AZW3 / PRC / PDB | ❌ 不支持 |
 
 ---
 
@@ -97,17 +96,16 @@ git clone https://github.com/stop666two/X-ReaderPlus.git
 cd X-ReaderPlus
 npm install
 
-# 前端开发
-npm run dev
+# 一键启动开发服务器（清空数据库 + Go API + Vite）
+.\dev.bat
 
-# 后端开发
-cd backend && go run .
+# 或手动启动
+npm run dev          # 前端 Vite
+cd backend && .\run-server.bat  # 后端 Go API
 
 # 生产构建（单文件）
-npm run build:all
-
-# 一键重建
-.\rebuild.bat
+.\rebuild.bat        # 完整构建
+.\rebuild.bat --frontend-only  # 仅构建前端
 ```
 
 ---

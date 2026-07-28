@@ -1,28 +1,22 @@
 # Roadmap — X-ReaderPlus
 
-本文档记录 X-ReaderPlus 的功能规划与开发路线。
-
----
-
-## v0.5.0 ✅ 已发布（当前）
+## v0.5.0 ✅ 已发布
 
 **深度性能优化与功能增强** — 导入/专注模式/LibraryView 重写，备份与加密体系全面升级
 
 - [x] 导入系统大改：200+文件不卡、流式 O(1) 内存、创建书库时导入
-- [x] 专注模式重写：scrollIntoView + 边界钳制 + 精简 CSS，消除卡顿跳顶
-- [x] LibraryView 完全重写：宽卡片 + 底部翻页 + 标签聚合 + 自动刷新
-- [x] 安全加固：CORS/CSP/路径白名单/HTTP method/SQL双事务/CVE升级
+- [x] 专注模式重写：scrollIntoView + 边界钳制 + 精简 CSS
+- [x] LibraryView 完全重写：宽卡片 + 底部翻页 + 标签聚合
+- [x] 安全加固：CORS/CSP/路径白名单/HTTP method/SQL双事务
 - [x] 备份恢复系统：分项选择 + 书库标记 + JSON5 + 加密处理
-- [x] WebDAV 加密面板：密码/AES密钥/非对称 + 算法选择 + 一键生成
+- [x] WebDAV 加密面板：密码/AES密钥/非对称 + 算法选择
 - [x] 设置页增强：13项自定义 + 数据维护 + 备份恢复
 - [x] 标签聚合：服务端 `/api/tags` + 缓存化
-- [x] 去重优化：MD5(快)→SHA256(确认) 双哈希
+- [x] 去重优化：SHA-256 哈希
 - [x] 启动优化：只加载第一页50本，后台异步全量
 - [x] 番茄钟 + 白噪音：ReaderView 工具栏集成
-- [x] 导入结果弹窗：完整统计（成功+跳过+失败）+ 可滚动复制
-- [x] 死代码删除：notes-exporter/smart-collections/sync + 导入记录
 - [x] CI/CD 增强：Dependabot + lint-and-vet + permissions 最小化
-- [x] CLI 一键启动：dev.bat + run-server.bat + 自动格式化数据库
+- [x] CLI 一键启动：dev.bat + run-server.bat
 
 ---
 
@@ -43,14 +37,13 @@
 - [ ] **Go 后端格式解析器**（减少前端依赖）
 - [ ] **漫画模式双页浏览**
 - [ ] **语音朗读（TTS）**
-- [ ] **WebDAV 加密算法实际实现**（当前仅 UI + 配置保存）
+- [ ] **WebDAV 加密算法实际实现**
 
 ### 代码质量
 
 - [ ] **ESLint 全面修复** — 修复警告，移除 `--quiet`
 - [ ] **i18n 全面覆盖** — 所有视图迁移到 `t()`，确保中英同步
 - [ ] **搜索索引重构** — 增量更新替代全量序列化
-- [ ] **FB2/DJVU/CHM 解析器优化** — 正则回溯、字符串拼接、字节扫描
 - [ ] **单元测试** — 核心逻辑添加 Vitest/Go test 覆盖
 
 ---
@@ -72,6 +65,6 @@
 - [README](README.md) — 项目介绍
 - [CONTRIBUTING](CONTRIBUTING.md) — 贡献指南
 - [SECURITY](SECURITY.md) — 安全策略
-- AGENTS.md — 开发规范（本地文件）
+- [CHANGELOG.md](CHANGELOG.md) — 版本记录
 
-最后更新: 2026-07-15
+最后更新: 2026-07-28

@@ -131,3 +131,58 @@
 | `golang.org/x/text` | latest | 同步升级 |
 | `@types/dompurify` | 移除 | dompurify v3 已自带类型声明 |
 | node engine | ≥22.0.0 | vue-i18n → @intlify/core-base 要求 |
+
+---
+
+## v0.5.1-dev
+
+> 发布日期: 2026-07-28
+> 全项目代码审查与修复：安全问题、性能优化、布局重构、格式修复。
+
+### 🔴 安全修复
+- **XSS 修复**: DOMPurify `MAX_ALLOWED_ATTRIBUTES_LENGTH: 0` 防止大 base64 图片被截断
+- **DOMPurify SVG 属性**: 添加 `xlink:href`/`xmlns`/`viewBox` 等 SVG 属性白名单
+- **rawFile 二进制修复**: `rawFile.get` 从 `res.json()` 改为 `res.arrayBuffer()`
+- **CORS/安全头**: 维持白名单 + CSP 配置
+
+### 🐛 Bug 修复
+- **EPUB 图片不显示**: DOMPurify 剥离 `xlink:href` 属性 → 添加至白名单
+- **MD5 死代码**: 移除不支持的 `crypto.subtle.digest('MD5')`，仅用 SHA-256
+- **模板 `.value` 误用**: `appProgress.isLoading.value` → `appProgress.isLoading`
+- **Go handler decode**: `MaxBytesReader` 错误被吞 → 改为返回错误
+- **Go 空指针 panic**: Wails 方法添加 `a.ctx` nil 检查
+- **RTF/ODT 解析**: `mammoth.js` 不支持 → 添加专用 `parseRtf()`/`parseOdt()`
+- **CBR/CB7 支持**: 加入 `ALLOWED_FORMATS`，导入时显示转换提示
+- **CHM 字节序**: `getU32` 大端读取 → 改为小端 `getU32LE`
+- **滚动位置闪回**: 移除 `currentChapter` watcher 中的 `scrollTop = 0`
+- **config GET 格式**: 统一返回 JSON 字符串 + 前端容错
+- **embedImages 重写**: 修复 `imgFile` 未重新赋值 bug + 替换精确只改 src 属性
+- **标签替换误伤**: `tag.replace(src, dataUri)` 可能误改 `alt` → 正则精准定位
+
+### ⚡ 性能优化
+- **allTags 缓存**: 缓存命中时跳过遍历所有书籍（大书库减 50-300ms）
+- **filteredBooks 简化**: 减少数组拷贝 + 简化 localeCompare
+- **Router transition**: 移除 `mode="out-in"` + 移除过渡动画（瞬时切换）
+- **getLockRemaining 缓存**: 添加 1s 缓存，减少 IPC 调用
+- **updateBooks 集中更新**: 单次 O(N) 遍历计算 bookCount（之前 O(L×N)）
+- **sanitizedContent 缓存**: 按章节缓存 DOMPurify 结果
+- **分页 visiblePages**: 改用 computed 避免遍历全部页码
+- **LibraryView deep watcher**: 移除 `{ deep: true }` 避免级联重算
+
+### 🎨 UI/UX
+- **BookshelfView 重写**: 两行工具栏 + 默认大尺寸 + 字体/间距加大
+- **LibraryView 重写**: 每行一卡 + max-width 720px 居中 + 卡片放大
+- **全局样式放大**: style.css 同步加大 `.book-card` 字号/padding
+- **列表视图间距**: `ml-2` 偏移避免文字重叠
+- **所有视图布局**: Notes/Tags/History/Stats 字号/间距优化
+
+### 🏗️ 构建脚本
+- **dev.bat**: 按 Enter 一键关闭所有进程 + exit 自关闭
+- **rebuild.bat**: 前置检查 + `vue-tsc`/`go vet` 质量门禁 + `--frontend-only`
+- **run-server.bat**: `--no-format` 参数 + `go vet` 前置
+- **installer.nsi**: 版本号同步 + exe 名修正
+
+### 📝 状态持久化
+- **bookshelfUI**: viewMode/sortField/sortOrder/filterTag/activeLibraryId 数据库持久化
+- **gridSize**: 数据库持久化
+- **readingMode**: 数据库持久化
