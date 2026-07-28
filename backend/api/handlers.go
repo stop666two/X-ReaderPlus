@@ -80,7 +80,7 @@ func decode(w http.ResponseWriter, r *http.Request, v any) error {
 	err := json.NewDecoder(r.Body).Decode(v)
 	var maxBytesErr *http.MaxBytesError
 	if errors.As(err, &maxBytesErr) {
-		return nil
+		return fmt.Errorf("请求体超过 10MB 限制")
 	}
 	return err
 }

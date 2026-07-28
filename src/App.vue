@@ -51,7 +51,7 @@
     </div>
 
     <!-- Global progress bar -->
-    <v-progress-linear v-if="appProgress.isLoading.value" indeterminate color="primary" height="2" class="global-progress-bar" />
+    <v-progress-linear v-if="appProgress.isLoading" indeterminate color="primary" height="2" class="global-progress-bar" />
 
     <div class="app-body">
       <!-- Library sidebar -->

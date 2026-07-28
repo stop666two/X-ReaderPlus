@@ -431,38 +431,20 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
             }
           }
 
-          // ---- 内容去重: 先 MD5 快速预检，再 SHA-256 确认 ----
           let contentHash: string
           let isDuplicate = false
 
-          let md5Hash: string
           try {
-            const md5Buffer = await crypto.subtle.digest('MD5', data)
-            const md5Array = Array.from(new Uint8Array(md5Buffer))
-            md5Hash = md5Array.map(b => b.toString(16).padStart(2, '0')).join('')
-          } catch {
-            md5Hash = ''
-          }
-
-          if (md5Hash) {
-            isDuplicate = _contentHashIndex.value.has(md5Hash) || importedHashes.has(md5Hash)
-          }
-
-          if (!isDuplicate) {
-            try {
-              const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-              const hashArray = Array.from(new Uint8Array(hashBuffer))
-              contentHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-              if (_contentHashIndex.value.has(contentHash) || importedHashes.has(contentHash)) {
-                isDuplicate = true
-              }
-            } catch (e) {
-              logger.warn(`哈希计算失败: ${r.name}`)
-              importErrors.push({ file: r.name, type: '哈希失败', detail: String(e) })
-              continue
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+            const hashArray = Array.from(new Uint8Array(hashBuffer))
+            contentHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+            if (_contentHashIndex.value.has(contentHash) || importedHashes.has(contentHash)) {
+              isDuplicate = true
             }
-          } else {
-            contentHash = ''
+          } catch (e) {
+            logger.warn(`哈希计算失败: ${r.name}`)
+            importErrors.push({ file: r.name, type: '哈希失败', detail: String(e) })
+            continue
           }
 
           if (isDuplicate) {
@@ -479,7 +461,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
             continue
           }
 
-          importedHashes.add(contentHash || md5Hash)
+          importedHashes.add(contentHash)
 
           try {
             const bookId = generateId()

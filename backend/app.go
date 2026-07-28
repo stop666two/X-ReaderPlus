@@ -32,10 +32,12 @@ func (a *App) shutdown(ctx context.Context) {
 }
 
 func (a *App) Minimize() {
+	if a.ctx == nil { return }
 	wailsRuntime.WindowMinimise(a.ctx)
 }
 
 func (a *App) Maximize() {
+	if a.ctx == nil { return }
 	if wailsRuntime.WindowIsMaximised(a.ctx) {
 		wailsRuntime.WindowUnmaximise(a.ctx)
 	} else {
@@ -44,10 +46,12 @@ func (a *App) Maximize() {
 }
 
 func (a *App) IsMaximized() bool {
+	if a.ctx == nil { return false }
 	return wailsRuntime.WindowIsMaximised(a.ctx)
 }
 
 func (a *App) Close() {
+	if a.ctx == nil { return }
 	wailsRuntime.Quit(a.ctx)
 }
 
