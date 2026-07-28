@@ -35,7 +35,7 @@
       <v-col
         v-for="lib in pagedLibraries"
         :key="lib.id"
-        cols="12" md="6"
+        cols="12"
       >
         <v-card
           variant="outlined"
@@ -513,6 +513,10 @@ onMounted(refresh)
 .search-field {
   max-width: 520px;
 }
+.v-row > :deep(.v-col) {
+  display: flex;
+  justify-content: center;
+}
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -525,6 +529,8 @@ onMounted(refresh)
   transition: box-shadow .2s, transform .2s;
   display: flex;
   flex-direction: column;
+  max-width: 720px;
+  margin: 0 auto;
 }
 .lib-card:hover {
   box-shadow: 0 8px 32px rgba(0,0,0,.12);
