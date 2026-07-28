@@ -3,7 +3,7 @@
     <div class="library-header">
       <div>
         <h2 class="library-title">书库管理</h2>
-        <p class="text-body-2 text-medium-emphasis mt-2">
+        <p class="text-body-1 text-medium-emphasis mt-2">
           {{ libraries.length }} 个书库 · {{ totalBooks }} 本书 ·
           {{ totalReadingHours }} 小时阅读
         </p>
@@ -35,7 +35,7 @@
       <v-col
         v-for="lib in pagedLibraries"
         :key="lib.id"
-        cols="12" md="6" xl="4"
+        cols="12" md="6"
       >
         <v-card
           variant="outlined"
@@ -45,7 +45,7 @@
           <div class="lib-card-body">
             <div class="lib-card-top">
               <div class="lib-icon-wrap" :class="lib.id === 'default' ? 'lib-icon-default' : 'lib-icon-normal'">
-                <v-icon size="32">
+                <v-icon size="36">
                   {{ lib.mode === 'folder' ? 'mdi-folder-outline' : 'mdi-content-copy' }}
                 </v-icon>
               </div>
@@ -493,7 +493,7 @@ onMounted(refresh)
 
 <style scoped>
 .library-view {
-  padding: 40px;
+  padding: 48px;
   margin: 0 auto;
   height: 100%;
   overflow-y: auto;
@@ -503,53 +503,53 @@ onMounted(refresh)
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 20px;
 }
 .library-title {
-  font-size: 28px;
+  font-size: 32px;
   font-weight: 700;
   margin: 0;
 }
 .search-field {
-  max-width: 480px;
+  max-width: 520px;
 }
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 80px 0;
+  padding: 100px 0;
 }
 .lib-card {
-  border-radius: 16px !important;
+  border-radius: 18px !important;
   transition: box-shadow .2s, transform .2s;
   display: flex;
   flex-direction: column;
 }
 .lib-card:hover {
-  box-shadow: 0 6px 28px rgba(0,0,0,.1);
-  transform: translateY(-3px);
+  box-shadow: 0 8px 32px rgba(0,0,0,.12);
+  transform: translateY(-4px);
 }
 .lib-card-default {
   border-color: rgb(var(--v-theme-primary)) !important;
   border-width: 2px !important;
 }
 .lib-card-body {
-  padding: 24px;
+  padding: 28px;
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
 }
 .lib-card-top {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 18px;
 }
 .lib-icon-wrap {
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -568,7 +568,7 @@ onMounted(refresh)
   min-width: 0;
 }
 .lib-name {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
   line-height: 1.3;
 }
@@ -579,7 +579,7 @@ onMounted(refresh)
   display: flex;
   align-items: center;
   gap: 0;
-  padding: 14px 0;
+  padding: 16px 0;
   border-top: 1px solid rgba(0,0,0,0.06);
   border-bottom: 1px solid rgba(0,0,0,0.06);
 }
@@ -588,32 +588,32 @@ onMounted(refresh)
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 .stat-value {
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 700;
   line-height: 1.2;
 }
 .stat-label {
-  font-size: 12px;
+  font-size: 13px;
   color: rgba(0,0,0,0.45);
   text-transform: uppercase;
-  letter-spacing: .5px;
+  letter-spacing: 1px;
 }
 .stat-divider {
   width: 1px;
-  height: 32px;
+  height: 36px;
   background: rgba(0,0,0,0.08);
 }
 .lib-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
 }
 .tag-chip :deep(.v-chip__content) {
-  font-size: 12px;
+  font-size: 13px;
 }
 .tag-count {
   opacity: .6;
@@ -622,20 +622,20 @@ onMounted(refresh)
 .lib-created {
   display: flex;
   align-items: center;
-  font-size: 14px;
+  font-size: 15px;
 }
 .lib-card-actions {
   display: flex;
   align-items: center;
-  padding: 8px 12px;
-  gap: 4px;
+  padding: 10px 16px;
+  gap: 6px;
 }
 .pagination-bar {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 32px 0 16px;
+  padding: 36px 0 20px;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 16px;
 }
 </style>
