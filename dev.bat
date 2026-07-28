@@ -38,10 +38,14 @@ echo.
 echo Backend:  http://127.0.0.1:34123
 echo Frontend: http://localhost:5173
 echo.
-echo Press any key to stop all servers.
+echo.
+echo ========================================
+echo   Press ENTER to shut down all servers
+echo ========================================
 pause >nul
 
 echo Shutting down...
 taskkill /f /fi "WINDOWTITLE eq X-ReaderPlus-Backend*" 2>nul >nul
 taskkill /f /fi "WINDOWTITLE eq X-ReaderPlus-Frontend*" 2>nul >nul
-echo Done.
+echo All servers stopped. Closing this window...
+exit
