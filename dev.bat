@@ -45,7 +45,16 @@ echo ========================================
 pause >nul
 
 echo Shutting down...
-taskkill /f /fi "WINDOWTITLE eq X-ReaderPlus-Backend*" 2>nul >nul
-taskkill /f /fi "WINDOWTITLE eq X-ReaderPlus-Frontend*" 2>nul >nul
+:: Kill backend (by port and go process)
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr /c:":34123" 2^>nul') do (
+  taskkill /f /pid %%a 2>nul >nul
+)
+:: Kill frontend (by port and node process)
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr /c:":5173" 2^>nul') do (
+  taskkill /f /pid %%a 2>nul >nul
+)
+:: Close the CMD windows by known titles
+taskkill /f /fi "WINDOWTITLE eq X-ReaderPlus Backend" 2>nul >nul
+taskkill /f /fi "WINDOWTITLE eq X-ReaderPlus-Frontend" 2>nul >nul
 echo All servers stopped. Closing this window...
 exit
