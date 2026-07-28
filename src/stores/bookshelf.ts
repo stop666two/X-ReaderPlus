@@ -73,9 +73,13 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
   })
 
   const allTags = computed(() => {
+    if (_tagCache.value.length > 0) {
+      const tags = new Set(_tagCache.value.map(t => t.name))
+      _knownTags.value.forEach(t => tags.add(t))
+      return Array.from(tags).sort()
+    }
     const tags = new Set<string>()
-    _tagCache.value.forEach(t => tags.add(t.name))
-    filteredLibraryBooks.value.forEach(b => b.tags.forEach(t => tags.add(t)))
+    books.value.forEach(b => b.tags.forEach(t => tags.add(t)))
     _knownTags.value.forEach(t => tags.add(t))
     return Array.from(tags).sort()
   })
@@ -86,34 +90,27 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
   })
 
   const filteredBooks = computed(() => {
-    let result = [...filteredLibraryBooks.value]
+    let result = filteredLibraryBooks.value
     if (searchQuery.value) {
       const q = searchQuery.value.toLowerCase()
       result = result.filter(b => b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q))
     }
     if (filterTag.value) result = result.filter(b => b.tags.includes(filterTag.value))
-    result.sort((a, b) => {
-      let cmp = 0
-      switch (sortField.value) {
-        case 'title':
-          cmp = (a.title || '').localeCompare(b.title || '', 'zh-CN')
-          if (cmp === 0) cmp = (a.title || '').localeCompare(b.title || '', 'en')
-          break
-        case 'author':
-          cmp = (a.author || '').localeCompare(b.author || '', 'zh-CN')
-          if (cmp === 0) cmp = (a.author || '').localeCompare(b.author || '', 'en')
-          break
-        case 'addedAt': cmp = a.addedAt - b.addedAt; break
-        case 'chapterCount': cmp = (a.chapterCount || 0) - (b.chapterCount || 0); break
-        case 'libraryName':
-          const libA = libraries.value.find(l => l.id === a.libraryId)?.name || ''
-          const libB = libraries.value.find(l => l.id === b.libraryId)?.name || ''
-          cmp = libA.localeCompare(libB, 'zh-CN')
-          break
-      }
-      return sortOrder.value === 'asc' ? cmp : -cmp
+    if (sortField.value === 'addedAt') {
+      if (sortOrder.value === 'desc') return result.slice().sort((a, b) => b.addedAt - a.addedAt)
+      return result.slice().sort((a, b) => a.addedAt - b.addedAt)
+    }
+    if (sortField.value === 'chapterCount') {
+      const dir = sortOrder.value === 'desc' ? -1 : 1
+      return result.slice().sort((a, b) => dir * ((a.chapterCount || 0) - (b.chapterCount || 0)))
+    }
+    const dir = sortOrder.value === 'desc' ? -1 : 1
+    const field = sortField.value || 'title'
+    return result.slice().sort((a, b) => {
+      const va = (a as any)[field] || ''
+      const vb = (b as any)[field] || ''
+      return dir * va.localeCompare(vb)
     })
-    return result
   })
 
   // ========== Libraries ==========

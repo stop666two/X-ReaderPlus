@@ -125,13 +125,17 @@ export async function isPinRequired(): Promise<boolean> {
   return state?.isSet ?? false
 }
 
+let _lockCache: { result: number; expiry: number } | null = null
+
 export async function getLockRemaining(): Promise<number> {
+  if (_lockCache && _lockCache.expiry > Date.now()) return _lockCache.result
   const state = await getPinState()
-  if (!state || !state.isSet) return 0
-  if (state.lockedUntil > Date.now()) {
-    return state.lockedUntil - Date.now()
+  let result = 0
+  if (state && state.isSet && state.lockedUntil > Date.now()) {
+    result = state.lockedUntil - Date.now()
   }
-  return 0
+  _lockCache = { result, expiry: Date.now() + 1000 }
+  return result
 }
 
 export async function getRemainingAttempts(): Promise<number> {

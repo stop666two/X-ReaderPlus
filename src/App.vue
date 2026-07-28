@@ -107,7 +107,7 @@
       <!-- Main -->
       <div class="app-content">
         <router-view v-slot="{ Component }">
-          <transition name="page-fade" mode="out-in">
+          <transition name="page-fade">
             <component :is="Component" />
           </transition>
         </router-view>
