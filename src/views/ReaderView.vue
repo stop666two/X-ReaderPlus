@@ -873,14 +873,13 @@ const lazyContent = computed(() => {
 const _sanitizedContent = ref('')
 
 // DOMPurify — static import so it's available synchronously
-import DOMPurify from 'dompurify'
+import DOMPurify, { type Config as DOMPurifyConfig } from 'dompurify'
 
 const sanitizedContent = computed(() => {
   const raw = lazyContent.value
   if (!raw) return ''
-  let result = raw
-  // First pass: sanitize with DOMPurify
-  result = DOMPurify.sanitize(result, {
+  let result: string = raw
+  const config: DOMPurifyConfig & { MAX_ALLOWED_ATTRIBUTES_LENGTH?: number } = {
     ALLOWED_TAGS: [
       'h1','h2','h3','h4','h5','h6','p','br','hr','b','i','em','strong',
       'u','s','mark','small','sub','sup','ul','ol','li',
@@ -892,8 +891,11 @@ const sanitizedContent = computed(() => {
     ALLOW_DATA_ATTR: false,
     ADD_DATA_URI_TAGS: ['img', 'source', 'image'],
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
-    ADD_URI_SAFE_ATTR: ['src']
-  })
+    ALLOW_UNKNOWN_PROTOCOLS: true,
+    ADD_URI_SAFE_ATTR: ['src'],
+    MAX_ALLOWED_ATTRIBUTES_LENGTH: 0
+  }
+  result = String(DOMPurify.sanitize(result, config))
   // Second pass: rewrite links for safe in-app navigation
   let count = 0
   result = result
