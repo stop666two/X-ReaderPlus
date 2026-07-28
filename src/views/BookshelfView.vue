@@ -326,9 +326,9 @@
           </template>
         </v-tooltip>
         <!-- Page number buttons -->
-        <template v-for="p in totalPages" :key="p">
+        <template v-for="p in visiblePages" :key="p">
           <v-btn
-            v-if="p <= 7 || p > totalPages - 2 || Math.abs(p - currentPage) <= 1"
+            v-if="p !== '...'"
             size="small"
             :variant="p === currentPage ? 'tonal' : 'text'"
             :color="p === currentPage ? 'primary' : ''"
@@ -337,10 +337,7 @@
           >
             {{ p }}
           </v-btn>
-          <span
-            v-else-if="p === (currentPage <= 5 ? totalPages - 2 : 3) || p === (currentPage >= totalPages - 4 ? 3 : totalPages - 2)"
-            class="text-caption text-medium-emphasis px-1"
-          >...</span>
+          <span v-else class="text-caption text-medium-emphasis px-1">...</span>
         </template>
         <v-tooltip text="下一页">
           <template #activator="{ props }">
@@ -941,7 +938,7 @@ function scrollToTop() {
 }
 
 const {
-  currentPage, totalPages, pagedItems,
+  currentPage, totalPages, pagedItems, visiblePages,
   hasNext, hasPrev, nextPage, prevPage, goToPage, reset: resetPagination
 } = usePagination(localFilteredBooks, bookshelfPageSize, { onPageChange: scrollToTop })
 
