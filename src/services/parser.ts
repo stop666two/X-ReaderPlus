@@ -1237,16 +1237,17 @@ async function embedImages(html: string, chapterDir: string, rootDir: string, zi
 
   const embedOne = async (src: string): Promise<string> => {
     if (/^(data:|https?:\/\/)/i.test(src)) return src
-    const decodedSrc = decodeURIComponent(src)
+    const decodedSrc = decodeURIComponent(src).trim()
+    if (!decodedSrc) return ''
     const imgPath = decodedSrc.startsWith('/')
       ? resolvePath(rootDir, decodedSrc)
       : resolvePath(chapterDir, decodedSrc)
-    const imgFile = zip.file(imgPath)
+    let imgFile = zip.file(imgPath)
     if (!imgFile) {
-      // Try with backslashes normalized
       const altPath = imgPath.replace(/\//g, '\\')
-      if (!zip.file(altPath)) return ''
+      imgFile = zip.file(altPath)
     }
+    if (!imgFile) return ''
     try {
       const data = await imgFile.async('arraybuffer')
       if (data.byteLength > 20 * 1024 * 1024) return ''
@@ -1266,27 +1267,24 @@ async function embedImages(html: string, chapterDir: string, rootDir: string, zi
     const tagStart = tagMatch.index
     const tagEnd = tagStart + tag.length
 
-    // Extract src value: supports "value", 'value', and value (unquoted)
     const srcMatch = tag.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^"' >\s]+))/i)
     if (!srcMatch) continue
 
     const src = srcMatch[1] || srcMatch[2] || srcMatch[3]
     const hasQuote = !!(srcMatch[1] || srcMatch[2])
-    const quoteChar = srcMatch[1] ? '"' : "'"
 
     const dataUri = await embedOne(src)
-    if (dataUri) {
-      if (hasQuote) {
-        imgRefs.push({ start: tagStart, end: tagEnd, newAttr: tag.replace(src, dataUri) })
-      } else {
-        imgRefs.push({ start: tagStart, end: tagEnd, newAttr: tag.replace(/\bsrc\s*=\s*\S+/i, `src="${dataUri}"`) })
-      }
+    if (hasQuote) {
+      const q = srcMatch[1] ? '"' : "'"
+      const newTag = dataUri
+        ? tag.replace(new RegExp(`(\\bsrc\\s*=\\s*${q})[^${q}]*${q}`), `$1${dataUri}${q}`)
+        : tag.replace(new RegExp(`(\\bsrc\\s*=\\s*${q})[^${q}]*${q}`), `$1${q}`)
+      imgRefs.push({ start: tagStart, end: tagEnd, newAttr: newTag })
     } else {
-      if (hasQuote) {
-        imgRefs.push({ start: tagStart, end: tagEnd, newAttr: tag.replace(src, '') })
-      } else {
-        imgRefs.push({ start: tagStart, end: tagEnd, newAttr: tag.replace(/\bsrc\s*=\s*\S+/i, 'src=""') })
-      }
+      const newTag = dataUri
+        ? tag.replace(/(\bsrc\s*=\s*)\S+/, `$1"${dataUri}"`)
+        : tag.replace(/(\bsrc\s*=\s*)\S+/, '$1""')
+      imgRefs.push({ start: tagStart, end: tagEnd, newAttr: newTag })
     }
   }
 
