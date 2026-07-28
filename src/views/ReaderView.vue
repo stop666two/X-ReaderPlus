@@ -850,7 +850,9 @@ function stripLeadingTitle(html: string, title: string): string {
   const regex = /<h([12])(?:\s[^>]*)?>(.*?)<\/h\1>/is
   const match = regex.exec(html)
   if (!match) return html
-  const innerText = match[2].replace(/<[^>]+>/g, '').trim()
+  const inner = match[2]
+  if (/<img\b|<picture\b|<svg\b/i.test(inner)) return html
+  const innerText = inner.replace(/<[^>]+>/g, '').trim()
   if (innerText === cleanTitle) {
     return html.substring(0, match.index) + html.substring(match.index + match[0].length)
   }
@@ -881,7 +883,8 @@ const sanitizedContent = computed(() => {
       'h1','h2','h3','h4','h5','h6','p','br','hr','b','i','em','strong',
       'u','s','mark','small','sub','sup','ul','ol','li',
       'blockquote','pre','code','a','img','span','div',
-      'table','thead','tbody','tr','th','td','figure','figcaption'
+      'table','thead','tbody','tr','th','td','figure','figcaption',
+      'picture','source','svg','image','video','audio'
     ],
     ALLOWED_ATTR: ['href','src','alt','title','class','id','width','height','style'],
     ALLOW_DATA_ATTR: false,

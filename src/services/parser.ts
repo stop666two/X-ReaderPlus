@@ -1257,21 +1257,30 @@ async function embedImages(html: string, chapterDir: string, rootDir: string, zi
     }
   }
 
-  // ---- 1) <img src="..."> tags ----
-  const imgRegex = /(<img\b[^>]*\bsrc\s*=\s*)(["'])([^"']+)\2([^>]*>)/gi
+  // ---- 1) <img src="..."> tags (with or without quotes) ----
+  const imgRegex = /(<img\b[^>]*\bsrc\s*=\s*)(["']?)([^"' >\s]+)\2([^>]*>)/gi
   let match: RegExpExecArray | null
   while ((match = imgRegex.exec(html)) !== null) {
     const fullMatch = match[0]
+    const hasQuote = match[2] !== ''
     const src = match[3]
     const dataUri = await embedOne(src)
 
     if (dataUri) {
-      replacements.push({ from: fullMatch, to: fullMatch.replace(src, dataUri) })
+      const quote = hasQuote ? match[2] : '"'
+      const newAttr = hasQuote
+        ? fullMatch.replace(src, dataUri)
+        : fullMatch.replace(new RegExp(`\\bsrc\\s*=\\s*${escapeRegex(src)}`, 'i'), `src="${dataUri}"`)
+      replacements.push({ from: fullMatch, to: newAttr })
     } else {
-      replacements.push({
-        from: fullMatch,
-        to: fullMatch.replace(new RegExp(`\\bsrc\\s*=\\s*["']${escapeRegex(src)}["']`, 'i'), 'src=""')
-      })
+      if (hasQuote) {
+        replacements.push({
+          from: fullMatch,
+          to: fullMatch.replace(new RegExp(`\\bsrc\\s*=\\s*["']${escapeRegex(src)}["']`, 'i'), 'src=""')
+        })
+      } else {
+        replacements.push({ from: fullMatch, to: fullMatch.replace(/\bsrc\s*=\s*\S+/i, 'src=""') })
+      }
     }
   }
 
@@ -1294,15 +1303,16 @@ async function embedImages(html: string, chapterDir: string, rootDir: string, zi
   }
 
   // ---- 3) CSS background-image: url(...) ----
-  // NOTE: Extracting and inlining background-image references from <style> tags and inline
-  // `style` attributes is complex due to the variety of quoting patterns, nested url()
-  // functions, and potential data URIs already present. This is intentionally left as a
-  // future enhancement. For now, background images that reference external EPUB resources
-  // will not render — we rely on <img> tags (which covers the majority of illustrated EPUBs).
-  // If needed in the future, we could:
-  //   a) Parse <style> block content for `url("...")` / `url('...')` / `url(...)` patterns
-  //   b) Walk all elements via regex, extract their `style` attribute, and resolve url() refs
-  //   c) Replace each resolved ref with a data URI inline
+  // Match url(...) references in inline style attributes and <style> blocks
+  const bgRegex = /url\(\s*["']?([^"'\s\)]+)["']?\s*\)/gi
+  while ((match = bgRegex.exec(html)) !== null) {
+    const imgUrl = match[1]
+    if (/^(data:|https?:\/\/)/i.test(imgUrl)) continue
+    const dataUri = await embedOne(imgUrl)
+    if (dataUri) {
+      replacements.push({ from: match[0], to: `url("${dataUri}")` })
+    }
+  }
 
   // ---- Apply all replacements ----
   for (const { from, to } of replacements) {
