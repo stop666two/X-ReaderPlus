@@ -9,7 +9,7 @@
         </p>
       </div>
       <div class="d-flex ga-3">
-        <v-btn color="primary" variant="tonal" prepend-icon="mdi-refresh" :loading="refreshing" @click="refresh">刷新</v-btn>
+        <v-btn color="primary" variant="tonal" prepend-icon="mdi-refresh" size="large" :loading="refreshing" @click="refresh">刷新</v-btn>
         <v-btn color="primary" prepend-icon="mdi-plus" size="large" @click="showCreateDialog = true">新建书库</v-btn>
       </div>
     </div>
@@ -35,7 +35,7 @@
       <v-col
         v-for="lib in pagedLibraries"
         :key="lib.id"
-        cols="12" md="6"
+        cols="12"
       >
         <v-card
           variant="outlined"
@@ -125,33 +125,33 @@
           <div class="lib-card-actions">
             <v-tooltip text="查看书库" location="top">
               <template #activator="{ props }">
-                <v-btn v-bind="props" size="small" variant="text" icon="mdi-magnify" @click="viewLibrary(lib.id)" />
+                <v-btn v-bind="props" size="small" variant="tonal" icon="mdi-magnify" @click="viewLibrary(lib.id)" />
               </template>
             </v-tooltip>
             <v-tooltip v-if="lib.id !== 'default'" text="重命名" location="top">
               <template #activator="{ props }">
-                <v-btn v-bind="props" size="small" variant="text" icon="mdi-pencil" :disabled="editingId === lib.id" @click="startRename(lib)" />
+                <v-btn v-bind="props" size="small" variant="tonal" icon="mdi-pencil" :disabled="editingId === lib.id" @click="startRename(lib)" />
               </template>
             </v-tooltip>
             <v-tooltip :text="lockedLibs.has(lib.id) ? '解锁' : '设置隐私锁'" location="top">
               <template #activator="{ props }">
-                <v-btn v-bind="props" size="small" variant="text" :icon="lockedLibs.has(lib.id) ? 'mdi-lock-open-variant' : 'mdi-shield-lock-outline'" @click="openPrivacyDialog(lib.id)" />
+                <v-btn v-bind="props" size="small" variant="tonal" :icon="lockedLibs.has(lib.id) ? 'mdi-lock-open-variant-outline' : 'mdi-shield-lock-outline'" @click="openPrivacyDialog(lib.id)" />
               </template>
             </v-tooltip>
             <v-spacer />
             <v-tooltip text="导出书库" location="top">
               <template #activator="{ props }">
-                <v-btn v-bind="props" v-if="lib.id !== 'default'" size="small" variant="text" icon="mdi-export" @click="exportLibrary(lib.id)" />
+                <v-btn v-bind="props" v-if="lib.id !== 'default'" size="small" variant="tonal" icon="mdi-export" @click="exportLibrary(lib.id)" />
               </template>
             </v-tooltip>
             <v-tooltip text="导入到该书库" location="top">
               <template #activator="{ props }">
-                <v-btn v-bind="props" size="small" variant="text" icon="mdi-file-import-outline" @click="importToLibrary(lib)" />
+                <v-btn v-bind="props" size="small" variant="tonal" icon="mdi-file-import-outline" @click="importToLibrary(lib)" />
               </template>
             </v-tooltip>
             <v-tooltip text="删除书库" location="top">
               <template #activator="{ props }">
-                <v-btn v-bind="props" v-if="lib.id !== 'default'" size="small" variant="text" icon="mdi-delete-outline" color="error" @click="confirmDelete(lib)" />
+                <v-btn v-bind="props" v-if="lib.id !== 'default'" size="small" variant="tonal" icon="mdi-delete-outline" color="error" @click="confirmDelete(lib)" />
               </template>
             </v-tooltip>
           </div>
