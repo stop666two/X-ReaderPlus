@@ -885,6 +885,7 @@ const sanitizedContent = computed(() => {
     ],
     ALLOWED_ATTR: ['href','src','alt','title','class','id','width','height','style'],
     ALLOW_DATA_ATTR: false,
+    ADD_DATA_URI_TAGS: ['img'],
     ADD_URI_SAFE_ATTR: ['src']
   })
   // Second pass: rewrite links for safe in-app navigation

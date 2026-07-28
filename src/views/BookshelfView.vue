@@ -351,7 +351,7 @@
         <template v-for="p in totalPages" :key="p">
           <v-btn
             v-if="p <= 7 || p > totalPages - 2 || Math.abs(p - currentPage) <= 1"
-            size="x-small"
+            size="small"
             :variant="p === currentPage ? 'tonal' : 'text'"
             :color="p === currentPage ? 'primary' : ''"
             class="page-btn"
@@ -1449,9 +1449,9 @@ onUnmounted(() => {
   min-height: 40px !important;
   padding: 0 8px;
 }
-.search-field { max-width: 220px; min-width: 140px; }
-.sort-select { max-width: 170px; min-width: 130px; }
-.tag-select { max-width: 130px; min-width: 90px; }
+.search-field { max-width: 260px; min-width: 160px; }
+.sort-select { max-width: 190px; min-width: 150px; }
+.tag-select { max-width: 150px; min-width: 110px; }
 .gap-2 { gap: 8px; }
 
 /* ========== Toggle Groups ========== */
@@ -1508,50 +1508,50 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 20px;
   align-content: start;
 }
 
 /* Grid size variants */
 .books-grid.grid-small {
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 14px;
 }
 .books-grid.grid-medium {
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 20px;
 }
 .books-grid.grid-large {
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 24px;
 }
 
 /* Scale down book-info text for small grid */
-.books-grid.grid-small .book-title { font-size: 11px; }
-.books-grid.grid-small .book-author { font-size: 10px; }
-.books-grid.grid-small .book-meta { font-size: 9px; }
-.books-grid.grid-small .format-badge { font-size: 7px; padding: 1px 4px; }
+.books-grid.grid-small .book-title { font-size: 13px; }
+.books-grid.grid-small .book-author { font-size: 12px; }
+.books-grid.grid-small .book-meta { font-size: 11px; }
+.books-grid.grid-small .format-badge { font-size: 9px; padding: 1px 5px; }
 
 /* Scale up book-info text for large grid */
-.books-grid.grid-large .book-title { font-size: 15px; }
-.books-grid.grid-large .book-author { font-size: 13px; }
-.books-grid.grid-large .book-meta { font-size: 12px; }
+.books-grid.grid-large .book-title { font-size: 17px; }
+.books-grid.grid-large .book-author { font-size: 15px; }
+.books-grid.grid-large .book-meta { font-size: 13px; }
 
 /* ========== Book Card ========== */
 .book-card {
   content-visibility: auto;
-  contain-intrinsic-size: auto 280px;
+  contain-intrinsic-size: auto 320px;
   contain: layout style paint;
   cursor: pointer;
-  border-radius: 10px;
+  border-radius: 12px;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
-  padding: 4px;
+  padding: 6px;
   will-change: transform;
 }
 .book-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-3px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
 }
 .book-card-selected .cover-wrapper {
   outline: 2px solid rgb(var(--v-theme-primary));
@@ -1597,11 +1597,11 @@ onUnmounted(() => {
 /* Format badge */
 .format-badge {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  padding: 2px 6px;
+  top: 8px;
+  right: 8px;
+  padding: 3px 8px;
   border-radius: 4px;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.5px;
   color: #fff;
@@ -1637,31 +1637,31 @@ onUnmounted(() => {
 
 /* ========== Book Info ========== */
 .book-info {
-  padding: 6px 2px 2px;
+  padding: 8px 4px 4px;
 }
 .book-title {
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.3;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: rgb(var(--v-theme-on-surface));
 }
 .book-author {
-  font-size: 12px;
+  font-size: 13px;
   color: #555;
   opacity: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-top: 1px;
+  margin-top: 2px;
 }
 .book-meta {
   display: flex;
   gap: 4px;
-  margin-top: 3px;
-  font-size: 11px;
+  margin-top: 4px;
+  font-size: 12px;
   color: rgb(var(--v-theme-on-surface-variant));
   opacity: 0.6;
 }
@@ -1711,8 +1711,8 @@ onUnmounted(() => {
 }
 
 .list-cover-wrapper {
-  width: 36px;
-  height: 48px;
+  width: 44px;
+  height: 60px;
   flex-shrink: 0;
   overflow: hidden;
   border-radius: 4px;
@@ -1821,7 +1821,7 @@ onUnmounted(() => {
 /* ========== Pagination Nav ========== */
 .pagination-bar {
   flex-shrink: 0;
-  padding: 8px 16px;
+  padding: 12px 16px;
   border-top: 1px solid rgb(var(--v-theme-border));
   background: rgb(var(--v-theme-surface));
 }

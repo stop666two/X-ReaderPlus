@@ -1247,8 +1247,8 @@ async function embedImages(html: string, chapterDir: string, rootDir: string, zi
 
     try {
       const data = await imgFile.async('arraybuffer')
-      const MAX_IMG = 2 * 1024 * 1024
-      if (data.byteLength > MAX_IMG) return src
+      const MAX_IMG = 20 * 1024 * 1024
+      if (data.byteLength > MAX_IMG) return ''
       const ext = (imgPath.split('.').pop() || 'jpg').toLowerCase()
       const mime = IMAGE_MIME_MAP[ext] || 'image/jpeg'
       return dataUrl(data, mime)
