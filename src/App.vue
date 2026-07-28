@@ -106,11 +106,7 @@
 
       <!-- Main -->
       <div class="app-content">
-        <router-view v-slot="{ Component }">
-          <transition name="page-fade">
-            <component :is="Component" />
-          </transition>
-        </router-view>
+        <router-view />
       </div>
     </div>
 
@@ -423,12 +419,4 @@ onUnmounted(() => {
 </style>
 
 <style>
-.page-fade-enter-active,
-.page-fade-leave-active {
-  transition: opacity 0.12s ease;
-}
-.page-fade-enter-from,
-.page-fade-leave-to {
-  opacity: 0;
-}
 </style>

@@ -62,7 +62,9 @@ export async function parseBook(filePath: string, fileName: string, fileData: Ar
     case 'html': return parseHtml(fileData, fileName)
     case 'fb2': return parseFb2(fileData, fileName)
     case 'djvu': return parseDjvu(fileData, fileName)
-    case 'docx': case 'rtf': case 'odt': return parseDocx(fileData, fileName, format)
+    case 'docx': return parseDocx(fileData, fileName)
+    case 'rtf': return parseRtf(fileData, fileName)
+    case 'odt': return parseOdt(fileData, fileName)
     case 'pdf': return parsePdf(fileData, fileName)
     case 'cbr': case 'cbz': case 'cbt': case 'cb7': return parseComic(fileData, fileName, format)
     case 'chm': return parseChm(fileData, fileName)
@@ -580,22 +582,80 @@ async function parseDjvu(fileData: ArrayBuffer, fileName: string): Promise<Parse
 
 // ========== DOCX/RTF/ODT ==========
 
-async function parseDocx(fileData: ArrayBuffer, fileName: string, format: 'docx' | 'rtf' | 'odt'): Promise<ParsedBook> {
-  const title = fileName.replace(new RegExp(`\\.${format}$`, 'i'), '')
+async function parseDocx(fileData: ArrayBuffer, fileName: string): Promise<ParsedBook> {
+  const title = fileName.replace(/\.docx$/i, '')
   let html = ''
   try {
     const mammoth = await import('mammoth')
     const result = await mammoth.convertToHtml({ arrayBuffer: fileData })
     html = result.value || ''
-  } catch { html = `<p>无法解析 ${format.toUpperCase()} 文件</p>` }
+  } catch { html = `<p>无法解析 DOCX 文件</p>` }
 
   const cleaned = sanitizeEpubContent(html)
   const body = ((cleaned.match(/<body[^>]*>([\s\S]*)<\/body>/i) || [])[1] || cleaned)
-  const author = detectAuthor(html.replace(/<[^>]+>/g, ' '), title, format)
+  const author = detectAuthor(html.replace(/<[^>]+>/g, ' '), title, 'docx')
   const chapters = splitHtmlChapters(body, title)
   const wordCount = chapters.reduce((s, c) => s + countWords(c.content), 0)
 
-  return { metadata: { title, author, cover: '', format }, chapters, rawToc: chapters.map((c, i) => ({ label: c.title, href: '', chapterIndex: i })) }
+  return { metadata: { title, author, cover: '', format: 'docx' }, chapters, rawToc: chapters.map((c, i) => ({ label: c.title, href: '', chapterIndex: i })) }
+}
+
+function rtfToText(data: ArrayBuffer): string {
+  const text = decodeTextBest(new Uint8Array(data))
+  // Strip RTF control words and groups
+  let result = text
+    .replace(/\\[a-z]+\d*/gi, '')  // control words
+    .replace(/\\'[0-9a-f]{2}/gi, '') // hex escapes
+    .replace(/\\[\\{}\\]/g, '')  // escaped special chars
+    .replace(/[{}]/g, '')  // group braces
+    .replace(/\s+/g, ' ')  // collapse whitespace
+    .trim()
+  return decodeURIComponent(result.replace(/\\u(\d+)/g, (_, c) => String.fromCharCode(Number(c))))
+}
+
+async function parseRtf(fileData: ArrayBuffer, fileName: string): Promise<ParsedBook> {
+  const title = fileName.replace(/\.rtf$/i, '')
+  const text = rtfToText(fileData)
+  const lines = text.split(/\n\s*\n/).filter(Boolean)
+  const author = detectAuthor(text, title, 'rtf')
+  const allText = lines.join('\n\n')
+  const wordCount = countWords(allText)
+  const chapters = [{ title, content: `<p>${allText.replace(/\n/g, '<br>')}</p>` }]
+
+  return { metadata: { title, author, cover: '', format: 'rtf' }, chapters, rawToc: [{ label: title, href: '', chapterIndex: 0 }] }
+}
+
+async function parseOdt(fileData: ArrayBuffer, fileName: string): Promise<ParsedBook> {
+  const title = fileName.replace(/\.odt$/i, '')
+  try {
+    const JSZip = (await import('jszip')).default
+    const zip = await JSZip.loadAsync(fileData)
+    const contentXml = zip.file('content.xml')
+    if (!contentXml) throw new Error('content.xml not found')
+    const xmlStr = await contentXml.async('string')
+
+    // Extract author from metadata
+    let author = ''
+    const creatorMatch = xmlStr.match(/<dc:creator[^>]*>([^<]*)<\/dc:creator>/i)
+    if (creatorMatch) author = creatorMatch[1].trim()
+
+    // Extract text from <text:p> elements
+    const paragraphs: string[] = []
+    const pRe = /<text:p[^>]*>([\s\S]*?)<\/text:p>/gi
+    let m: RegExpExecArray | null
+    while ((m = pRe.exec(xmlStr)) !== null) {
+      const content = m[1].replace(/<[^>]+>/g, '').trim()
+      if (content) paragraphs.push(content)
+    }
+
+    const allText = paragraphs.join('\n\n')
+    const wordCount = countWords(allText)
+    const chapters = [{ title, content: `<p>${paragraphs.join('</p><p>')}</p>` }]
+
+    return { metadata: { title, author, cover: '', format: 'odt' }, chapters, rawToc: [{ label: title, href: '', chapterIndex: 0 }] }
+  } catch {
+    return { metadata: { title, author: '', cover: '', format: 'odt' }, chapters: [{ title, content: '<p>无法解析 ODT 文件</p>' }], rawToc: [] }
+  }
 }
 
 // ========== PDF ==========
@@ -765,7 +825,7 @@ async function parseChm(fileData: ArrayBuffer, fileName: string): Promise<Parsed
       }
       if (!text) {
         // Try raw text extraction after skipping ITSF header
-        const skip = getU32(data, 8)
+        const skip = getU32LE(data, 8)
         text = decodeTextBest(data.slice(skip))
       }
     }
@@ -1425,6 +1485,10 @@ function decodeTextSegment(d: Uint8Array, off: number, len: number): string {
 
 function getU32(d: Uint8Array, off: number): number {
   return off+4 <= d.length ? (d[off]<<24)|(d[off+1]<<16)|(d[off+2]<<8)|d[off+3] : 0
+}
+
+function getU32LE(d: Uint8Array, off: number): number {
+  return off+4 <= d.length ? d[off]|(d[off+1]<<8)|(d[off+2]<<16)|(d[off+3]<<24) : 0
 }
 
 function getU24BE(d: Uint8Array, off: number): number {

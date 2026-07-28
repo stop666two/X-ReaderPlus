@@ -107,7 +107,7 @@ export const HIGHLIGHT_COLORS: { value: HighlightColor; label: string; hex: stri
 export const ALLOWED_FORMATS = new Set<BookFormat>([
   'epub', 'pdf', 'txt', 'fb2', 'djvu', 'chm', 'lit', 'lrf',
   'docx', 'rtf', 'odt', 'markdown', 'html',
-  'cbz', 'cbt'
+  'cbz', 'cbt', 'cbr', 'cb7'
 ])
 
 export const SUPPORTED_FORMATS: { value: BookFormat; label: string; extensions: string[] }[] = [
@@ -125,7 +125,9 @@ export const SUPPORTED_FORMATS: { value: BookFormat; label: string; extensions: 
   { value: 'markdown', label: 'Markdown', extensions: ['.md', '.markdown'] },
   { value: 'html', label: 'HTML', extensions: ['.html', '.htm'] },
   { value: 'cbz', label: 'CBZ', extensions: ['.cbz'] },
-  { value: 'cbt', label: 'CBT', extensions: ['.cbt'] }
+  { value: 'cbt', label: 'CBT', extensions: ['.cbt'] },
+  { value: 'cbr', label: 'CBR（建议转 CBZ）', extensions: ['.cbr'] },
+  { value: 'cb7', label: 'CB7（建议转 CBZ）', extensions: ['.cb7'] }
 ]
 
 export const FONT_FAMILIES = [
