@@ -7,10 +7,10 @@ echo === X-ReaderPlus Dev Server ===
 echo.
 
 echo [1] Cleaning up previous processes...
-taskkill /f /fi "WINDOWTITLE eq X-ReaderPlus-Backend*" 2>nul >nul
-taskkill /f /fi "WINDOWTITLE eq X-ReaderPlus-Frontend*" 2>nul >nul
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr /c:":34123" 2^>nul') do (
-  tasklist /fi "PID eq %%a" 2>nul | findstr /i "go.exe" >nul && taskkill /f /pid %%a 2>nul
+taskkill /f /fi "WINDOWTITLE eq X-ReaderPlus Backend" 2>nul >nul
+taskkill /f /fi "WINDOWTITLE eq X-ReaderPlus-Frontend" 2>nul >nul
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr /c:":34123 " ^| findstr /c:"LISTENING" 2^>nul') do (
+  taskkill /f /pid %%a 2>nul >nul
 )
 timeout /t 2 >nul
 
@@ -45,12 +45,12 @@ echo ========================================
 pause >nul
 
 echo Shutting down...
-:: Kill backend (by port and go process)
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr /c:":34123" 2^>nul') do (
+:: Kill LISTENING processes on backend port (kill server, not browser clients)
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr /c:":34123 " ^| findstr /c:"LISTENING" 2^>nul') do (
   taskkill /f /pid %%a 2>nul >nul
 )
-:: Kill frontend (by port and node process)
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr /c:":5173" 2^>nul') do (
+:: Kill LISTENING processes on frontend port
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr /c:":5173 " ^| findstr /c:"LISTENING" 2^>nul') do (
   taskkill /f /pid %%a 2>nul >nul
 )
 :: Close the CMD windows by known titles
