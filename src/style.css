@@ -527,7 +527,7 @@ body {
 /* ==================== Book Card Info ==================== */
 
 .book-card .book-info {
-  padding: 8px 4px 4px;
+  padding: 10px 6px 6px;
 }
 
 .book-card .book-title {
@@ -541,24 +541,24 @@ body {
 }
 
 .book-card .book-author {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: rgb(var(--v-theme-on-surface));
   opacity: 0.65;
-  margin-top: 2px;
+  margin-top: 3px;
 }
 
 .book-card .book-meta {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.3;
   color: rgb(var(--v-theme-on-surface));
   opacity: 0.55;
-  margin-top: 3px;
+  margin-top: 4px;
   display: flex;
-  gap: 4px;
+  gap: 6px;
   white-space: nowrap;
   overflow: hidden;
 }

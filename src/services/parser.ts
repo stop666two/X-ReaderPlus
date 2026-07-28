@@ -1230,100 +1230,94 @@ function escapeRegex(s: string): string {
 }
 
 async function embedImages(html: string, chapterDir: string, rootDir: string, zip: any): Promise<string> {
-  const replacements: { from: string; to: string }[] = []
+  // Single pass: extract all unique image references, embed them, then replace all at once.
+  // This avoids the fragile multi-regex replacement approach that breaks on paths with spaces.
 
-  // ---- Helper to resolve & embed a single image reference ----
+  const imgRefs: Array<{ start: number; end: number; newAttr: string }> = []
+
   const embedOne = async (src: string): Promise<string> => {
-    // Skip external URLs and already embedded data URIs
     if (/^(data:|https?:\/\/)/i.test(src)) return src
-
-    // Resolve image path relative to chapter file directory
     const decodedSrc = decodeURIComponent(src)
     const imgPath = decodedSrc.startsWith('/')
       ? resolvePath(rootDir, decodedSrc)
       : resolvePath(chapterDir, decodedSrc)
-
     const imgFile = zip.file(imgPath)
-    if (!imgFile) return '' // not found
-
+    if (!imgFile) {
+      // Try with backslashes normalized
+      const altPath = imgPath.replace(/\//g, '\\')
+      if (!zip.file(altPath)) return ''
+    }
     try {
       const data = await imgFile.async('arraybuffer')
-      const MAX_IMG = 20 * 1024 * 1024
-      if (data.byteLength > MAX_IMG) return ''
+      if (data.byteLength > 20 * 1024 * 1024) return ''
       const ext = (imgPath.split('.').pop() || 'jpg').toLowerCase()
       const mime = IMAGE_MIME_MAP[ext] || 'image/jpeg'
       return dataUrl(data, mime)
     } catch {
-      return '' // read error
+      return ''
     }
   }
 
-  // ---- 1) <img src="..."> tags (quoted or unquoted) ----
-  // Match double-quoted src
-  const imgDQ = /(<img\b[^>]*?\bsrc\s*=\s*)("([^"]*)")([^>]*>)/gi
-  let mDQ: RegExpExecArray | null
-  while ((mDQ = imgDQ.exec(html)) !== null) {
-    const src = mDQ[3]
+  // Match ALL <img...> tags, extract src value regardless of quoting
+  const imgTagRe = /<img\b[^>]*?>/gi
+  let tagMatch: RegExpExecArray | null
+  while ((tagMatch = imgTagRe.exec(html)) !== null) {
+    const tag = tagMatch[0]
+    const tagStart = tagMatch.index
+    const tagEnd = tagStart + tag.length
+
+    // Extract src value: supports "value", 'value', and value (unquoted)
+    const srcMatch = tag.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^"' >\s]+))/i)
+    if (!srcMatch) continue
+
+    const src = srcMatch[1] || srcMatch[2] || srcMatch[3]
+    const hasQuote = !!(srcMatch[1] || srcMatch[2])
+    const quoteChar = srcMatch[1] ? '"' : "'"
+
     const dataUri = await embedOne(src)
     if (dataUri) {
-      replacements.push({ from: mDQ[2], to: `"${dataUri}"` })
+      if (hasQuote) {
+        imgRefs.push({ start: tagStart, end: tagEnd, newAttr: tag.replace(src, dataUri) })
+      } else {
+        imgRefs.push({ start: tagStart, end: tagEnd, newAttr: tag.replace(/\bsrc\s*=\s*\S+/i, `src="${dataUri}"`) })
+      }
     } else {
-      replacements.push({ from: mDQ[2], to: '""' })
-    }
-  }
-  // Match single-quoted src
-  const imgSQ = /(<img\b[^>]*?\bsrc\s*=\s*)('([^']*)')([^>]*>)/gi
-  let mSQ: RegExpExecArray | null
-  while ((mSQ = imgSQ.exec(html)) !== null) {
-    const src = mSQ[3]
-    const dataUri = await embedOne(src)
-    if (dataUri) {
-      replacements.push({ from: mSQ[2], to: `'${dataUri}'` })
-    } else {
-      replacements.push({ from: mSQ[2], to: "''" })
-    }
-  }
-  // Match unquoted src (no spaces allowed in unquoted HTML attributes)
-  const imgUQ = /(<img\b[^>]*?\bsrc\s*=\s*)([^"' >\s]+)([^>]*>)/gi
-  let mUQ: RegExpExecArray | null
-  while ((mUQ = imgUQ.exec(html)) !== null) {
-    const src = mUQ[2]
-    const dataUri = await embedOne(src)
-    if (dataUri) {
-      replacements.push({ from: mUQ[0], to: mUQ[1] + `"${dataUri}"` + mUQ[3] })
-    } else {
-      replacements.push({ from: mUQ[0], to: mUQ[1] + '""' + mUQ[3] })
+      if (hasQuote) {
+        imgRefs.push({ start: tagStart, end: tagEnd, newAttr: tag.replace(src, '') })
+      } else {
+        imgRefs.push({ start: tagStart, end: tagEnd, newAttr: tag.replace(/\bsrc\s*=\s*\S+/i, 'src=""') })
+      }
     }
   }
 
-  // ---- 2) Inline <svg> elements that contain <image href="..."> or <image xlink:href="..."> ----
-  const svgImageRegex = /(<image\b[^>]*?\b(?:xlink:)?href\s*=\s*)(["'])([^"']+)\2([^>]*\/?>)/gi
-  let mSVG: RegExpExecArray | null
-  while ((mSVG = svgImageRegex.exec(html)) !== null) {
-    const fullMatch = mSVG[0]
-    const href = mSVG[3]
+  // Process SVG <image> elements
+  const svgRe = /<image\b[^>]*?\b(?:xlink:)?href\s*=\s*(?:"([^"]*)"|'([^']*)')/gi
+  while ((tagMatch = svgRe.exec(html)) !== null) {
+    const fullMatch = tagMatch[0]
+    const href = tagMatch[1] || tagMatch[2]
     if (/^(data:|https?:\/\/)/i.test(href)) continue
     const dataUri = await embedOne(href)
     if (dataUri) {
-      replacements.push({ from: fullMatch, to: fullMatch.replace(href, dataUri) })
+      imgRefs.push({ start: tagMatch.index, end: tagMatch.index + fullMatch.length, newAttr: fullMatch.replace(href, dataUri) })
     }
   }
 
-  // ---- 3) CSS background-image: url(...) ----
-  const bgRegex = /url\(\s*["']?([^"'\s\)]+)["']?\s*\)/gi
-  let mBG: RegExpExecArray | null
-  while ((mBG = bgRegex.exec(html)) !== null) {
-    const imgUrl = mBG[1]
-    if (/^(data:|https?:\/\/)/i.test(imgUrl)) continue
-    const dataUri = await embedOne(imgUrl)
+  // Process CSS background-image: url(...)
+  const cssUrlRe = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^"'\s\)]+))\s*\)/gi
+  while ((tagMatch = cssUrlRe.exec(html)) !== null) {
+    const fullMatch = tagMatch[0]
+    const url = tagMatch[1] || tagMatch[2] || tagMatch[3]
+    if (/^(data:|https?:\/\/)/i.test(url)) continue
+    const dataUri = await embedOne(url)
     if (dataUri) {
-      replacements.push({ from: mBG[0], to: `url("${dataUri}")` })
+      imgRefs.push({ start: tagMatch.index, end: tagMatch.index + fullMatch.length, newAttr: `url("${dataUri}")` })
     }
   }
 
-  // ---- Apply all replacements ----
-  for (const { from, to } of replacements) {
-    html = html.replace(from, to)
+  // Apply replacements from end to start to preserve positions
+  imgRefs.sort((a, b) => b.start - a.start)
+  for (const ref of imgRefs) {
+    html = html.slice(0, ref.start) + ref.newAttr + html.slice(ref.end)
   }
 
   return html

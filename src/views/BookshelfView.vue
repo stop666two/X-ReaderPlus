@@ -54,46 +54,29 @@
     </div>
 
     <!-- ========== Toolbar ========== -->
-    <div class="toolbar-custom border-b px-3 py-1">
-      <div class="d-flex align-center flex-wrap gap-2">
-        <v-text-field v-model="searchInput" prepend-inner-icon="mdi-magnify" placeholder="搜索书名或作者..." hide-details variant="outlined" density="compact" class="search-field" clearable />
-        <v-select v-model="sortModel" :items="sortOptions" item-title="title" item-value="value" density="compact" variant="outlined" hide-details class="sort-select" />
-        <v-tooltip :text="store.sortOrder === 'desc' ? '当前倒序 · 点击切换正序' : '当前正序 · 点击切换倒序'">
+    <div class="toolbar-custom border-b px-4 py-2">
+      <div class="toolbar-row d-flex align-center gap-2 mb-1">
+        <v-text-field v-model="searchInput" prepend-inner-icon="mdi-magnify" placeholder="搜索书名或作者..." hide-details variant="outlined" density="compact" class="search-field flex-grow-1" clearable />
+        <v-select v-model="sortModel" :items="sortOptions" item-title="title" item-value="value" density="compact" variant="outlined" hide-details class="sort-select flex-shrink-0" />
+        <v-autocomplete v-model="store.filterTag" :items="tagItems" item-title="title" item-value="value" density="compact" variant="outlined" hide-details clearable placeholder="标签" class="tag-select flex-shrink-0" />
+        <v-tooltip :text="store.sortOrder === 'desc' ? '切换正序' : '切换倒序'">
           <template #activator="{ props }">
-            <v-btn
-              v-bind="props"
-              size="x-small"
-              :variant="store.sortOrder === 'desc' ? 'tonal' : 'text'"
-              :color="store.sortOrder === 'desc' ? 'primary' : ''"
-              icon="mdi-sort-reverse-variant"
-              @click="toggleSortOrder"
-            />
+            <v-btn v-bind="props" size="small" :variant="store.sortOrder === 'desc' ? 'tonal' : 'text'" :color="store.sortOrder === 'desc' ? 'primary' : ''" icon="mdi-sort-reverse-variant" @click="toggleSortOrder" />
           </template>
         </v-tooltip>
-        <v-autocomplete v-model="store.filterTag" :items="tagItems" item-title="title" item-value="value" density="compact" variant="outlined" hide-details clearable placeholder="标签" class="tag-select" />
+      </div>
+      <div class="toolbar-row d-flex align-center gap-2">
+        <v-btn-toggle v-model="viewModeToggle" mandatory density="compact" variant="outlined" divided class="view-toggle-group flex-shrink-0">
+          <v-btn size="small" prepend-icon="mdi-view-grid">网格</v-btn>
+          <v-btn size="small" prepend-icon="mdi-view-list">列表</v-btn>
+        </v-btn-toggle>
+        <v-btn-toggle v-if="store.viewMode === 'grid'" v-model="gridSizeToggle" mandatory density="compact" variant="outlined" divided class="grid-size-toggle-group flex-shrink-0">
+          <v-btn size="small" icon="mdi-image-size-select-small" title="小封面" />
+          <v-btn size="small" icon="mdi-image-size-select-actual" title="中封面" />
+          <v-btn size="small" icon="mdi-image-size-select-large" title="大封面" />
+        </v-btn-toggle>
         <v-spacer />
-        <div class="d-flex align-center gap-2">
-          <v-btn-toggle v-model="viewModeToggle" mandatory density="compact" variant="outlined" divided class="view-toggle-group">
-            <v-btn size="small" prepend-icon="mdi-view-grid">网格</v-btn>
-            <v-btn size="small" prepend-icon="mdi-view-list">列表</v-btn>
-          </v-btn-toggle>
-          <!-- Grid cover size slider (grid mode only) -->
-          <v-btn-toggle
-            v-if="store.viewMode === 'grid'"
-            v-model="gridSizeToggle"
-            mandatory
-            density="compact"
-            variant="outlined"
-            divided
-            class="grid-size-toggle-group"
-          >
-            <v-btn size="x-small" icon="mdi-image-size-select-small" title="小封面" />
-            <v-btn size="x-small" icon="mdi-image-size-select-actual" title="中封面" />
-            <v-btn size="x-small" icon="mdi-image-size-select-large" title="大封面" />
-          </v-btn-toggle>
-          <v-btn color="primary" size="small" variant="tonal" prepend-icon="mdi-plus" @click="showImportDialog = true">导入</v-btn>
-
-        </div>
+        <v-btn color="primary" size="small" variant="tonal" prepend-icon="mdi-plus" @click="showImportDialog = true">导入</v-btn>
       </div>
     </div>
 
@@ -1440,12 +1423,14 @@ onUnmounted(() => {
 .toolbar-custom {
   background: rgb(var(--v-theme-surface));
   flex-shrink: 0;
-  min-height: 40px !important;
-  padding: 0 8px;
+  min-height: 72px;
 }
-.search-field { max-width: 260px; min-width: 160px; }
-.sort-select { max-width: 190px; min-width: 150px; }
-.tag-select { max-width: 150px; min-width: 110px; }
+.toolbar-row {
+  min-height: 32px;
+}
+.search-field { max-width: 400px; }
+.sort-select { max-width: 180px; }
+.tag-select { max-width: 160px; }
 .gap-2 { gap: 8px; }
 
 /* ========== Toggle Groups ========== */
@@ -1454,11 +1439,11 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 .view-toggle-group :deep(.v-btn) {
-  min-width: 56px;
+  min-width: 64px;
 }
 .grid-size-toggle-group :deep(.v-btn) {
-  min-width: 28px;
-  padding: 0 4px;
+  min-width: 32px;
+  padding: 0 6px;
 }
 
 /* ========== Import Progress ========== */
@@ -1502,33 +1487,30 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 24px;
   align-content: start;
+  padding: 20px;
 }
 
-/* Grid size variants */
 .books-grid.grid-small {
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
 }
 .books-grid.grid-medium {
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 20px;
-}
-.books-grid.grid-large {
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 24px;
 }
+.books-grid.grid-large {
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 28px;
+}
 
-/* Scale down book-info text for small grid */
-.books-grid.grid-small .book-title { font-size: 13px; }
-.books-grid.grid-small .book-author { font-size: 12px; }
-.books-grid.grid-small .book-meta { font-size: 11px; }
-.books-grid.grid-small .format-badge { font-size: 9px; padding: 1px 5px; }
-
-/* Scale up book-info text for large grid */
-.books-grid.grid-large .book-title { font-size: 17px; }
+.books-grid.grid-small .book-title { font-size: 14px; }
+.books-grid.grid-small .book-author { font-size: 13px; }
+.books-grid.grid-small .book-meta { font-size: 12px; }
+.books-grid.grid-small .format-badge { font-size: 10px; padding: 1px 5px; }
+.books-grid.grid-large .book-title { font-size: 18px; }
 .books-grid.grid-large .book-author { font-size: 15px; }
 .books-grid.grid-large .book-meta { font-size: 13px; }
 
@@ -1537,23 +1519,22 @@ onUnmounted(() => {
   cursor: pointer;
   border-radius: 12px;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
-  padding: 6px;
+  padding: 8px;
 }
 .book-card:hover {
   transform: translateY(-3px);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
 }
 .book-card-selected .cover-wrapper {
-  outline: 2px solid rgb(var(--v-theme-primary));
-  outline-offset: 1px;
-  border-radius: 6px;
+  outline: 3px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+  border-radius: 8px;
 }
 
-/* ========== Cover ========== */
 .cover-wrapper {
   position: relative;
   aspect-ratio: 3/4;
-  border-radius: 6px;
+  border-radius: 8px;
   overflow: hidden;
   background: rgb(var(--v-theme-surface-variant));
 }
@@ -1569,14 +1550,13 @@ onUnmounted(() => {
   justify-content: center;
 }
 
-/* Selection checkbox on cover */
 .select-check {
   position: absolute;
-  top: 2px;
-  left: 2px;
+  top: 4px;
+  left: 4px;
   opacity: 0;
   transition: opacity 0.15s ease;
-  transform: scale(0.7);
+  transform: scale(0.75);
   pointer-events: auto;
 }
 .book-card:hover .select-check,
@@ -1584,7 +1564,6 @@ onUnmounted(() => {
   opacity: 1;
 }
 
-/* Format badge */
 .format-badge {
   position: absolute;
   top: 8px;
@@ -1627,10 +1606,10 @@ onUnmounted(() => {
 
 /* ========== Book Info ========== */
 .book-info {
-  padding: 8px 4px 4px;
+  padding: 10px 6px 6px;
 }
 .book-title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   line-height: 1.4;
   overflow: hidden;
@@ -1639,19 +1618,19 @@ onUnmounted(() => {
   color: rgb(var(--v-theme-on-surface));
 }
 .book-author {
-  font-size: 13px;
+  font-size: 14px;
   color: #555;
   opacity: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-top: 2px;
+  margin-top: 3px;
 }
 .book-meta {
   display: flex;
-  gap: 4px;
-  margin-top: 4px;
-  font-size: 12px;
+  gap: 6px;
+  margin-top: 5px;
+  font-size: 13px;
   color: rgb(var(--v-theme-on-surface-variant));
   opacity: 0.6;
 }

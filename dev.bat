@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 cd /d "%~dp0"
 title X-ReaderPlus Dev Server
 
@@ -14,7 +15,7 @@ for /f "tokens=5" %%a in ('netstat -ano ^| findstr /c:":34123" 2^>nul') do (
 timeout /t 2 >nul
 
 echo [2] Starting Go API server (port 34123)...
-start "X-ReaderPlus-Backend" cmd /c "cd /d %~dp0backend && .\run-server.bat --no-format"
+start "X-ReaderPlus-Backend" cmd /c "cd /d %~dp0backend && .\run-server.bat"
 echo   Waiting for backend...
 set RETRIES=0
 :retry
@@ -37,7 +38,7 @@ echo.
 echo Backend:  http://127.0.0.1:34123
 echo Frontend: http://localhost:5173
 echo.
-echo Close this window or press any key to stop all servers.
+echo Press any key to stop all servers.
 pause >nul
 
 echo Shutting down...

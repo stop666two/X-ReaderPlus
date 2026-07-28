@@ -863,6 +863,8 @@ const lazyContent = computed(() => {
   const chapter = reader.currentChapter
   if (!chapter) return ''
   const html = stripLeadingTitle(chapter.content, chapter.title)
+  // First chapter always renders completely — no lazy segmentation
+  if (reader.currentChapterIndex === 0) return html
   const segments = splitHtmlIntoSegments(html)
   if (segments.length <= INITIAL_SEGMENT_COUNT) return html
   return segments.slice(0, renderedSegmentCount.value).join('')
