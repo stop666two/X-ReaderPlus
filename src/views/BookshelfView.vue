@@ -91,12 +91,6 @@
             <v-btn size="x-small" icon="mdi-image-size-select-actual" title="中封面" />
             <v-btn size="x-small" icon="mdi-image-size-select-large" title="大封面" />
           </v-btn-toggle>
-          <template v-if="crossPageSelectedIds.size > 0 || store.selectedIds.size > 0">
-            <v-btn size="small" variant="tonal" prepend-icon="mdi-select-all" @click="selectAllCurrentPage()">全选</v-btn>
-            <v-btn size="small" variant="tonal" prepend-icon="mdi-select-off" @click="clearSelectionCurrentPage()">取消选择</v-btn>
-            <v-btn size="small" variant="tonal" prepend-icon="mdi-swap-horizontal" @click="invertSelectionCurrentPage()">反选</v-btn>
-            <v-btn size="small" color="error" variant="tonal" prepend-icon="mdi-delete" @click="showConfirm = true">删除({{ crossPageSelectedIds.size }})</v-btn>
-          </template>
           <v-btn color="primary" size="small" variant="tonal" prepend-icon="mdi-plus" @click="showImportDialog = true">导入</v-btn>
 
         </div>
@@ -873,7 +867,7 @@ function onCoverError(bookId: string) {
 }
 
 // Grid size: 0=small, 1=medium(default), 2=large
-const gridSizeToggle = ref(1)
+const gridSizeToggle = ref(2)
 const gridSize = ref<'small' | 'medium' | 'large'>('medium')
 watch(gridSizeToggle, (v) => {
   gridSize.value = (['small', 'medium', 'large'] as const)[v]
@@ -1540,14 +1534,10 @@ onUnmounted(() => {
 
 /* ========== Book Card ========== */
 .book-card {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 320px;
-  contain: layout style paint;
   cursor: pointer;
   border-radius: 12px;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   padding: 6px;
-  will-change: transform;
 }
 .book-card:hover {
   transform: translateY(-3px);

@@ -473,7 +473,11 @@ const apiObj: Window['electronAPI'] = {
       }
       return api('POST', `/api/raw/${bookId}`, { filename, data: b64 })
     },
-    get: (bookId: string) => api('GET', `/api/raw/${bookId}`),
+    get: async (bookId: string) => {
+      const res = await fetch(`${BASE}/api/raw/${bookId}`)
+      if (!res.ok) return null
+      return res.arrayBuffer()
+    },
     delete: (bookId: string) => api('DELETE', `/api/raw/${bookId}`),
   },
   config: {

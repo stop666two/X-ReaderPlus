@@ -1238,9 +1238,10 @@ async function embedImages(html: string, chapterDir: string, rootDir: string, zi
     if (/^(data:|https?:\/\/)/i.test(src)) return src
 
     // Resolve image path relative to chapter file directory
-    const imgPath = src.startsWith('/')
-      ? resolvePath(rootDir, src)
-      : resolvePath(chapterDir, src)
+    const decodedSrc = decodeURIComponent(src)
+    const imgPath = decodedSrc.startsWith('/')
+      ? resolvePath(rootDir, decodedSrc)
+      : resolvePath(chapterDir, decodedSrc)
 
     const imgFile = zip.file(imgPath)
     if (!imgFile) return '' // not found
@@ -1257,60 +1258,66 @@ async function embedImages(html: string, chapterDir: string, rootDir: string, zi
     }
   }
 
-  // ---- 1) <img src="..."> tags (with or without quotes) ----
-  const imgRegex = /(<img\b[^>]*\bsrc\s*=\s*)(["']?)([^"' >\s]+)\2([^>]*>)/gi
-  let match: RegExpExecArray | null
-  while ((match = imgRegex.exec(html)) !== null) {
-    const fullMatch = match[0]
-    const hasQuote = match[2] !== ''
-    const src = match[3]
+  // ---- 1) <img src="..."> tags (quoted or unquoted) ----
+  // Match double-quoted src
+  const imgDQ = /(<img\b[^>]*?\bsrc\s*=\s*)("([^"]*)")([^>]*>)/gi
+  let mDQ: RegExpExecArray | null
+  while ((mDQ = imgDQ.exec(html)) !== null) {
+    const src = mDQ[3]
     const dataUri = await embedOne(src)
-
     if (dataUri) {
-      const quote = hasQuote ? match[2] : '"'
-      const newAttr = hasQuote
-        ? fullMatch.replace(src, dataUri)
-        : fullMatch.replace(new RegExp(`\\bsrc\\s*=\\s*${escapeRegex(src)}`, 'i'), `src="${dataUri}"`)
-      replacements.push({ from: fullMatch, to: newAttr })
+      replacements.push({ from: mDQ[2], to: `"${dataUri}"` })
     } else {
-      if (hasQuote) {
-        replacements.push({
-          from: fullMatch,
-          to: fullMatch.replace(new RegExp(`\\bsrc\\s*=\\s*["']${escapeRegex(src)}["']`, 'i'), 'src=""')
-        })
-      } else {
-        replacements.push({ from: fullMatch, to: fullMatch.replace(/\bsrc\s*=\s*\S+/i, 'src=""') })
-      }
+      replacements.push({ from: mDQ[2], to: '""' })
+    }
+  }
+  // Match single-quoted src
+  const imgSQ = /(<img\b[^>]*?\bsrc\s*=\s*)('([^']*)')([^>]*>)/gi
+  let mSQ: RegExpExecArray | null
+  while ((mSQ = imgSQ.exec(html)) !== null) {
+    const src = mSQ[3]
+    const dataUri = await embedOne(src)
+    if (dataUri) {
+      replacements.push({ from: mSQ[2], to: `'${dataUri}'` })
+    } else {
+      replacements.push({ from: mSQ[2], to: "''" })
+    }
+  }
+  // Match unquoted src (no spaces allowed in unquoted HTML attributes)
+  const imgUQ = /(<img\b[^>]*?\bsrc\s*=\s*)([^"' >\s]+)([^>]*>)/gi
+  let mUQ: RegExpExecArray | null
+  while ((mUQ = imgUQ.exec(html)) !== null) {
+    const src = mUQ[2]
+    const dataUri = await embedOne(src)
+    if (dataUri) {
+      replacements.push({ from: mUQ[0], to: mUQ[1] + `"${dataUri}"` + mUQ[3] })
+    } else {
+      replacements.push({ from: mUQ[0], to: mUQ[1] + '""' + mUQ[3] })
     }
   }
 
   // ---- 2) Inline <svg> elements that contain <image href="..."> or <image xlink:href="..."> ----
-  // SVG <image> elements can reference external raster/vector images inside an inline SVG.
-  // We resolve them to data URIs so the entire SVG block is self-contained.
   const svgImageRegex = /(<image\b[^>]*?\b(?:xlink:)?href\s*=\s*)(["'])([^"']+)\2([^>]*\/?>)/gi
-  while ((match = svgImageRegex.exec(html)) !== null) {
-    const fullMatch = match[0]
-    const href = match[3]
-
-    // Only process relative paths (skip data: and http:)
+  let mSVG: RegExpExecArray | null
+  while ((mSVG = svgImageRegex.exec(html)) !== null) {
+    const fullMatch = mSVG[0]
+    const href = mSVG[3]
     if (/^(data:|https?:\/\/)/i.test(href)) continue
-
     const dataUri = await embedOne(href)
     if (dataUri) {
       replacements.push({ from: fullMatch, to: fullMatch.replace(href, dataUri) })
     }
-    // If not found, leave as-is — the browser will show a broken image placeholder
   }
 
   // ---- 3) CSS background-image: url(...) ----
-  // Match url(...) references in inline style attributes and <style> blocks
   const bgRegex = /url\(\s*["']?([^"'\s\)]+)["']?\s*\)/gi
-  while ((match = bgRegex.exec(html)) !== null) {
-    const imgUrl = match[1]
+  let mBG: RegExpExecArray | null
+  while ((mBG = bgRegex.exec(html)) !== null) {
+    const imgUrl = mBG[1]
     if (/^(data:|https?:\/\/)/i.test(imgUrl)) continue
     const dataUri = await embedOne(imgUrl)
     if (dataUri) {
-      replacements.push({ from: match[0], to: `url("${dataUri}")` })
+      replacements.push({ from: mBG[0], to: `url("${dataUri}")` })
     }
   }
 

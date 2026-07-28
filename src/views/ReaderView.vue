@@ -716,7 +716,7 @@ const bookProgressPct = computed(() => {
 })
 
 // ---- Lazy rendering for long chapters ----
-const INITIAL_SEGMENT_COUNT = 30
+const INITIAL_SEGMENT_COUNT = 200
 const LOAD_MORE_COUNT = 20
 const renderedSegmentCount = ref(INITIAL_SEGMENT_COUNT)
 const totalSegmentCount = ref(0)
@@ -888,7 +888,8 @@ const sanitizedContent = computed(() => {
     ],
     ALLOWED_ATTR: ['href','src','alt','title','class','id','width','height','style'],
     ALLOW_DATA_ATTR: false,
-    ADD_DATA_URI_TAGS: ['img'],
+    ADD_DATA_URI_TAGS: ['img', 'source', 'image'],
+    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
     ADD_URI_SAFE_ATTR: ['src']
   })
   // Second pass: rewrite links for safe in-app navigation
